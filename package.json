@@ -1,24 +1,65 @@
 {
   "name": "open-plant",
-  "private": true,
+  "description": "WebGL2-based high-performance WSI viewer rendering engine for React",
   "version": "0.1.0",
+  "license": "MIT",
+  "author": "Open Plant",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/frorong/open-plant.git"
+  },
+  "homepage": "https://frorong.github.io/open-plant/",
+  "bugs": {
+    "url": "https://github.com/frorong/open-plant/issues"
+  },
+  "keywords": [
+    "wsi",
+    "pathology",
+    "webgl",
+    "viewer",
+    "react",
+    "tile-renderer"
+  ],
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
   "scripts": {
     "dev": "vite",
     "dev:example": "vite --config example/vite.config.ts",
     "build:example": "vite build --config example/vite.config.ts",
-    "build": "tsc -b && vite build",
+    "preview:example": "vite preview --config example/vite.config.ts",
+    "clean": "rm -rf dist",
+    "build:lib": "npm run clean && tsc -p tsconfig.build.json && vite build --config vite.config.lib.ts",
+    "build": "npm run build:lib",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.app.json --noEmit"
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "pack:dry-run": "npm_config_cache=.npm-cache npm pack --dry-run",
+    "prepublishOnly": "npm run build:lib && npm run pack:dry-run"
   },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.8"
   }
