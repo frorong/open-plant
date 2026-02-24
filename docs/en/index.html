@@ -69,11 +69,11 @@
               </div>
               <div class="card">
                 <h3>Draw Layer</h3>
-                <p>`freehand`, `rectangle`, `circular` ROI tools with persisted outlines and labels.</p>
+                <p>`freehand`, `rectangle`, `circular` + `stamp-rectangle-4096px`, persisted outlines, labels, and overlay shapes.</p>
               </div>
               <div class="card">
                 <h3>React Surface</h3>
-                <p>`WsiViewerCanvas` unifies tiles, points, drawing, ROI filtering, and stats callbacks.</p>
+                <p>`WsiViewerCanvas` unifies tiles, points, drawing, ROI filtering/stats, pointer world callbacks, and rotation state.</p>
               </div>
             </div>
           </section>
@@ -85,6 +85,15 @@
               <div class="flow-step"><strong>2. Binary-first data:</strong> use typed arrays for immediate GPU upload.</div>
               <div class="flow-step"><strong>3. Interaction isolation:</strong> drawing mode locks pan events deterministically.</div>
               <div class="flow-step"><strong>4. Compute-ready path:</strong> reserve WebGPU for heavy compute stages.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal">
+            <h2>Open-Source Priorities</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>1. Stable runtime default:</strong> production-safe path stays on deterministic worker-based ROI clipping.</div>
+              <div class="flow-step"><strong>2. Experimental lanes:</strong> WebGPU features are opt-in until dataset benchmarks prove gains.</div>
+              <div class="flow-step"><strong>3. Documentation first:</strong> behavior, defaults, and fallback rules are specified before broader feature expansion.</div>
             </div>
           </section>
 

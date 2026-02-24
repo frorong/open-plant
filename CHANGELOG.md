@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Camera rotation support in `WsiViewState` via `rotationDeg`.
+- `Ctrl/Cmd + drag` rotation input path with configurable renderer option.
+- `rotationResetNonce` and `ctrlDragRotate` props on `WsiViewerCanvas`.
+- World-coordinate pointer stream callback: `onPointerWorldMove`.
+- Region style resolver API: `resolveRegionStrokeStyle`.
+- Custom overlay shape API for patch/dashed guides: `overlayShapes`.
+- Fixed-pixel stamp tool: `stamp-rectangle-4096px` and `stampOptions.rectanglePixelSize`.
+- ROI term-group utility and callback path: `computeRoiPointGroups`, `onRoiPointGroups`.
+
+### Changed
+- `WsiTileRenderer` projection, bounds, and zoom anchoring now account for rotation.
+- Overview map viewport indicator now supports rotated viewport polygon rendering.
+- Region active selection now toggles on same-region click and switches on different region click.
+
+### Docs
+- Updated EN/KO API and guides for rotation, pointer world callbacks, overlay shapes, 4096px stamp, and ROI term stats.
+- Updated `todo.md` gap table with current support status and code-path references.
+
 ## [0.1.0] - 2026-02-24
 
 ### Added

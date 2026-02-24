@@ -61,9 +61,14 @@ draw mode에 진입하면 `setPointerCapture`로 입력을 독점한 뒤 `intera
 | | |
 |---|---|
 | **WebGL2 타일 렌더링** | 멀티 티어 타일 피라미드, LRU 캐시(320장), 저해상도 fallback 렌더링 |
+| **회전 인터랙션** | `WsiViewState.rotationDeg`, `Ctrl/Cmd + drag` 회전, `resetRotation` 경로 |
 | **포인트 오버레이** | WebGL2 `gl.POINTS`로 수십, 수백만 개 포인트를 팔레트 텍스처 기반 컬러링. 파싱된 TypedArray만 입력 |
 | **드로잉 / ROI 도구** | Freehand · Rectangle · Circular + Stamp(사각형/원, mm² 지정) |
-| **ROI 포인트 클리핑** | Ray-casting 기반 point-in-polygon으로 ROI 내부 포인트만 필터링 |
+| **고정 픽셀 스탬프** | `stamp-rectangle-4096px` + `stampOptions.rectanglePixelSize` |
+| **ROI 포인트 클리핑** | `clipMode`: `sync` / `worker` / `hybrid-webgpu` (실험) |
+| **ROI 통계 API** | `computeRoiPointGroups()` + `onRoiPointGroups` 콜백 |
+| **ROI 커스텀 오버레이** | `resolveRegionStrokeStyle`, `overlayShapes` |
+| **WebGPU 연산 경로** | WebGPU capability 체크 + ROI bbox prefilter compute(실험) |
 | **오버뷰 미니맵** | 썸네일 + 현재 뷰포트 인디케이터, 클릭/드래그 네비게이션 |
 | **React 바인딩** | `<WsiViewerCanvas>`, `<DrawLayer>`, `<OverviewMap>` 컴포넌트 제공 |
 | **좌표 변환** | `screenToWorld()` / `worldToScreen()` 양방향 좌표 변환 |
@@ -89,8 +94,13 @@ src/
 ├── wsi/                        # WSI 전용 로직
 │   ├── wsi-tile-renderer.ts    # 멀티 티어 타일 + 포인트 렌더러
 │   ├── point-clip.ts           # ROI 포인트 클리핑
+│   ├── point-clip-worker-client.ts # ROI 워커 클리핑 클라이언트
+│   ├── point-clip-hybrid.ts    # WebGPU + polygon 하이브리드 클리핑(실험)
+│   ├── webgpu.ts               # WebGPU capability/compute 유틸
 │   ├── image-info.ts           # 이미지 메타데이터 정규화
 │   └── utils.ts                # 팔레트, 색상, 토큰 유틸리티
+├── workers/
+│   └── roi-clip-worker.ts      # ROI point-in-polygon worker
 └── react/                      # React 컴포넌트
     ├── wsi-viewer-canvas.tsx   # 전체 기능 WSI 뷰어
     ├── draw-layer.tsx          # 드로잉 오버레이
@@ -109,14 +119,22 @@ import { WsiViewerCanvas } from "open-plant";
 <WsiViewerCanvas
   source={imageSource}
   viewState={viewState}
+  ctrlDragRotate
+  rotationResetNonce={rotationResetNonce}
   authToken={bearerToken}
   pointData={pointPayload}
   pointPalette={termPalette.colors}
+  clipPointsToRois
+  clipMode="worker"
+  onClipStats={(s) => console.log(s.mode, s.durationMs)}
   drawTool="stamp-circle"
   stampOptions={{
     rectangleAreaMm2: 2,
     circleAreaMm2: 0.2, // HPF 예시
+    rectanglePixelSize: 4096,
   }}
+  onPointerWorldMove={(e) => console.log(e.coordinate)}
+  onRoiPointGroups={(stats) => console.log(stats.groups)}
   onDrawComplete={handleDraw}
   onViewStateChange={handleViewChange}
   onStats={setStats}
@@ -124,6 +142,8 @@ import { WsiViewerCanvas } from "open-plant";
 ```
 
 `mpp`(microns per pixel, 픽셀당 마이크론)는 `WsiImageSource`에 포함되는 물리 스케일 값이며, 스탬프의 mm² 크기를 실제 픽셀 단위로 환산할 때 사용됩니다.
+
+`rotationDeg`는 뷰포트 회전 각도(도 단위)이며, `Ctrl/Cmd + drag`로 조작하거나 `viewState`로 직접 제어할 수 있습니다.
 
 ### `<DrawLayer>`
 
@@ -141,6 +161,9 @@ Freehand, Rectangle, Circular + Stamp(사각형/원) 드로잉 오버레이.
 | `M1TileRenderer` | 기본 타일 렌더러 클래스 |
 | `normalizeImageInfo(raw, tileBaseUrl)` | API 응답 + 타일 베이스 URL을 `WsiImageSource`로 변환 |
 | `filterPointDataByPolygons()` | ROI 폴리곤으로 포인트 필터링 |
+| `filterPointDataByPolygonsInWorker()` | 워커 스레드 ROI 필터링 |
+| `filterPointDataByPolygonsHybrid()` | WebGPU bbox prefilter + polygon 정밀 판정(실험) |
+| `getWebGpuCapabilities()` | WebGPU 지원/어댑터 정보 조회 |
 | `buildTermPalette()` | Term 기반 컬러 팔레트 생성 |
 | `toTileUrl()` | 타일 URL 생성 |
 | `calcScaleResolution()` | 현재 줌 기준 μm/px 계산 |

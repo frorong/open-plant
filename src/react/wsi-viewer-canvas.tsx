@@ -1,94 +1,104 @@
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { filterPointDataByPolygons, type RoiPolygon } from "../wsi/point-clip";
+import { filterPointDataByPolygonsHybrid } from "../wsi/point-clip-hybrid";
+import { filterPointDataByPolygonsInWorker, type PointClipMode } from "../wsi/point-clip-worker-client";
 import {
-	type CSSProperties,
-	type MouseEvent as ReactMouseEvent,
-	type PointerEvent as ReactPointerEvent,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import { filterPointDataByPolygons } from "../wsi/point-clip";
-import type {
-	WsiImageSource,
-	WsiPointData,
-	WsiRegion,
-	WsiRenderStats,
-	WsiViewState,
-} from "../wsi/types";
+	computeRoiPointGroups,
+	type RoiPointGroupStats,
+} from "../wsi/roi-term-stats";
+import type { WsiImageSource, WsiPointData, WsiRegion, WsiRenderStats, WsiViewState } from "../wsi/types";
 import { WsiTileRenderer } from "../wsi/wsi-tile-renderer";
 import type {
 	DrawCoordinate,
+	DrawOverlayShape,
 	DrawResult,
 	DrawTool,
-	StampOptions,
 	RegionLabelStyle,
 	RegionStrokeStyle,
+	RegionStrokeStyleResolver,
+	StampOptions,
 } from "./draw-layer";
 import { DrawLayer } from "./draw-layer";
 import { OverviewMap, type OverviewMapOptions } from "./overview-map";
 
 const EMPTY_ROI_REGIONS: WsiRegion[] = [];
 const EMPTY_ROI_POLYGONS: DrawCoordinate[][] = [];
+const EMPTY_CLIPPED_POINTS: WsiPointData = {
+  count: 0,
+  positions: new Float32Array(0),
+  paletteIndices: new Uint16Array(0),
+};
 
 export interface RegionHoverEvent {
-	region: WsiRegion | null;
-	regionId: string | number | null;
-	regionIndex: number;
-	coordinate: DrawCoordinate | null;
+  region: WsiRegion | null;
+  regionId: string | number | null;
+  regionIndex: number;
+  coordinate: DrawCoordinate | null;
 }
 
 export interface RegionClickEvent {
-	region: WsiRegion;
-	regionId: string | number;
-	regionIndex: number;
-	coordinate: DrawCoordinate;
+  region: WsiRegion;
+  regionId: string | number;
+  regionIndex: number;
+  coordinate: DrawCoordinate;
+}
+
+export interface PointClipStatsEvent {
+  mode: PointClipMode;
+  durationMs: number;
+  inputCount: number;
+  outputCount: number;
+  polygonCount: number;
+  usedWebGpu?: boolean;
+	candidateCount?: number;
+}
+
+export interface PointerWorldMoveEvent {
+	coordinate: DrawCoordinate | null;
+	clientX: number;
+	clientY: number;
+	insideImage: boolean;
 }
 
 function resolveRegionId(region: WsiRegion, index: number): string | number {
-	return region.id ?? index;
+  return region.id ?? index;
 }
 
-function isPointInPolygon(
-	point: DrawCoordinate,
-	polygon: DrawCoordinate[],
-): boolean {
-	if (!Array.isArray(polygon) || polygon.length < 3) return false;
+function isPointInPolygon(point: DrawCoordinate, polygon: DrawCoordinate[]): boolean {
+  if (!Array.isArray(polygon) || polygon.length < 3) return false;
 
-	const [x, y] = point;
-	let inside = false;
+  const [x, y] = point;
+  let inside = false;
 
-	for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-		const [xi, yi] = polygon[i];
-		const [xj, yj] = polygon[j];
-		const intersect =
-			yi > y !== yj > y &&
-			x < ((xj - xi) * (y - yi)) / Math.max(1e-12, yj - yi) + xi;
-		if (intersect) inside = !inside;
-	}
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / Math.max(1e-12, yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
 
-	return inside;
+  return inside;
 }
 
 function pickRegionAt(
-	coord: DrawCoordinate,
-	regions: WsiRegion[],
+  coord: DrawCoordinate,
+  regions: WsiRegion[]
 ): {
-	region: WsiRegion;
-	regionIndex: number;
-	regionId: string | number;
+  region: WsiRegion;
+  regionIndex: number;
+  regionId: string | number;
 } | null {
-	for (let i = regions.length - 1; i >= 0; i -= 1) {
-		const region = regions[i];
-		if (!region?.coordinates?.length) continue;
-		if (!isPointInPolygon(coord, region.coordinates)) continue;
-		return {
-			region,
-			regionIndex: i,
-			regionId: resolveRegionId(region, i),
-		};
-	}
-	return null;
+  for (let i = regions.length - 1; i >= 0; i -= 1) {
+    const region = regions[i];
+    if (!region?.coordinates?.length) continue;
+    if (!isPointInPolygon(coord, region.coordinates)) continue;
+    return {
+      region,
+      regionIndex: i,
+      regionId: resolveRegionId(region, i),
+    };
+  }
+  return null;
 }
 
 export interface WsiViewerCanvasProps {
@@ -97,484 +107,576 @@ export interface WsiViewerCanvasProps {
 	onViewStateChange?: (next: WsiViewState) => void;
 	onStats?: (stats: WsiRenderStats) => void;
 	fitNonce?: number;
+	rotationResetNonce?: number;
 	authToken?: string;
+	ctrlDragRotate?: boolean;
 	pointData?: WsiPointData | null;
 	pointPalette?: Uint8Array | null;
 	roiRegions?: WsiRegion[];
 	roiPolygons?: DrawCoordinate[][];
-	clipPointsToRois?: boolean;
-	interactionLock?: boolean;
-	drawTool?: DrawTool;
+  clipPointsToRois?: boolean;
+  clipMode?: PointClipMode;
+  onClipStats?: (event: PointClipStatsEvent) => void;
+  onRoiPointGroups?: (stats: RoiPointGroupStats) => void;
+  roiPaletteIndexToTermId?: ReadonlyMap<number, string> | readonly string[];
+  interactionLock?: boolean;
+  drawTool?: DrawTool;
 	stampOptions?: StampOptions;
 	regionStrokeStyle?: Partial<RegionStrokeStyle>;
 	regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
 	regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
+	resolveRegionStrokeStyle?: RegionStrokeStyleResolver;
+	overlayShapes?: DrawOverlayShape[];
 	regionLabelStyle?: Partial<RegionLabelStyle>;
+	onPointerWorldMove?: (event: PointerWorldMoveEvent) => void;
 	onRegionHover?: (event: RegionHoverEvent) => void;
 	onRegionClick?: (event: RegionClickEvent) => void;
-	onActiveRegionChange?: (regionId: string | number | null) => void;
-	onDrawComplete?: (result: DrawResult) => void;
-	showOverviewMap?: boolean;
-	overviewMapOptions?: Partial<OverviewMapOptions>;
-	className?: string;
-	style?: CSSProperties;
+  onActiveRegionChange?: (regionId: string | number | null) => void;
+  onDrawComplete?: (result: DrawResult) => void;
+  showOverviewMap?: boolean;
+  overviewMapOptions?: Partial<OverviewMapOptions>;
+  className?: string;
+  style?: CSSProperties;
 }
 
 export function WsiViewerCanvas({
-	source,
-	viewState,
-	onViewStateChange,
+  source,
+  viewState,
+  onViewStateChange,
 	onStats,
 	fitNonce = 0,
+	rotationResetNonce = 0,
 	authToken = "",
+	ctrlDragRotate = true,
 	pointData = null,
 	pointPalette = null,
-	roiRegions,
-	roiPolygons,
-	clipPointsToRois = false,
-	interactionLock = false,
-	drawTool = "cursor",
+  roiRegions,
+  roiPolygons,
+  clipPointsToRois = false,
+  clipMode = "worker",
+  onClipStats,
+  onRoiPointGroups,
+  roiPaletteIndexToTermId,
+  interactionLock = false,
+  drawTool = "cursor",
 	stampOptions,
 	regionStrokeStyle,
 	regionStrokeHoverStyle,
 	regionStrokeActiveStyle,
+	resolveRegionStrokeStyle,
+	overlayShapes,
 	regionLabelStyle,
+	onPointerWorldMove,
 	onRegionHover,
 	onRegionClick,
-	onActiveRegionChange,
-	onDrawComplete,
-	showOverviewMap = false,
-	overviewMapOptions,
-	className,
-	style,
+  onActiveRegionChange,
+  onDrawComplete,
+  showOverviewMap = false,
+  overviewMapOptions,
+  className,
+  style,
 }: WsiViewerCanvasProps): React.ReactElement {
-	const canvasRef = useRef<HTMLCanvasElement | null>(null);
-	const rendererRef = useRef<WsiTileRenderer | null>(null);
-	const drawInvalidateRef = useRef<(() => void) | null>(null);
-	const overviewInvalidateRef = useRef<(() => void) | null>(null);
-	const onViewStateChangeRef =
-		useRef<typeof onViewStateChange>(onViewStateChange);
-	const [isOverviewOpen, setIsOverviewOpen] = useState(true);
-	const [hoveredRegionId, setHoveredRegionId] = useState<
-		string | number | null
-	>(null);
-	const [activeRegionId, setActiveRegionId] = useState<string | number | null>(
-		null,
-	);
-	const hoveredRegionIdRef = useRef<string | number | null>(null);
-	const safeRoiRegions = roiRegions ?? EMPTY_ROI_REGIONS;
-	const safeRoiPolygons = roiPolygons ?? EMPTY_ROI_POLYGONS;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rendererRef = useRef<WsiTileRenderer | null>(null);
+  const drawInvalidateRef = useRef<(() => void) | null>(null);
+  const overviewInvalidateRef = useRef<(() => void) | null>(null);
+  const onViewStateChangeRef = useRef<typeof onViewStateChange>(onViewStateChange);
+  const [isOverviewOpen, setIsOverviewOpen] = useState(true);
+  const [hoveredRegionId, setHoveredRegionId] = useState<string | number | null>(null);
+  const [activeRegionId, setActiveRegionId] = useState<string | number | null>(null);
+  const hoveredRegionIdRef = useRef<string | number | null>(null);
+  const clipRunIdRef = useRef(0);
+  const safeRoiRegions = roiRegions ?? EMPTY_ROI_REGIONS;
+  const safeRoiPolygons = roiPolygons ?? EMPTY_ROI_POLYGONS;
 
-	const mergedStyle = useMemo<CSSProperties>(
-		() => ({ position: "relative", width: "100%", height: "100%", ...style }),
-		[style],
-	);
+  const mergedStyle = useMemo<CSSProperties>(() => ({ position: "relative", width: "100%", height: "100%", ...style }), [style]);
 
-	const effectiveRoiRegions = useMemo<WsiRegion[]>(() => {
-		if (safeRoiRegions.length > 0) {
-			return safeRoiRegions;
-		}
-		if (safeRoiPolygons.length === 0) {
-			return EMPTY_ROI_REGIONS;
-		}
-		return safeRoiPolygons.map((coordinates, index) => ({
-			id: index,
-			coordinates,
-		}));
-	}, [safeRoiRegions, safeRoiPolygons]);
+  const effectiveRoiRegions = useMemo<WsiRegion[]>(() => {
+    if (safeRoiRegions.length > 0) {
+      return safeRoiRegions;
+    }
+    if (safeRoiPolygons.length === 0) {
+      return EMPTY_ROI_REGIONS;
+    }
+    return safeRoiPolygons.map((coordinates, index) => ({
+      id: index,
+      coordinates,
+    }));
+  }, [safeRoiRegions, safeRoiPolygons]);
 
-	const clipPolygons = useMemo(
-		() => effectiveRoiRegions.map((region) => region.coordinates),
-		[effectiveRoiRegions],
-	);
+  const clipPolygons = useMemo(() => effectiveRoiRegions.map(region => region.coordinates), [effectiveRoiRegions]);
 
-	const renderPointData = useMemo(() => {
-		if (!clipPointsToRois) {
-			return pointData;
-		}
-		return filterPointDataByPolygons(pointData, clipPolygons);
-	}, [clipPointsToRois, pointData, clipPolygons]);
+  const [renderPointData, setRenderPointData] = useState<WsiPointData | null>(pointData);
 
-	const overviewWidth = useMemo(() => {
-		const value = Number(overviewMapOptions?.width ?? 220);
-		return Number.isFinite(value) ? Math.max(64, value) : 220;
-	}, [overviewMapOptions?.width]);
-	const overviewHeight = useMemo(() => {
-		const value = Number(overviewMapOptions?.height ?? 140);
-		return Number.isFinite(value) ? Math.max(48, value) : 140;
-	}, [overviewMapOptions?.height]);
-	const overviewMargin = useMemo(() => {
-		const value = Number(overviewMapOptions?.margin ?? 16);
-		return Number.isFinite(value) ? Math.max(0, value) : 16;
-	}, [overviewMapOptions?.margin]);
-	const overviewPosition = overviewMapOptions?.position || "bottom-right";
+  useEffect(() => {
+    const runId = ++clipRunIdRef.current;
+    let cancelled = false;
 
-	const commitActiveRegion = useCallback(
-		(next: string | number | null) => {
-			setActiveRegionId((prev) => {
-				if (String(prev) === String(next)) {
-					return prev;
-				}
-				onActiveRegionChange?.(next);
-				return next;
-			});
-		},
-		[onActiveRegionChange],
-	);
+    if (!clipPointsToRois) {
+      setRenderPointData(pointData);
+      return () => {
+        cancelled = true;
+      };
+    }
 
-	useEffect(() => {
-		onViewStateChangeRef.current = onViewStateChange;
-	}, [onViewStateChange]);
+    if (!pointData || !pointData.count || !pointData.positions || !pointData.paletteIndices) {
+      setRenderPointData(null);
+      return () => {
+        cancelled = true;
+      };
+    }
 
-	useEffect(() => {
-		const hasActive =
-			activeRegionId === null
-				? true
-				: effectiveRoiRegions.some(
-						(region, index) =>
-							String(resolveRegionId(region, index)) === String(activeRegionId),
-					);
-		if (!hasActive && activeRegionId !== null) {
-			commitActiveRegion(null);
-		}
+    if (clipPolygons.length === 0) {
+      setRenderPointData(EMPTY_CLIPPED_POINTS);
+      onClipStats?.({
+        mode: clipMode,
+        durationMs: 0,
+        inputCount: pointData.count,
+        outputCount: 0,
+        polygonCount: 0,
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
 
-		const currentHover = hoveredRegionIdRef.current;
-		const hasHover =
-			currentHover === null
-				? true
-				: effectiveRoiRegions.some(
-						(region, index) =>
-							String(resolveRegionId(region, index)) === String(currentHover),
-					);
+    const applyResult = (data: WsiPointData | null, stats: Omit<PointClipStatsEvent, "inputCount" | "outputCount" | "polygonCount">) => {
+      if (cancelled || runId !== clipRunIdRef.current) return;
+      const outputCount = data?.count ?? 0;
+      setRenderPointData(data);
+      onClipStats?.({
+        mode: stats.mode,
+        durationMs: stats.durationMs,
+        inputCount: pointData.count,
+        outputCount,
+        polygonCount: clipPolygons.length,
+        usedWebGpu: stats.usedWebGpu,
+        candidateCount: stats.candidateCount,
+      });
+    };
 
-		if (!hasHover && currentHover !== null) {
-			hoveredRegionIdRef.current = null;
-			setHoveredRegionId(null);
-			onRegionHover?.({
-				region: null,
-				regionId: null,
-				regionIndex: -1,
-				coordinate: null,
-			});
-		}
-	}, [effectiveRoiRegions, activeRegionId, onRegionHover, commitActiveRegion]);
+    const run = async (): Promise<void> => {
+      if (clipMode === "sync") {
+        const start = performance.now();
+        const data = filterPointDataByPolygons(pointData, clipPolygons);
+        applyResult(data, {
+          mode: "sync",
+          durationMs: performance.now() - start,
+        });
+        return;
+      }
 
-	const emitViewStateChange = useCallback((next: WsiViewState): void => {
-		const callback = onViewStateChangeRef.current;
-		if (callback) {
-			callback(next);
-		}
-		drawInvalidateRef.current?.();
-		overviewInvalidateRef.current?.();
-	}, []);
+      if (clipMode === "hybrid-webgpu") {
+        const result = await filterPointDataByPolygonsHybrid(pointData, clipPolygons as RoiPolygon[]);
+        applyResult(result.data, {
+          mode: result.meta.mode,
+          durationMs: result.meta.durationMs,
+          usedWebGpu: result.meta.usedWebGpu,
+          candidateCount: result.meta.candidateCount,
+        });
+        return;
+      }
 
-	useEffect(() => {
-		if (!showOverviewMap) {
-			setIsOverviewOpen(false);
-			return;
-		}
-		setIsOverviewOpen(true);
-	}, [showOverviewMap, source?.id]);
+      try {
+        const result = await filterPointDataByPolygonsInWorker(pointData, clipPolygons as RoiPolygon[]);
+        applyResult(result.data, {
+          mode: result.meta.mode,
+          durationMs: result.meta.durationMs,
+        });
+      } catch {
+        const start = performance.now();
+        const data = filterPointDataByPolygons(pointData, clipPolygons);
+        applyResult(data, {
+          mode: "sync",
+          durationMs: performance.now() - start,
+        });
+      }
+    };
 
-	useEffect(() => {
-		if (drawTool === "cursor") return;
-		if (hoveredRegionIdRef.current === null) return;
-		hoveredRegionIdRef.current = null;
-		setHoveredRegionId(null);
-		onRegionHover?.({
-			region: null,
-			regionId: null,
-			regionIndex: -1,
-			coordinate: null,
-		});
-	}, [drawTool, onRegionHover]);
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [clipPointsToRois, clipMode, pointData, clipPolygons, onClipStats]);
 
-	const resolveWorldCoord = useCallback(
-		(clientX: number, clientY: number): DrawCoordinate | null => {
-			const renderer = rendererRef.current;
-			if (!renderer) return null;
-			const raw = renderer.screenToWorld(clientX, clientY);
-			if (!Array.isArray(raw) || raw.length < 2) return null;
-			const x = Number(raw[0]);
-			const y = Number(raw[1]);
-			if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-			return [x, y];
-		},
-		[],
-	);
+  const overviewWidth = useMemo(() => {
+    const value = Number(overviewMapOptions?.width ?? 220);
+    return Number.isFinite(value) ? Math.max(64, value) : 220;
+  }, [overviewMapOptions?.width]);
+  const overviewHeight = useMemo(() => {
+    const value = Number(overviewMapOptions?.height ?? 140);
+    return Number.isFinite(value) ? Math.max(48, value) : 140;
+  }, [overviewMapOptions?.height]);
+  const overviewMargin = useMemo(() => {
+    const value = Number(overviewMapOptions?.margin ?? 16);
+    return Number.isFinite(value) ? Math.max(0, value) : 16;
+  }, [overviewMapOptions?.margin]);
+  const overviewPosition = overviewMapOptions?.position || "bottom-right";
 
-	const handleRegionPointerMove = useCallback(
-		(event: ReactPointerEvent<HTMLDivElement>) => {
-			if (drawTool !== "cursor") return;
-			if (event.target !== canvasRef.current) {
-				if (hoveredRegionIdRef.current !== null) {
-					hoveredRegionIdRef.current = null;
-					setHoveredRegionId(null);
-					onRegionHover?.({
-						region: null,
-						regionId: null,
-						regionIndex: -1,
-						coordinate: null,
-					});
-				}
-				return;
-			}
-			if (!effectiveRoiRegions.length) return;
+  const commitActiveRegion = useCallback(
+    (next: string | number | null) => {
+      setActiveRegionId(prev => {
+        if (String(prev) === String(next)) {
+          return prev;
+        }
+        onActiveRegionChange?.(next);
+        return next;
+      });
+    },
+    [onActiveRegionChange]
+  );
 
-			const coord = resolveWorldCoord(event.clientX, event.clientY);
-			if (!coord) return;
+  useEffect(() => {
+    onViewStateChangeRef.current = onViewStateChange;
+  }, [onViewStateChange]);
 
-			const hit = pickRegionAt(coord, effectiveRoiRegions);
-			const nextHoverId = hit?.regionId ?? null;
-			const prevHoverId = hoveredRegionIdRef.current;
-			if (String(prevHoverId) === String(nextHoverId)) return;
+  useEffect(() => {
+    const hasActive = activeRegionId === null ? true : effectiveRoiRegions.some((region, index) => String(resolveRegionId(region, index)) === String(activeRegionId));
+    if (!hasActive && activeRegionId !== null) {
+      commitActiveRegion(null);
+    }
 
-			hoveredRegionIdRef.current = nextHoverId;
-			setHoveredRegionId(nextHoverId);
-			onRegionHover?.({
-				region: hit?.region ?? null,
-				regionId: nextHoverId,
-				regionIndex: hit?.regionIndex ?? -1,
-				coordinate: coord,
-			});
-		},
-		[drawTool, effectiveRoiRegions, resolveWorldCoord, onRegionHover],
-	);
+    const currentHover = hoveredRegionIdRef.current;
+    const hasHover = currentHover === null ? true : effectiveRoiRegions.some((region, index) => String(resolveRegionId(region, index)) === String(currentHover));
 
-	const handleRegionPointerLeave = useCallback(() => {
-		if (hoveredRegionIdRef.current === null) return;
-		hoveredRegionIdRef.current = null;
-		setHoveredRegionId(null);
-		onRegionHover?.({
-			region: null,
-			regionId: null,
-			regionIndex: -1,
-			coordinate: null,
-		});
-	}, [onRegionHover]);
+    if (!hasHover && currentHover !== null) {
+      hoveredRegionIdRef.current = null;
+      setHoveredRegionId(null);
+      onRegionHover?.({
+        region: null,
+        regionId: null,
+        regionIndex: -1,
+        coordinate: null,
+      });
+    }
+  }, [effectiveRoiRegions, activeRegionId, onRegionHover, commitActiveRegion]);
 
-	const handleRegionClick = useCallback(
-		(event: ReactMouseEvent<HTMLDivElement>) => {
-			if (drawTool !== "cursor") return;
-			if (event.target !== canvasRef.current) return;
-			if (!effectiveRoiRegions.length) {
-				commitActiveRegion(null);
-				return;
-			}
+  const emitViewStateChange = useCallback((next: WsiViewState): void => {
+    const callback = onViewStateChangeRef.current;
+    if (callback) {
+      callback(next);
+    }
+    drawInvalidateRef.current?.();
+    overviewInvalidateRef.current?.();
+  }, []);
 
-			const coord = resolveWorldCoord(event.clientX, event.clientY);
-			if (!coord) return;
+  useEffect(() => {
+    if (!showOverviewMap) {
+      setIsOverviewOpen(false);
+      return;
+    }
+    setIsOverviewOpen(true);
+  }, [showOverviewMap, source?.id]);
 
-			const hit = pickRegionAt(coord, effectiveRoiRegions);
-			if (!hit) {
-				commitActiveRegion(null);
-				return;
-			}
+  useEffect(() => {
+    if (drawTool === "cursor") return;
+    if (hoveredRegionIdRef.current === null) return;
+    hoveredRegionIdRef.current = null;
+    setHoveredRegionId(null);
+    onRegionHover?.({
+      region: null,
+      regionId: null,
+      regionIndex: -1,
+      coordinate: null,
+    });
+  }, [drawTool, onRegionHover]);
 
-			let nextActive: string | number | null = hit.regionId;
-			if (activeRegionId !== null) {
-				nextActive =
-					String(activeRegionId) === String(hit.regionId) ? activeRegionId : null;
-			}
-			commitActiveRegion(nextActive);
-			onRegionClick?.({
-				region: hit.region,
-				regionId: hit.regionId,
-				regionIndex: hit.regionIndex,
-				coordinate: coord,
-			});
-		},
-		[
-			drawTool,
-			effectiveRoiRegions,
-			resolveWorldCoord,
-			onRegionClick,
-			activeRegionId,
-			commitActiveRegion,
-		],
-	);
+  const resolveWorldCoord = useCallback((clientX: number, clientY: number): DrawCoordinate | null => {
+    const renderer = rendererRef.current;
+    if (!renderer) return null;
+    const raw = renderer.screenToWorld(clientX, clientY);
+    if (!Array.isArray(raw) || raw.length < 2) return null;
+    const x = Number(raw[0]);
+    const y = Number(raw[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return [x, y];
+  }, []);
 
-	useEffect(() => {
-		const canvas = canvasRef.current;
-		if (!canvas || !source) {
-			return;
-		}
+  const handleRegionPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const isCanvasEvent = event.target === canvasRef.current;
+      const coord = resolveWorldCoord(event.clientX, event.clientY);
+      if (onPointerWorldMove) {
+        const insideImage =
+          !!coord &&
+          coord[0] >= 0 &&
+          coord[1] >= 0 &&
+          !!source &&
+          coord[0] <= source.width &&
+          coord[1] <= source.height;
+        onPointerWorldMove({
+          coordinate: coord,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          insideImage,
+        });
+      }
 
-		const renderer = new WsiTileRenderer(canvas, source, {
-			onViewStateChange: emitViewStateChange,
-			onStats,
-			authToken,
-		});
+      if (drawTool !== "cursor") return;
+      if (!isCanvasEvent) {
+        if (hoveredRegionIdRef.current !== null) {
+          hoveredRegionIdRef.current = null;
+          setHoveredRegionId(null);
+          onRegionHover?.({
+            region: null,
+            regionId: null,
+            regionIndex: -1,
+            coordinate: null,
+          });
+        }
+        return;
+      }
+      if (!coord) return;
+      if (!effectiveRoiRegions.length) return;
 
-		rendererRef.current = renderer;
-		if (viewState) {
-			renderer.setViewState(viewState);
-		}
-		renderer.setInteractionLock(interactionLock);
+      const hit = pickRegionAt(coord, effectiveRoiRegions);
+      const nextHoverId = hit?.regionId ?? null;
+      const prevHoverId = hoveredRegionIdRef.current;
+      if (String(prevHoverId) === String(nextHoverId)) return;
 
-		return () => {
-			renderer.destroy();
-			rendererRef.current = null;
-		};
-	}, [source, onStats, authToken, emitViewStateChange]);
+      hoveredRegionIdRef.current = nextHoverId;
+      setHoveredRegionId(nextHoverId);
+      onRegionHover?.({
+        region: hit?.region ?? null,
+        regionId: nextHoverId,
+        regionIndex: hit?.regionIndex ?? -1,
+        coordinate: coord,
+      });
+    },
+    [drawTool, effectiveRoiRegions, resolveWorldCoord, onRegionHover, onPointerWorldMove, source]
+  );
 
-	useEffect(() => {
-		const renderer = rendererRef.current;
-		if (!renderer || !viewState) {
-			return;
-		}
-		renderer.setViewState(viewState);
-	}, [viewState]);
+  const handleRegionPointerLeave = useCallback(() => {
+    onPointerWorldMove?.({
+      coordinate: null,
+      clientX: -1,
+      clientY: -1,
+      insideImage: false,
+    });
+    if (hoveredRegionIdRef.current === null) return;
+    hoveredRegionIdRef.current = null;
+    setHoveredRegionId(null);
+    onRegionHover?.({
+      region: null,
+      regionId: null,
+      regionIndex: -1,
+      coordinate: null,
+    });
+  }, [onRegionHover, onPointerWorldMove]);
 
-	useEffect(() => {
-		const renderer = rendererRef.current;
-		if (!renderer) {
-			return;
-		}
-		renderer.fitToImage();
-	}, [fitNonce]);
+  const handleRegionClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (drawTool !== "cursor") return;
+      if (event.target !== canvasRef.current) return;
+      if (!effectiveRoiRegions.length) {
+        commitActiveRegion(null);
+        return;
+      }
 
-	useEffect(() => {
-		const renderer = rendererRef.current;
-		if (!renderer || !pointPalette) {
-			return;
-		}
-		renderer.setPointPalette(pointPalette);
-	}, [pointPalette]);
+      const coord = resolveWorldCoord(event.clientX, event.clientY);
+      if (!coord) return;
 
-	useEffect(() => {
-		const renderer = rendererRef.current;
-		if (!renderer) {
-			return;
-		}
-		renderer.setPointData(renderPointData);
-	}, [renderPointData]);
+      const hit = pickRegionAt(coord, effectiveRoiRegions);
+      if (!hit) {
+        commitActiveRegion(null);
+        return;
+      }
 
-	useEffect(() => {
-		const renderer = rendererRef.current;
-		if (!renderer) {
-			return;
-		}
-		renderer.setInteractionLock(interactionLock);
-	}, [interactionLock]);
+      const nextActive: string | number | null =
+        activeRegionId !== null && String(activeRegionId) === String(hit.regionId) ? null : hit.regionId;
+      commitActiveRegion(nextActive);
+      onRegionClick?.({
+        region: hit.region,
+        regionId: hit.regionId,
+        regionIndex: hit.regionIndex,
+        coordinate: coord,
+      });
+    },
+    [drawTool, effectiveRoiRegions, resolveWorldCoord, onRegionClick, activeRegionId, commitActiveRegion]
+  );
 
-	return (
-		<div
-			className={className}
-			style={mergedStyle}
-			onPointerMove={handleRegionPointerMove}
-			onPointerLeave={handleRegionPointerLeave}
-			onClick={handleRegionClick}
-		>
-			<canvas
-				ref={canvasRef}
-				className="wsi-render-canvas"
-				style={{
-					position: "absolute",
-					inset: 0,
-					zIndex: 1,
-					width: "100%",
-					height: "100%",
-					display: "block",
-					touchAction: "none",
-					cursor:
-						drawTool === "cursor" && hoveredRegionId !== null
-							? "pointer"
-							: interactionLock
-								? "crosshair"
-								: "grab",
-				}}
-			/>
-			{source ? (
-				<DrawLayer
-					tool={drawTool}
-					enabled={drawTool !== "cursor"}
-					imageWidth={source.width}
-					imageHeight={source.height}
-					imageMpp={source.mpp}
-					imageZoom={source.maxTierZoom}
-					stampOptions={stampOptions}
-					projectorRef={rendererRef}
-					viewStateSignal={viewState}
-					persistedRegions={effectiveRoiRegions}
-					regionStrokeStyle={regionStrokeStyle}
-					regionStrokeHoverStyle={regionStrokeHoverStyle}
-					regionStrokeActiveStyle={regionStrokeActiveStyle}
-					hoveredRegionId={hoveredRegionId}
-					activeRegionId={activeRegionId}
-					regionLabelStyle={regionLabelStyle}
-					invalidateRef={drawInvalidateRef}
-					onDrawComplete={onDrawComplete}
-				/>
-			) : null}
-			{source && showOverviewMap ? (
-				isOverviewOpen ? (
-					<>
-						<OverviewMap
-							source={source}
-							projectorRef={rendererRef}
-							authToken={authToken}
-							options={overviewMapOptions}
-							invalidateRef={overviewInvalidateRef}
-						/>
-						<button
-							type="button"
-							aria-label="Hide overview map"
-							onClick={() => setIsOverviewOpen(false)}
-							style={{
-								position: "absolute",
-								zIndex: 6,
-								...(overviewPosition.includes("left")
-									? { left: overviewMargin }
-									: { right: overviewMargin }),
-								...(overviewPosition.includes("top")
-									? { top: overviewMargin + overviewHeight + 8 }
-									: { bottom: overviewMargin + overviewHeight + 8 }),
-								width: 20,
-								height: 20,
-								borderRadius: 999,
-								border: "1px solid rgba(255,255,255,0.4)",
-								background: "rgba(8, 14, 22, 0.9)",
-								color: "#fff",
-								fontSize: 13,
-								lineHeight: 1,
-								cursor: "pointer",
-								padding: 0,
-							}}
-						>
-							×
-						</button>
-					</>
-				) : (
-					<button
-						type="button"
-						aria-label="Show overview map"
-						onClick={() => setIsOverviewOpen(true)}
-						style={{
-							position: "absolute",
-							zIndex: 6,
-							...(overviewPosition.includes("left")
-								? { left: overviewMargin }
-								: { right: overviewMargin }),
-							...(overviewPosition.includes("top")
-								? { top: overviewMargin }
-								: { bottom: overviewMargin }),
-							height: 24,
-							minWidth: 40,
-							borderRadius: 999,
-							border: "1px solid rgba(255,255,255,0.45)",
-							background: "rgba(8, 14, 22, 0.9)",
-							color: "#dff8ff",
-							fontSize: 11,
-							fontWeight: 700,
-							cursor: "pointer",
-							padding: "0 8px",
-						}}
-					>
-						Map
-					</button>
-				)
-			) : null}
-		</div>
-	);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !source) {
+      return;
+    }
+
+    const renderer = new WsiTileRenderer(canvas, source, {
+      onViewStateChange: emitViewStateChange,
+      onStats,
+      authToken,
+      ctrlDragRotate,
+    });
+
+    rendererRef.current = renderer;
+    if (viewState) {
+      renderer.setViewState(viewState);
+    }
+    renderer.setInteractionLock(interactionLock);
+
+    return () => {
+      renderer.destroy();
+      rendererRef.current = null;
+    };
+  }, [source, onStats, authToken, ctrlDragRotate, emitViewStateChange]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !viewState) {
+      return;
+    }
+    renderer.setViewState(viewState);
+  }, [viewState]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) {
+      return;
+    }
+    renderer.fitToImage();
+  }, [fitNonce]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.resetRotation();
+  }, [rotationResetNonce]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !pointPalette) {
+      return;
+    }
+    renderer.setPointPalette(pointPalette);
+  }, [pointPalette]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) {
+      return;
+    }
+    renderer.setPointData(renderPointData);
+  }, [renderPointData]);
+
+  useEffect(() => {
+    if (!onRoiPointGroups) return;
+    const sourcePoints = clipPointsToRois ? renderPointData : pointData;
+    const stats = computeRoiPointGroups(sourcePoints, effectiveRoiRegions, {
+      paletteIndexToTermId: roiPaletteIndexToTermId,
+      includeEmptyRegions: true,
+    });
+    onRoiPointGroups(stats);
+  }, [
+    onRoiPointGroups,
+    clipPointsToRois,
+    pointData,
+    renderPointData,
+    effectiveRoiRegions,
+    roiPaletteIndexToTermId,
+  ]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) {
+      return;
+    }
+    renderer.setInteractionLock(interactionLock);
+  }, [interactionLock]);
+
+  return (
+    <div className={className} style={mergedStyle} onPointerMove={handleRegionPointerMove} onPointerLeave={handleRegionPointerLeave} onClick={handleRegionClick}>
+      <canvas
+        ref={canvasRef}
+        className="wsi-render-canvas"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          width: "100%",
+          height: "100%",
+          display: "block",
+          touchAction: "none",
+          cursor: drawTool === "cursor" && hoveredRegionId !== null ? "pointer" : interactionLock ? "crosshair" : "grab",
+        }}
+      />
+      {source ? (
+        <DrawLayer
+          tool={drawTool}
+          enabled={drawTool !== "cursor"}
+          imageWidth={source.width}
+          imageHeight={source.height}
+          imageMpp={source.mpp}
+          imageZoom={source.maxTierZoom}
+          stampOptions={stampOptions}
+          projectorRef={rendererRef}
+          viewStateSignal={viewState}
+          persistedRegions={effectiveRoiRegions}
+          regionStrokeStyle={regionStrokeStyle}
+          regionStrokeHoverStyle={regionStrokeHoverStyle}
+          regionStrokeActiveStyle={regionStrokeActiveStyle}
+          resolveRegionStrokeStyle={resolveRegionStrokeStyle}
+          overlayShapes={overlayShapes}
+          hoveredRegionId={hoveredRegionId}
+          activeRegionId={activeRegionId}
+          regionLabelStyle={regionLabelStyle}
+          invalidateRef={drawInvalidateRef}
+          onDrawComplete={onDrawComplete}
+        />
+      ) : null}
+      {source && showOverviewMap ? (
+        isOverviewOpen ? (
+          <>
+            <OverviewMap source={source} projectorRef={rendererRef} authToken={authToken} options={overviewMapOptions} invalidateRef={overviewInvalidateRef} />
+            <button
+              type="button"
+              aria-label="Hide overview map"
+              onClick={() => setIsOverviewOpen(false)}
+              style={{
+                position: "absolute",
+                zIndex: 6,
+                ...(overviewPosition.includes("left") ? { left: overviewMargin } : { right: overviewMargin }),
+                ...(overviewPosition.includes("top") ? { top: overviewMargin + overviewHeight + 8 } : { bottom: overviewMargin + overviewHeight + 8 }),
+                width: 20,
+                height: 20,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.4)",
+                background: "rgba(8, 14, 22, 0.9)",
+                color: "#fff",
+                fontSize: 13,
+                lineHeight: 1,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              ×
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            aria-label="Show overview map"
+            onClick={() => setIsOverviewOpen(true)}
+            style={{
+              position: "absolute",
+              zIndex: 6,
+              ...(overviewPosition.includes("left") ? { left: overviewMargin } : { right: overviewMargin }),
+              ...(overviewPosition.includes("top") ? { top: overviewMargin } : { bottom: overviewMargin }),
+              height: 24,
+              minWidth: 40,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,0.45)",
+              background: "rgba(8, 14, 22, 0.9)",
+              color: "#dff8ff",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              padding: "0 8px",
+            }}
+          >
+            Map
+          </button>
+        )
+      ) : null}
+    </div>
+  );
 }

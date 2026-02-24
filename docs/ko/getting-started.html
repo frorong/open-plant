@@ -38,6 +38,8 @@
           <a href="#minimal">최소 렌더 예시</a>
           <a href="#points">포인트 로드/팔레트</a>
           <a href="#roi">ROI clip 적용</a>
+          <a href="#roi-stats">ROI term 통계</a>
+          <a href="#clip-accel">ROI 가속 모드</a>
         </aside>
 
         <article class="content">
@@ -89,6 +91,7 @@ import { WsiViewerCanvas } from "open-plant";
 
 function Viewer({ source, token }) {
   const [viewState, setViewState] = useState();
+  const [rotationResetNonce, setRotationResetNonce] = useState(0);
 
   return (
     &lt;WsiViewerCanvas
@@ -96,6 +99,11 @@ function Viewer({ source, token }) {
       authToken={token}
       viewState={viewState}
       onViewStateChange={setViewState}
+      ctrlDragRotate
+      rotationResetNonce={rotationResetNonce}
+      onPointerWorldMove={(event) =&gt; {
+        // event.coordinate -> [x, y] | null
+      }}
       onStats={(s) =&gt; console.log(s)}
       style={{ width: "100vw", height: "100vh" }}
     /&gt;
@@ -150,6 +158,42 @@ const pointData = {
   ]}
   clipPointsToRois
 /&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="roi-stats">
+            <h2>6. ROI term 통계 콜백</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  roiRegions={regions}
+  roiPaletteIndexToTermId={new Map([[1, "negative"], [2, "positive"]])}
+  onRoiPointGroups={(stats) =&gt; {
+    // stats.groups -> ROI별 term count
+  }}
+/&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="clip-accel">
+            <h2>7. ROI 가속 모드(worker / hybrid-webgpu)</h2>
+            <pre><code class="language-ts">import { getWebGpuCapabilities } from "open-plant";
+
+const caps = await getWebGpuCapabilities();
+const clipMode = caps.supported ? "hybrid-webgpu" : "worker";</code></pre>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  pointPalette={termPalette.colors}
+  roiRegions={regions}
+  clipPointsToRois
+  clipMode={clipMode} // "sync" | "worker" | "hybrid-webgpu"
+  onClipStats={(stats) =&gt; {
+    console.log(stats.mode, stats.durationMs, stats.outputCount);
+  }}
+/&gt;</code></pre>
+            <div class="callout">
+              <strong>권장 기본값:</strong> 먼저 <code>clipMode="worker"</code>를 사용하세요.
+              <code>hybrid-webgpu</code>는 실데이터 벤치마크 후 선택하는 것을 권장합니다.
+            </div>
           </section>
 
           <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>

@@ -36,8 +36,10 @@
           <a href="#runtime">Runtime layout</a>
           <a href="#tile">Tile pipeline</a>
           <a href="#point">Point pipeline</a>
+          <a href="#roi-accel">ROI acceleration</a>
           <a href="#draw">Draw pipeline</a>
           <a href="#webgpu">WebGPU path</a>
+          <a href="#oss-docs">Open-source docs contract</a>
         </aside>
 
         <article class="content">
@@ -54,7 +56,7 @@
             <h2>Runtime layout</h2>
             <pre><code class="language-txt">React
  └─ WsiViewerCanvas
-    ├─ WebGL Canvas (WsiTileRenderer)
+    ├─ WebGL Canvas (WsiTileRenderer: pan/zoom/rotate)
     │  ├─ Tile pass
     │  └─ Point pass
     └─ DrawLayer Canvas (ROI input + preview + labels)</code></pre>
@@ -78,13 +80,37 @@
               <div class="flow-step"><strong>Input contract:</strong> the library accepts <code>Float32Array</code> positions + <code>Uint16Array</code> palette indices.</div>
               <div class="flow-step"><strong>GPU upload:</strong> positions and palette index buffers.</div>
               <div class="flow-step"><strong>Shader render:</strong> ring-shaped point fragments with palette texture lookup.</div>
-              <div class="flow-step"><strong>ROI filter:</strong> optional polygon clip before upload/render.</div>
+              <div class="flow-step"><strong>ROI filter:</strong> optional polygon clip before upload/render via <code>clipMode</code>.</div>
+              <div class="flow-step"><strong>ROI stats:</strong> optional per-ROI term aggregation via <code>computeRoiPointGroups</code> / <code>onRoiPointGroups</code>.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="roi-accel">
+            <h2>ROI acceleration modes</h2>
+            <div class="card-grid">
+              <div class="card">
+                <h3>`sync`</h3>
+                <p>Main-thread polygon filtering. Useful for debugging and baseline checks.</p>
+              </div>
+              <div class="card">
+                <h3>`worker`</h3>
+                <p>Dedicated worker thread ROI filtering to avoid UI stalls. Current recommended default.</p>
+              </div>
+              <div class="card">
+                <h3>`hybrid-webgpu`</h3>
+                <p>Experimental path: WebGPU bbox prefilter + exact polygon test. Requires runtime benchmarking per dataset.</p>
+              </div>
+              <div class="card">
+                <h3>Observability</h3>
+                <p><code>onClipStats</code> exposes mode/duration/input/output for profiling and regression checks.</p>
+              </div>
             </div>
           </section>
 
           <section class="panel reveal" id="draw">
             <h2>Draw pipeline</h2>
             <div class="flow">
+              <div class="flow-step"><strong>Camera input:</strong> pan + wheel zoom + <code>Ctrl/Cmd + drag</code> rotate (<code>rotationDeg</code>).</div>
               <div class="flow-step"><strong>Pointer capture:</strong> draw layer captures active pointer in draw mode.</div>
               <div class="flow-step"><strong>Preview:</strong> freehand trajectory or rectangle/circle preview polygon.</div>
               <div class="flow-step"><strong>Finalize:</strong> close ring and emit <code>DrawResult</code>.</div>
@@ -95,10 +121,24 @@
           <section class="panel reveal" id="webgpu">
             <h2>WebGPU expansion path (compute-focused)</h2>
             <div class="card-grid">
-              <div class="card"><h3>ROI culling</h3><p>Massive point-in-polygon on compute shaders.</p></div>
+              <div class="card"><h3>ROI culling</h3><p>Started with bbox prefilter compute pass, then exact polygon phase.</p></div>
               <div class="card"><h3>LOD aggregation</h3><p>Low-zoom density aggregation and binning on GPU.</p></div>
               <div class="card"><h3>Term histogram</h3><p>ROI-level term counts and positivity stats in parallel.</p></div>
               <div class="card"><h3>Interop</h3><p>Pack compute output for direct WebGL buffer upload.</p></div>
+            </div>
+            <div class="callout">
+              The current WebGPU route is marked <strong>experimental</strong> and designed as opt-in.
+              Keep <code>worker</code> as the production-safe default until measured wins are confirmed.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="oss-docs">
+            <h2>Open-source docs contract</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Behavior first:</strong> every runtime mode must define default, fallback, and failure behavior.</div>
+              <div class="flow-step"><strong>Versioned API:</strong> docs and <code>src/index.ts</code> exports are updated in the same PR.</div>
+              <div class="flow-step"><strong>Measured claims:</strong> performance guidance must reference reproducible stats paths (<code>onStats</code>, <code>onClipStats</code>).</div>
+              <div class="flow-step"><strong>Bilingual parity:</strong> EN/KO pages must be kept equivalent for engine users.</div>
             </div>
           </section>
 

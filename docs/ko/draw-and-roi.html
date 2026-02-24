@@ -39,6 +39,7 @@
           <a href="#persist">영역 유지/라벨</a>
           <a href="#style">스타일 커스터마이징</a>
           <a href="#clip">ROI 기반 포인트 필터</a>
+          <a href="#roi-stats">ROI term 통계</a>
         </aside>
 
         <article class="content">
@@ -48,7 +49,8 @@
             <p>
               `drawTool`이 `cursor`가 아닌 동안 `DrawLayer`가 활성화되어
               pan/zoom과 충돌 없이 ROI를 생성합니다. 결과는 닫힌 polygon 좌표로
-              반환됩니다. stamp 툴은 클릭 한 번으로 물리 크기 ROI(2mm² 사각형/원, 0.2mm² HPF 원)를 생성합니다.
+              반환됩니다. stamp 툴은 클릭 한 번으로 물리 크기 ROI(2mm² 사각형/원, 0.2mm² HPF 원)와
+              고정 픽셀 사각형(<code>stamp-rectangle-4096px</code>)을 생성합니다.
             </p>
           </section>
 
@@ -65,6 +67,7 @@ const [drawTool, setDrawTool] = useState("cursor");
   &lt;button onClick={() =&gt; setDrawTool("circular")}&gt;Circular&lt;/button&gt;
   &lt;button onClick={() =&gt; setDrawTool("stamp-rectangle")}&gt;Stamp □&lt;/button&gt;
   &lt;button onClick={() =&gt; setDrawTool("stamp-circle")}&gt;Stamp ○&lt;/button&gt;
+  &lt;button onClick={() =&gt; setDrawTool("stamp-rectangle-4096px")}&gt;Stamp 4096px&lt;/button&gt;
   &lt;button onClick={() =&gt; setCircleAreaMm2(0.2)}&gt;HPF 0.2mm²&lt;/button&gt;
   &lt;button onClick={() =&gt; setDrawTool("cursor")}&gt;Cursor&lt;/button&gt;
 &lt;/div&gt;
@@ -99,6 +102,7 @@ const [drawTool, setDrawTool] = useState("cursor");
             <h2>3. Stamp 크기 prop 제어</h2>
             <pre><code class="language-tsx">const [rectAreaMm2, setRectAreaMm2] = useState(2);
 const [circleAreaMm2, setCircleAreaMm2] = useState(2);
+const [rectPixelSize, setRectPixelSize] = useState(4096);
 
 &lt;WsiViewerCanvas
   source={source}
@@ -106,6 +110,7 @@ const [circleAreaMm2, setCircleAreaMm2] = useState(2);
   stampOptions={{
     rectangleAreaMm2: rectAreaMm2,
     circleAreaMm2: circleAreaMm2,
+    rectanglePixelSize: rectPixelSize,
   }}
 /&gt;</code></pre>
             <p>
@@ -164,6 +169,21 @@ const handleDrawComplete = (result) =&gt; {
     shadowOffsetX: 0,
     shadowOffsetY: 0,
   }}
+  resolveRegionStrokeStyle={(ctx) =&gt; {
+    if (ctx.state === "hover") return { color: "#ff2f2f", width: 3 };
+    if (ctx.state === "active") return { color: "#ff2f2f", width: 3.2, shadowBlur: 12 };
+  }}
+  overlayShapes={[
+    {
+      id: "patch-guide",
+      coordinates: [[1000,1000],[3000,1000],[3000,3000],[1000,3000]],
+      closed: true,
+      strokeStyle: { color: "rgba(255,255,255,0.85)", lineDash: [10, 8] },
+    },
+  ]}
+  onPointerWorldMove={(event) =&gt; {
+    // event.coordinate -> [x, y] | null
+  }}
   regionLabelStyle={{
     fontFamily: "IBM Plex Mono, monospace",
     fontSize: 12,
@@ -200,11 +220,37 @@ const handleDrawComplete = (result) =&gt; {
   pointPalette={pointPalette}
   roiRegions={regions}
   clipPointsToRois
+  clipMode="worker"
+  onClipStats={(stats) =&gt; {
+    console.log(stats.mode, stats.durationMs, stats.outputCount);
+  }}
 /&gt;</code></pre>
             <p>
               `clipPointsToRois`를 켜면 포인트 버퍼가 ROI polygon 내부 포인트만 남도록
               필터링되어 렌더됩니다.
             </p>
+            <p>
+              <code>clipMode</code>는 ROI 필터 실행 경로를 선택합니다:
+              <code>sync</code>(메인 스레드), <code>worker</code>(권장), <code>hybrid-webgpu</code>(실험적).
+            </p>
+          </section>
+
+          <section class="panel reveal" id="roi-stats">
+            <h2>7. ROI term count 통계 API</h2>
+            <pre><code class="language-tsx">import { computeRoiPointGroups } from "open-plant";
+
+const stats = computeRoiPointGroups(pointData, regions, {
+  paletteIndexToTermId: ["bg", "negative", "positive"],
+});
+
+&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  roiRegions={regions}
+  onRoiPointGroups={(result) =&gt; {
+    // result.groups -> [{ regionId, totalCount, termCounts[] }]
+  }}
+/&gt;</code></pre>
           </section>
 
           <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>

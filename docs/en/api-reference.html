@@ -54,22 +54,31 @@
               <tbody>
                 <tr><td><code>source</code></td><td><code>WsiImageSource | null</code></td><td>Image source metadata.</td></tr>
                 <tr><td><code>authToken</code></td><td><code>string</code></td><td>Authorization header token when required.</td></tr>
-                <tr><td><code>viewState</code></td><td><code>Partial&lt;WsiViewState&gt;</code></td><td>Controlled zoom/offset state.</td></tr>
+                <tr><td><code>viewState</code></td><td><code>Partial&lt;WsiViewState&gt;</code></td><td>Controlled zoom/offset/rotation state (<code>rotationDeg</code>).</td></tr>
                 <tr><td><code>onViewStateChange</code></td><td><code>(next) =&gt; void</code></td><td>Camera state callback.</td></tr>
                 <tr><td><code>onStats</code></td><td><code>(stats) =&gt; void</code></td><td>Per-frame tile/point stats.</td></tr>
                 <tr><td><code>fitNonce</code></td><td><code>number</code></td><td>Re-triggers fit-to-image when changed.</td></tr>
+                <tr><td><code>rotationResetNonce</code></td><td><code>number</code></td><td>Calls rotation reset when changed.</td></tr>
+                <tr><td><code>ctrlDragRotate</code></td><td><code>boolean</code></td><td>Enables <code>Ctrl/Cmd + drag</code> rotate interaction. Default: <code>true</code>.</td></tr>
                 <tr><td><code>pointData</code></td><td><code>WsiPointData | null</code></td><td>Point position + palette index buffers.</td></tr>
                 <tr><td><code>pointPalette</code></td><td><code>Uint8Array | null</code></td><td>RGBA palette texture data.</td></tr>
                 <tr><td><code>roiRegions</code></td><td><code>WsiRegion[]</code></td><td>Persisted ROI list with labels.</td></tr>
                 <tr><td><code>roiPolygons</code></td><td><code>DrawCoordinate[][]</code></td><td>Simplified polygon-only ROI input.</td></tr>
                 <tr><td><code>clipPointsToRois</code></td><td><code>boolean</code></td><td>Render only points inside ROI polygons.</td></tr>
+                <tr><td><code>clipMode</code></td><td><code>"sync" | "worker" | "hybrid-webgpu"</code></td><td>ROI clip execution mode. Default is <code>"worker"</code>.</td></tr>
+                <tr><td><code>onClipStats</code></td><td><code>(event) =&gt; void</code></td><td>Clip timing/result callback: mode, duration, input/output count, WebGPU usage.</td></tr>
+                <tr><td><code>onRoiPointGroups</code></td><td><code>(stats) =&gt; void</code></td><td>ROI term count callback derived from current points + regions.</td></tr>
+                <tr><td><code>roiPaletteIndexToTermId</code></td><td><code>ReadonlyMap&lt;number,string&gt; | string[]</code></td><td>Optional palette-index to term-id map used by ROI term group callback.</td></tr>
                 <tr><td><code>interactionLock</code></td><td><code>boolean</code></td><td>Locks pan/zoom interactions.</td></tr>
-                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular" | "stamp-rectangle" | "stamp-circle"</code></td><td>Active draw tool. Stamp tools place fixed-size ROI on click. Legacy aliases (<code>stamp-rectangle-2mm2</code>, <code>stamp-circle-2mm2</code>, <code>stamp-circle-hpf-0.2mm2</code>) are still supported.</td></tr>
-                <tr><td><code>stampOptions</code></td><td><code>{ rectangleAreaMm2?: number; circleAreaMm2?: number }</code></td><td>Stamp size configuration from outside the library. Defaults are 2mm² for both tools.</td></tr>
+                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular" | "stamp-rectangle" | "stamp-circle" | "stamp-rectangle-4096px"</code></td><td>Active draw tool. Stamp tools place fixed-size ROI on click. Legacy aliases (<code>stamp-rectangle-2mm2</code>, <code>stamp-circle-2mm2</code>, <code>stamp-circle-hpf-0.2mm2</code>) are still supported.</td></tr>
+                <tr><td><code>stampOptions</code></td><td><code>{ rectangleAreaMm2?: number; circleAreaMm2?: number; rectanglePixelSize?: number }</code></td><td>Stamp size configuration from outside the library. Defaults are 2mm² for area stamps and 4096px for fixed-pixel rectangle stamp.</td></tr>
                 <tr><td><code>regionStrokeStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Persisted region stroke override.</td></tr>
                 <tr><td><code>regionStrokeHoverStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override while hovering a region.</td></tr>
                 <tr><td><code>regionStrokeActiveStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override for active region (including shadow).</td></tr>
+                <tr><td><code>resolveRegionStrokeStyle</code></td><td><code>(context) =&gt; Partial&lt;RegionStrokeStyle&gt;</code></td><td>Per-region/per-state dynamic stroke resolver.</td></tr>
+                <tr><td><code>overlayShapes</code></td><td><code>DrawOverlayShape[]</code></td><td>Custom overlay shapes (e.g. patch dashed guides) rendered by DrawLayer.</td></tr>
                 <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>Persisted region label override.</td></tr>
+                <tr><td><code>onPointerWorldMove</code></td><td><code>(event) =&gt; void</code></td><td>World-coordinate pointer stream callback for custom coordinate HUD.</td></tr>
                 <tr><td><code>onRegionHover</code></td><td><code>(event) =&gt; void</code></td><td>Region hover event in cursor mode.</td></tr>
                 <tr><td><code>onRegionClick</code></td><td><code>(event) =&gt; void</code></td><td>Region click event in cursor mode.</td></tr>
                 <tr><td><code>onActiveRegionChange</code></td><td><code>(regionId) =&gt; void</code></td><td>Active region changed event. Default behavior clears active when clicking empty space or a different region.</td></tr>
@@ -89,7 +98,9 @@
                 <tr><td><code>createCircle(start, end)</code></td><td>Generates circle polygon coordinates.</td></tr>
                 <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code> where <code>tool</code> includes stamp tool names.</td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
-                <tr><td><code>StampOptions</code></td><td>Stamp area options (mm²) for rectangle/circle tools.</td></tr>
+                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, strokeStyle? }</code> custom overlay path input.</td></tr>
+                <tr><td><code>RegionStyleContext</code></td><td>State payload for <code>resolveRegionStrokeStyle</code> (<code>default</code>/<code>hover</code>/<code>active</code>).</td></tr>
+                <tr><td><code>StampOptions</code></td><td>Stamp options for mm² and fixed pixel rectangle size.</td></tr>
                 <tr><td><code>RegionStrokeStyle</code></td><td>Color/width/dash/cap/join + shadow (color/blur/offset) fields.</td></tr>
               </tbody>
             </table>
@@ -127,6 +138,13 @@ interface WsiPointData {
   count: number;
   positions: Float32Array;
   paletteIndices: Uint16Array;
+}
+
+interface WsiViewState {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+  rotationDeg: number;
 }</code></pre>
           </section>
 
@@ -139,6 +157,11 @@ interface WsiPointData {
                 <tr><td><code>toTileUrl(source, tier, x, y)</code></td><td>Builds IMS tile URL.</td></tr>
                 <tr><td><code>buildTermPalette(terms)</code></td><td>Builds termId to palette mapping and RGBA texture.</td></tr>
                 <tr><td><code>filterPointDataByPolygons(data, polygons)</code></td><td>Filters points inside ROI polygons only.</td></tr>
+                <tr><td><code>filterPointDataByPolygonsInWorker(data, polygons)</code></td><td>Runs ROI clipping in a dedicated worker thread.</td></tr>
+                <tr><td><code>filterPointDataByPolygonsHybrid(data, polygons)</code></td><td>Experimental hybrid clipping (WebGPU bbox prefilter + exact polygon test).</td></tr>
+                <tr><td><code>computeRoiPointGroups(pointData, regions, options)</code></td><td>Computes per-ROI term counts (<code>roiPointGroups</code>-style) from typed point buffers.</td></tr>
+                <tr><td><code>getWebGpuCapabilities()</code></td><td>Returns WebGPU support/adapter/features for runtime decisions.</td></tr>
+                <tr><td><code>prefilterPointsByBoundsWebGpu(positions, count, bounds)</code></td><td>Experimental compute pass to classify points by ROI bounding boxes.</td></tr>
                 <tr><td><code>calcScaleResolution(imageMpp, imageZoom, currentZoom)</code></td><td>Returns microns-per-screen-pixel for the current zoom.</td></tr>
                 <tr><td><code>calcScaleLength(imageMpp, imageZoom, currentZoom)</code></td><td>Formats a 100px scale-bar label in μm/mm.</td></tr>
                 <tr><td><code>toBearerToken(token)</code></td><td>Normalizes token to <code>Bearer ...</code> format.</td></tr>

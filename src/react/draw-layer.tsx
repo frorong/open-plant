@@ -13,6 +13,7 @@ import { calcScaleResolution } from "../wsi/utils";
 export type StampDrawTool =
 	| "stamp-rectangle"
 	| "stamp-circle"
+	| "stamp-rectangle-4096px"
 	| "stamp-rectangle-2mm2"
 	| "stamp-circle-2mm2"
 	| "stamp-circle-hpf-0.2mm2";
@@ -39,6 +40,25 @@ export interface DrawRegion {
 	id?: string | number;
 	coordinates: DrawCoordinate[];
 	label?: string;
+}
+
+export interface RegionStyleContext {
+	region: DrawRegion;
+	regionId: string | number;
+	regionIndex: number;
+	state: "default" | "hover" | "active";
+}
+
+export type RegionStrokeStyleResolver = (
+	context: RegionStyleContext,
+) => Partial<RegionStrokeStyle> | null | undefined;
+
+export interface DrawOverlayShape {
+	id?: string | number;
+	coordinates: DrawCoordinate[];
+	closed?: boolean;
+	fill?: boolean;
+	strokeStyle?: Partial<RegionStrokeStyle>;
 }
 
 export interface RegionStrokeStyle {
@@ -70,12 +90,13 @@ export interface RegionLabelStyle {
 export interface DrawProjector {
 	screenToWorld(clientX: number, clientY: number): DrawCoordinate | number[];
 	worldToScreen(worldX: number, worldY: number): DrawCoordinate | number[];
-	getViewState?: () => { zoom: number };
+	getViewState?: () => { zoom: number; rotationDeg?: number };
 }
 
 export interface StampOptions {
 	rectangleAreaMm2?: number;
 	circleAreaMm2?: number;
+	rectanglePixelSize?: number;
 }
 
 export interface DrawLayerProps {
@@ -94,6 +115,8 @@ export interface DrawLayerProps {
 	regionStrokeStyle?: Partial<RegionStrokeStyle>;
 	regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
 	regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
+	resolveRegionStrokeStyle?: RegionStrokeStyleResolver;
+	overlayShapes?: DrawOverlayShape[];
 	hoveredRegionId?: string | number | null;
 	activeRegionId?: string | number | null;
 	regionLabelStyle?: Partial<RegionLabelStyle>;
@@ -121,6 +144,7 @@ const EMPTY_DASH: number[] = [];
 const MICRONS_PER_MM = 1000;
 const DEFAULT_STAMP_RECTANGLE_AREA_MM2 = 2;
 const DEFAULT_STAMP_CIRCLE_AREA_MM2 = 2;
+const DEFAULT_STAMP_RECTANGLE_PIXEL_SIZE = 4096;
 const LEGACY_HPF_CIRCLE_AREA_MM2 = 0.2;
 
 const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
@@ -158,6 +182,7 @@ function isStampTool(tool: DrawTool): tool is StampDrawTool {
 	return (
 		tool === "stamp-rectangle" ||
 		tool === "stamp-circle" ||
+		tool === "stamp-rectangle-4096px" ||
 		tool === "stamp-rectangle-2mm2" ||
 		tool === "stamp-circle-2mm2" ||
 		tool === "stamp-circle-hpf-0.2mm2"
@@ -183,6 +208,10 @@ function resolveStampOptions(options: StampOptions | undefined): Required<StampO
 		circleAreaMm2: clampPositiveOrFallback(
 			options?.circleAreaMm2,
 			DEFAULT_STAMP_CIRCLE_AREA_MM2,
+		),
+		rectanglePixelSize: clampPositiveOrFallback(
+			options?.rectanglePixelSize,
+			DEFAULT_STAMP_RECTANGLE_PIXEL_SIZE,
 		),
 	};
 }
@@ -593,6 +622,8 @@ export function DrawLayer({
 	regionStrokeStyle,
 	regionStrokeHoverStyle,
 	regionStrokeActiveStyle,
+	resolveRegionStrokeStyle,
+	overlayShapes,
 	hoveredRegionId = null,
 	activeRegionId = null,
 	regionLabelStyle,
@@ -733,6 +764,12 @@ export function DrawLayer({
 			if (!center) return [];
 
 			let areaMm2 = 0;
+			if (stampTool === "stamp-rectangle-4096px") {
+				const halfLength = resolvedStampOptions.rectanglePixelSize * 0.5;
+				const fixed = createSquareFromCenter(center, halfLength);
+				return fixed.map((point) => clampWorld(point, imageWidth, imageHeight));
+			}
+
 			if (stampTool === "stamp-rectangle" || stampTool === "stamp-rectangle-2mm2") {
 				areaMm2 =
 					stampTool === "stamp-rectangle-2mm2"
@@ -818,13 +855,48 @@ export function DrawLayer({
 				const screen = worldToScreenPoints(closed);
 				if (screen.length >= 4) {
 					const regionKey = region.id ?? i;
-					const strokeStyle = isSameRegionId(activeRegionId, regionKey)
-						? resolvedActiveStrokeStyle
+					const state: RegionStyleContext["state"] = isSameRegionId(
+						activeRegionId,
+						regionKey,
+					)
+						? "active"
 						: isSameRegionId(hoveredRegionId, regionKey)
-							? resolvedHoverStrokeStyle
-							: resolvedStrokeStyle;
+							? "hover"
+							: "default";
+					let strokeStyle =
+						state === "active"
+							? resolvedActiveStrokeStyle
+							: state === "hover"
+								? resolvedHoverStrokeStyle
+								: resolvedStrokeStyle;
+
+					if (resolveRegionStrokeStyle) {
+						const resolved = resolveRegionStrokeStyle({
+							region,
+							regionId: regionKey,
+							regionIndex: i,
+							state,
+						});
+						strokeStyle = mergeStrokeStyle(strokeStyle, resolved || undefined);
+					}
 					drawPath(ctx, screen, strokeStyle, true, false);
 				}
+			}
+		}
+
+		if (Array.isArray(overlayShapes) && overlayShapes.length > 0) {
+			for (let i = 0; i < overlayShapes.length; i += 1) {
+				const shape = overlayShapes[i];
+				if (!shape?.coordinates?.length) continue;
+				const closed = shape.closed ?? false;
+				const points = closed ? closeRing(shape.coordinates) : shape.coordinates;
+				const screen = worldToScreenPoints(points);
+				if (screen.length < 2) continue;
+				const strokeStyle = mergeStrokeStyle(
+					resolvedStrokeStyle,
+					shape.strokeStyle,
+				);
+				drawPath(ctx, screen, strokeStyle, closed, shape.fill ?? false);
 			}
 		}
 
@@ -886,11 +958,13 @@ export function DrawLayer({
 		worldToScreenPoints,
 		projectorRef,
 		mergedPersistedRegions,
+		overlayShapes,
 		hoveredRegionId,
 		activeRegionId,
 		resolvedStrokeStyle,
 		resolvedHoverStrokeStyle,
 		resolvedActiveStrokeStyle,
+		resolveRegionStrokeStyle,
 		resolvedLabelStyle,
 	]);
 
@@ -1141,7 +1215,7 @@ export function DrawLayer({
 
 	useEffect(() => {
 		requestDraw();
-	}, [viewStateSignal, mergedPersistedRegions, requestDraw]);
+	}, [viewStateSignal, mergedPersistedRegions, overlayShapes, requestDraw]);
 
 	useEffect(() => {
 		if (!invalidateRef) return undefined;

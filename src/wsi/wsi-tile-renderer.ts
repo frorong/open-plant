@@ -48,6 +48,9 @@ interface OrthoViewport {
 	height: number;
 }
 
+type WorldPoint = [number, number];
+const DEFAULT_ROTATION_DRAG_SENSITIVITY = 0.35;
+
 export interface WsiTileSchedulerConfig {
 	maxConcurrency?: number;
 	maxRetries?: number;
@@ -60,13 +63,20 @@ export interface WsiTileRendererOptions {
 	onStats?: (stats: WsiRenderStats) => void;
 	authToken?: string;
 	maxCacheTiles?: number;
+	ctrlDragRotate?: boolean;
+	rotationDragSensitivityDegPerPixel?: number;
 	tileScheduler?: WsiTileSchedulerConfig;
 }
 
 class OrthoCamera {
 	private viewportWidth = 1;
 	private viewportHeight = 1;
-	private viewState: WsiViewState = { zoom: 1, offsetX: 0, offsetY: 0 };
+	private viewState: WsiViewState = {
+		zoom: 1,
+		offsetX: 0,
+		offsetY: 0,
+		rotationDeg: 0,
+	};
 
 	setViewport(width: number, height: number): void {
 		this.viewportWidth = Math.max(1, width);
@@ -87,21 +97,89 @@ class OrthoCamera {
 		if (typeof next.offsetY === "number") {
 			this.viewState.offsetY = next.offsetY;
 		}
+		if (typeof next.rotationDeg === "number" && Number.isFinite(next.rotationDeg)) {
+			this.viewState.rotationDeg = next.rotationDeg;
+		}
 	}
 
 	getViewState(): WsiViewState {
 		return { ...this.viewState };
 	}
 
-	getMatrix(): Float32Array {
-		const worldWidth = this.viewportWidth / this.viewState.zoom;
-		const worldHeight = this.viewportHeight / this.viewState.zoom;
-		const sx = 2 / worldWidth;
-		const sy = -2 / worldHeight;
-		const tx = -1 - this.viewState.offsetX * sx;
-		const ty = 1 - this.viewState.offsetY * sy;
-		return new Float32Array([sx, 0, 0, 0, sy, 0, tx, ty, 1]);
+	getCenter(): WorldPoint {
+		const zoom = Math.max(1e-6, this.viewState.zoom);
+		return [
+			this.viewState.offsetX + this.viewportWidth / (2 * zoom),
+			this.viewState.offsetY + this.viewportHeight / (2 * zoom),
+		];
 	}
+
+	setCenter(centerX: number, centerY: number): void {
+		const zoom = Math.max(1e-6, this.viewState.zoom);
+		this.viewState.offsetX = centerX - this.viewportWidth / (2 * zoom);
+		this.viewState.offsetY = centerY - this.viewportHeight / (2 * zoom);
+	}
+
+	screenToWorld(screenX: number, screenY: number): WorldPoint {
+		const state = this.viewState;
+		const zoom = Math.max(1e-6, state.zoom);
+		const [centerX, centerY] = this.getCenter();
+		const dx = (screenX - this.viewportWidth * 0.5) / zoom;
+		const dy = (screenY - this.viewportHeight * 0.5) / zoom;
+		const rad = toRadians(state.rotationDeg);
+		const cos = Math.cos(rad);
+		const sin = Math.sin(rad);
+		return [centerX + dx * cos - dy * sin, centerY + dx * sin + dy * cos];
+	}
+
+	worldToScreen(worldX: number, worldY: number): WorldPoint {
+		const state = this.viewState;
+		const zoom = Math.max(1e-6, state.zoom);
+		const [centerX, centerY] = this.getCenter();
+		const dx = worldX - centerX;
+		const dy = worldY - centerY;
+		const rad = toRadians(state.rotationDeg);
+		const cos = Math.cos(rad);
+		const sin = Math.sin(rad);
+		const rx = dx * cos + dy * sin;
+		const ry = -dx * sin + dy * cos;
+		return [
+			this.viewportWidth * 0.5 + rx * zoom,
+			this.viewportHeight * 0.5 + ry * zoom,
+		];
+	}
+
+	getViewCorners(): [WorldPoint, WorldPoint, WorldPoint, WorldPoint] {
+		const w = this.viewportWidth;
+		const h = this.viewportHeight;
+		return [
+			this.screenToWorld(0, 0),
+			this.screenToWorld(w, 0),
+			this.screenToWorld(w, h),
+			this.screenToWorld(0, h),
+		];
+	}
+
+	getMatrix(): Float32Array {
+		const zoom = Math.max(1e-6, this.viewState.zoom);
+		const [centerX, centerY] = this.getCenter();
+		const rad = toRadians(this.viewState.rotationDeg);
+		const cos = Math.cos(rad);
+		const sin = Math.sin(rad);
+
+		const ax = (2 * zoom * cos) / this.viewportWidth;
+		const bx = (2 * zoom * sin) / this.viewportWidth;
+		const ay = (2 * zoom * sin) / this.viewportHeight;
+		const by = (-2 * zoom * cos) / this.viewportHeight;
+		const tx = -(ax * centerX + bx * centerY);
+		const ty = -(ay * centerX + by * centerY);
+
+		return new Float32Array([ax, ay, 0, bx, by, 0, tx, ty, 1]);
+	}
+}
+
+function toRadians(deg: number): number {
+	return (deg * Math.PI) / 180;
 }
 
 function requireUniformLocation(
@@ -133,10 +211,14 @@ export class WsiTileRenderer {
 	private frame: number | null = null;
 	private frameSerial = 0;
 	private dragging = false;
+	private interactionMode: "none" | "pan" | "rotate" = "none";
+	private rotateLastAngleRad: number | null = null;
 	private pointerId: number | null = null;
 	private lastPointerX = 0;
 	private lastPointerY = 0;
 	private interactionLocked = false;
+	private ctrlDragRotate = true;
+	private rotationDragSensitivityDegPerPixel = 0.35;
 	private maxCacheTiles: number;
 	private fitZoom = 1;
 	private minZoom = 1e-6;
@@ -151,6 +233,7 @@ export class WsiTileRenderer {
 	private readonly boundPointerUp: (event: PointerEvent) => void;
 	private readonly boundWheel: (event: WheelEvent) => void;
 	private readonly boundDoubleClick: (event: MouseEvent) => void;
+	private readonly boundContextMenu: (event: MouseEvent) => void;
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -163,6 +246,12 @@ export class WsiTileRenderer {
 		this.onStats = options.onStats;
 		this.authToken = options.authToken ?? "";
 		this.maxCacheTiles = Math.max(32, Math.floor(options.maxCacheTiles ?? 320));
+		this.ctrlDragRotate = options.ctrlDragRotate ?? true;
+		this.rotationDragSensitivityDegPerPixel =
+			typeof options.rotationDragSensitivityDegPerPixel === "number" &&
+			Number.isFinite(options.rotationDragSensitivityDegPerPixel)
+				? Math.max(0, options.rotationDragSensitivityDegPerPixel)
+				: DEFAULT_ROTATION_DRAG_SENSITIVITY;
 
 		const gl = canvas.getContext("webgl2", {
 			alpha: false,
@@ -198,6 +287,7 @@ export class WsiTileRenderer {
 		this.boundPointerUp = (event: PointerEvent) => this.onPointerUp(event);
 		this.boundWheel = (event: WheelEvent) => this.onWheel(event);
 		this.boundDoubleClick = (event: MouseEvent) => this.onDoubleClick(event);
+		this.boundContextMenu = (event: MouseEvent) => this.onContextMenu(event);
 
 		canvas.addEventListener("pointerdown", this.boundPointerDown);
 		canvas.addEventListener("pointermove", this.boundPointerMove);
@@ -205,6 +295,7 @@ export class WsiTileRenderer {
 		canvas.addEventListener("pointercancel", this.boundPointerUp);
 		canvas.addEventListener("wheel", this.boundWheel, { passive: false });
 		canvas.addEventListener("dblclick", this.boundDoubleClick);
+		canvas.addEventListener("contextmenu", this.boundContextMenu);
 
 		this.fitToImage();
 		this.resize();
@@ -286,21 +377,49 @@ export class WsiTileRenderer {
 			}
 		}
 		this.dragging = false;
+		this.interactionMode = "none";
+		this.rotateLastAngleRad = null;
 		this.pointerId = null;
 		this.canvas.classList.remove("dragging");
+	}
+
+	private getPointerAngleRad(clientX: number, clientY: number): number {
+		const rect = this.canvas.getBoundingClientRect();
+		const x = clientX - rect.left - rect.width * 0.5;
+		const y = clientY - rect.top - rect.height * 0.5;
+		return Math.atan2(y, x);
 	}
 
 	screenToWorld(clientX: number, clientY: number): [number, number] {
 		const rect = this.canvas.getBoundingClientRect();
 		const sx = clientX - rect.left;
 		const sy = clientY - rect.top;
-		const state = this.camera.getViewState();
-		return [state.offsetX + sx / state.zoom, state.offsetY + sy / state.zoom];
+		return this.camera.screenToWorld(sx, sy);
 	}
 
 	worldToScreen(worldX: number, worldY: number): [number, number] {
+		return this.camera.worldToScreen(worldX, worldY);
+	}
+
+	setViewCenter(worldX: number, worldY: number): void {
+		if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
+		this.camera.setCenter(worldX, worldY);
+		this.clampViewState();
+		this.emitViewState();
+		this.requestRender();
+	}
+
+	getViewCorners(): [WorldPoint, WorldPoint, WorldPoint, WorldPoint] {
+		return this.camera.getViewCorners();
+	}
+
+	resetRotation(): void {
 		const state = this.camera.getViewState();
-		return [(worldX - state.offsetX) * state.zoom, (worldY - state.offsetY) * state.zoom];
+		if (Math.abs(state.rotationDeg) < 1e-6) return;
+		this.camera.setViewState({ rotationDeg: 0 });
+		this.clampViewState();
+		this.emitViewState();
+		this.requestRender();
 	}
 
 	getPointSizeByZoom(): number {
@@ -359,6 +478,7 @@ export class WsiTileRenderer {
 			zoom: clamp(safeZoom, this.minZoom, this.maxZoom),
 			offsetX: (this.source.width - visibleWorldW) * 0.5,
 			offsetY: (this.source.height - visibleWorldH) * 0.5,
+			rotationDeg: 0,
 		});
 
 		this.clampViewState();
@@ -371,14 +491,19 @@ export class WsiTileRenderer {
 		const nextZoom = clamp(state.zoom * factor, this.minZoom, this.maxZoom);
 		if (nextZoom === state.zoom) return;
 
-		const worldX = state.offsetX + screenX / state.zoom;
-		const worldY = state.offsetY + screenY / state.zoom;
+		const [worldX, worldY] = this.camera.screenToWorld(screenX, screenY);
 
-		this.camera.setViewState({
-			zoom: nextZoom,
-			offsetX: worldX - screenX / nextZoom,
-			offsetY: worldY - screenY / nextZoom,
-		});
+		this.camera.setViewState({ zoom: nextZoom });
+
+		const vp = this.camera.getViewport();
+		const dx = screenX - vp.width * 0.5;
+		const dy = screenY - vp.height * 0.5;
+		const rad = toRadians(this.camera.getViewState().rotationDeg);
+		const cos = Math.cos(rad);
+		const sin = Math.sin(rad);
+		const worldDx = (dx / nextZoom) * cos - (dy / nextZoom) * sin;
+		const worldDy = (dx / nextZoom) * sin + (dy / nextZoom) * cos;
+		this.camera.setCenter(worldX - worldDx, worldY - worldDy);
 
 		this.clampViewState();
 		this.emitViewState();
@@ -386,24 +511,31 @@ export class WsiTileRenderer {
 	}
 
 	clampViewState(): void {
-		const state = this.camera.getViewState();
-		const vp = this.camera.getViewport();
-
-		const visibleW = vp.width / state.zoom;
-		const visibleH = vp.height / state.zoom;
-
+		const bounds = this.getViewBounds();
+		const visibleW = Math.max(1e-6, bounds[2] - bounds[0]);
+		const visibleH = Math.max(1e-6, bounds[3] - bounds[1]);
 		const marginX = visibleW * 0.2;
 		const marginY = visibleH * 0.2;
 
-		const minX = -marginX;
-		const maxX = this.source.width - visibleW + marginX;
-		const minY = -marginY;
-		const maxY = this.source.height - visibleH + marginY;
+		const [centerX, centerY] = this.camera.getCenter();
+		const halfW = visibleW * 0.5;
+		const halfH = visibleH * 0.5;
 
-		this.camera.setViewState({
-			offsetX: clamp(state.offsetX, minX, maxX),
-			offsetY: clamp(state.offsetY, minY, maxY),
-		});
+		const minCenterX = halfW - marginX;
+		const maxCenterX = this.source.width - halfW + marginX;
+		const minCenterY = halfH - marginY;
+		const maxCenterY = this.source.height - halfH + marginY;
+
+		const nextCenterX =
+			minCenterX <= maxCenterX
+				? clamp(centerX, minCenterX, maxCenterX)
+				: this.source.width * 0.5;
+		const nextCenterY =
+			minCenterY <= maxCenterY
+				? clamp(centerY, minCenterY, maxCenterY)
+				: this.source.height * 0.5;
+
+		this.camera.setCenter(nextCenterX, nextCenterY);
 	}
 
 	emitViewState(): void {
@@ -417,14 +549,18 @@ export class WsiTileRenderer {
 	}
 
 	getViewBounds(): Bounds {
-		const state = this.camera.getViewState();
-		const vp = this.camera.getViewport();
-		return [
-			state.offsetX,
-			state.offsetY,
-			state.offsetX + vp.width / state.zoom,
-			state.offsetY + vp.height / state.zoom,
-		];
+		const corners = this.camera.getViewCorners();
+		let minX = Infinity;
+		let minY = Infinity;
+		let maxX = -Infinity;
+		let maxY = -Infinity;
+		for (const [x, y] of corners) {
+			if (x < minX) minX = x;
+			if (x > maxX) maxX = x;
+			if (y < minY) minY = y;
+			if (y > maxY) maxY = y;
+		}
+		return [minX, minY, maxX, maxY];
 	}
 
 	intersectsBounds(a: Bounds, b: Bounds): boolean {
@@ -435,8 +571,7 @@ export class WsiTileRenderer {
 		const tier = this.selectTier();
 		this.currentTier = tier;
 
-		const state = this.camera.getViewState();
-		const vp = this.camera.getViewport();
+		const viewBounds = this.getViewBounds();
 
 		const levelScale = Math.pow(2, this.source.maxTierZoom - tier);
 		const levelWidth = Math.ceil(this.source.width / levelScale);
@@ -445,10 +580,10 @@ export class WsiTileRenderer {
 		const tilesX = Math.max(1, Math.ceil(levelWidth / this.source.tileSize));
 		const tilesY = Math.max(1, Math.ceil(levelHeight / this.source.tileSize));
 
-		const viewMinX = state.offsetX;
-		const viewMinY = state.offsetY;
-		const viewMaxX = state.offsetX + vp.width / state.zoom;
-		const viewMaxY = state.offsetY + vp.height / state.zoom;
+		const viewMinX = viewBounds[0];
+		const viewMinY = viewBounds[1];
+		const viewMaxX = viewBounds[2];
+		const viewMaxY = viewBounds[3];
 
 		const minTileX = clamp(
 			Math.floor(viewMinX / levelScale / this.source.tileSize),
@@ -647,10 +782,22 @@ export class WsiTileRenderer {
 
 	onPointerDown(event: PointerEvent): void {
 		if (this.interactionLocked) return;
+		const wantsRotate = this.ctrlDragRotate && (event.ctrlKey || event.metaKey);
+		const allowButton = event.button === 0 || (wantsRotate && event.button === 2);
+		if (!allowButton) return;
+		if (wantsRotate) {
+			event.preventDefault();
+		}
 		this.dragging = true;
+		this.interactionMode =
+			wantsRotate ? "rotate" : "pan";
 		this.pointerId = event.pointerId;
 		this.lastPointerX = event.clientX;
 		this.lastPointerY = event.clientY;
+		this.rotateLastAngleRad =
+			this.interactionMode === "rotate"
+				? this.getPointerAngleRad(event.clientX, event.clientY)
+				: null;
 		this.canvas.classList.add("dragging");
 		this.canvas.setPointerCapture(event.pointerId);
 	}
@@ -664,11 +811,38 @@ export class WsiTileRenderer {
 		this.lastPointerX = event.clientX;
 		this.lastPointerY = event.clientY;
 
-		const state = this.camera.getViewState();
-		this.camera.setViewState({
-			offsetX: state.offsetX - dx / state.zoom,
-			offsetY: state.offsetY - dy / state.zoom,
-		});
+		if (this.interactionMode === "rotate") {
+			const nextAngle = this.getPointerAngleRad(event.clientX, event.clientY);
+			const prevAngle = this.rotateLastAngleRad;
+			this.rotateLastAngleRad = nextAngle;
+			if (prevAngle !== null) {
+				const rawDelta = nextAngle - prevAngle;
+				const delta = Math.atan2(Math.sin(rawDelta), Math.cos(rawDelta));
+
+				const sensitivityScale =
+					DEFAULT_ROTATION_DRAG_SENSITIVITY > 0
+						? this.rotationDragSensitivityDegPerPixel /
+							DEFAULT_ROTATION_DRAG_SENSITIVITY
+						: 1;
+				const state = this.camera.getViewState();
+				this.camera.setViewState({
+					rotationDeg:
+						state.rotationDeg - ((delta * 180) / Math.PI) * sensitivityScale,
+				});
+			}
+		} else {
+			const state = this.camera.getViewState();
+			const zoom = Math.max(1e-6, state.zoom);
+			const rad = toRadians(state.rotationDeg);
+			const cos = Math.cos(rad);
+			const sin = Math.sin(rad);
+			const worldDx = (dx * cos - dy * sin) / zoom;
+			const worldDy = (dx * sin + dy * cos) / zoom;
+			this.camera.setViewState({
+				offsetX: state.offsetX - worldDx,
+				offsetY: state.offsetY - worldDy,
+			});
+		}
 
 		this.clampViewState();
 		this.emitViewState();
@@ -703,6 +877,12 @@ export class WsiTileRenderer {
 		this.zoomBy(event.shiftKey ? 0.8 : 1.25, x, y);
 	}
 
+	onContextMenu(event: MouseEvent): void {
+		if (this.dragging || event.ctrlKey || event.metaKey) {
+			event.preventDefault();
+		}
+	}
+
 	destroy(): void {
 		if (this.destroyed) return;
 		this.destroyed = true;
@@ -719,6 +899,7 @@ export class WsiTileRenderer {
 		this.canvas.removeEventListener("pointercancel", this.boundPointerUp);
 		this.canvas.removeEventListener("wheel", this.boundWheel);
 		this.canvas.removeEventListener("dblclick", this.boundDoubleClick);
+		this.canvas.removeEventListener("contextmenu", this.boundContextMenu);
 		this.cancelDrag();
 		this.tileScheduler.destroy();
 

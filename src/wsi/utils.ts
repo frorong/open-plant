@@ -45,7 +45,8 @@ export function isSameViewState(
 	return (
 		Math.abs((a.zoom ?? 0) - (b.zoom ?? 0)) < 1e-6 &&
 		Math.abs((a.offsetX ?? 0) - (b.offsetX ?? 0)) < 1e-6 &&
-		Math.abs((a.offsetY ?? 0) - (b.offsetY ?? 0)) < 1e-6
+		Math.abs((a.offsetY ?? 0) - (b.offsetY ?? 0)) < 1e-6 &&
+		Math.abs((a.rotationDeg ?? 0) - (b.rotationDeg ?? 0)) < 1e-6
 	);
 }
 

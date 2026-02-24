@@ -36,8 +36,10 @@
           <a href="#runtime">런타임 구성</a>
           <a href="#tile-pipeline">타일 파이프라인</a>
           <a href="#point-pipeline">포인트 파이프라인</a>
+          <a href="#roi-accel">ROI 가속 모드</a>
           <a href="#draw-pipeline">드로잉 파이프라인</a>
           <a href="#webgpu">WebGPU 확장 방향</a>
+          <a href="#oss-docs">오픈소스 문서 원칙</a>
         </aside>
 
         <article class="content">
@@ -54,7 +56,7 @@
             <h2>런타임 구성</h2>
             <pre><code class="language-txt">React
  └─ WsiViewerCanvas
-    ├─ WebGL Canvas (WsiTileRenderer)
+    ├─ WebGL Canvas (WsiTileRenderer: pan/zoom/rotate)
     │  ├─ Tile pass (bitmap quads)
     │  └─ Point pass (palette indexed ring points)
     └─ DrawLayer Canvas (pointer capture, ROI preview/labels)</code></pre>
@@ -81,13 +83,37 @@
               <div class="flow-step"><strong>입력 계약:</strong> 라이브러리는 `Float32Array` positions + `Uint16Array` paletteIndices만 수신.</div>
               <div class="flow-step"><strong>업로드:</strong> positions/paletteIndices를 GPU 버퍼로 전송.</div>
               <div class="flow-step"><strong>셰이더 렌더:</strong> 포인트는 ring 형태 fragment shader로 표현.</div>
-              <div class="flow-step"><strong>ROI clip:</strong> 필요 시 polygon 내부 포인트만 새 버퍼로 필터링.</div>
+              <div class="flow-step"><strong>ROI clip:</strong> 필요 시 <code>clipMode</code>에 따라 polygon 내부 포인트만 필터링.</div>
+              <div class="flow-step"><strong>ROI 통계:</strong> <code>computeRoiPointGroups</code> / <code>onRoiPointGroups</code>로 ROI별 term 집계.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="roi-accel">
+            <h2>ROI 가속 모드</h2>
+            <div class="card-grid">
+              <div class="card">
+                <h3>`sync`</h3>
+                <p>메인 스레드에서 즉시 polygon 필터링. 디버깅/기준 측정용.</p>
+              </div>
+              <div class="card">
+                <h3>`worker`</h3>
+                <p>전용 worker 스레드에서 ROI 필터링. UI 프리즈를 줄이는 현재 권장 기본값.</p>
+              </div>
+              <div class="card">
+                <h3>`hybrid-webgpu`</h3>
+                <p>실험 경로. WebGPU bbox prefilter 후 polygon 정밀 판정을 수행합니다.</p>
+              </div>
+              <div class="card">
+                <h3>관측</h3>
+                <p><code>onClipStats</code>로 mode/duration/input/output을 수집해 회귀를 추적합니다.</p>
+              </div>
             </div>
           </section>
 
           <section class="panel reveal" id="draw-pipeline">
             <h2>드로잉 파이프라인</h2>
             <div class="flow">
+              <div class="flow-step"><strong>카메라 입력:</strong> pan + wheel zoom + <code>Ctrl/Cmd + drag</code> 회전(<code>rotationDeg</code>).</div>
               <div class="flow-step"><strong>Pointer capture:</strong> draw 활성 시 입력을 DrawLayer가 독점.</div>
               <div class="flow-step"><strong>미리보기:</strong> freehand는 궤적 line, rectangle/circular는 polygon preview.</div>
               <div class="flow-step"><strong>완료:</strong> tool별 좌표를 닫힌 ring으로 변환 후 `onDrawComplete` emit.</div>
@@ -100,7 +126,7 @@
             <div class="card-grid">
               <div class="card">
                 <h3>ROI Culling</h3>
-                <p>수백만 포인트의 polygon 포함 판정(Spatial binning + compute).</p>
+                <p>bbox prefilter compute를 시작점으로 polygon 정밀 판정을 결합합니다.</p>
               </div>
               <div class="card">
                 <h3>LOD Aggregation</h3>
@@ -114,6 +140,20 @@
                 <h3>Interop</h3>
                 <p>연산 결과를 WebGL 업로드 가능한 packed buffer로 반환.</p>
               </div>
+            </div>
+            <div class="callout">
+              현재 WebGPU 경로는 <strong>실험적</strong>입니다. 실데이터 벤치마크가 확인되기 전까지는
+              운영 기본값을 <code>worker</code>로 유지하는 것을 권장합니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="oss-docs">
+            <h2>오픈소스 문서 원칙</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>동작 우선:</strong> 각 모드의 기본값/폴백/실패 동작을 명시합니다.</div>
+              <div class="flow-step"><strong>버전 동기화:</strong> 문서와 <code>src/index.ts</code> export 변경을 같은 PR에서 처리합니다.</div>
+              <div class="flow-step"><strong>측정 근거:</strong> 성능 주장은 <code>onStats</code>/<code>onClipStats</code> 수치로 재현 가능해야 합니다.</div>
+              <div class="flow-step"><strong>이중언어 동등성:</strong> EN/KO 문서는 기능 단위로 동일 정보를 유지합니다.</div>
             </div>
           </section>
 

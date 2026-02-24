@@ -52,6 +52,20 @@ function nowMs(): number {
 	return Date.now();
 }
 
+function shouldAttachAuthHeader(url: string, authToken: string): boolean {
+	if (!authToken) return false;
+	try {
+		const parsed = new URL(url, typeof window !== "undefined" ? window.location.href : undefined);
+		const host = parsed.hostname.toLowerCase();
+		const isAwsS3 =
+			host.includes("amazonaws.com") || host.startsWith("s3.") || host.includes(".s3.");
+		if (isAwsS3) return false;
+	} catch {
+		// Fallback to attaching auth if URL parsing fails.
+	}
+	return true;
+}
+
 export class TileScheduler {
 	private readonly maxConcurrency: number;
 	private readonly maxRetries: number;
@@ -248,7 +262,7 @@ export class TileScheduler {
 		this.inflight.set(item.tile.key, inflightEntry);
 		this.emitStateChange();
 
-		const useAuthHeader = !!this.authToken;
+		const useAuthHeader = shouldAttachAuthHeader(item.tile.url, this.authToken);
 		fetch(item.tile.url, {
 			signal: controller.signal,
 			headers: useAuthHeader ? { Authorization: this.authToken } : undefined,

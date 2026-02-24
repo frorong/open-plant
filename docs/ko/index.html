@@ -79,15 +79,15 @@
               <div class="card">
                 <h3>Draw Layer</h3>
                 <p>
-                  `freehand`, `rectangle`, `circular` 도형 생성, 폴리곤 닫힘 처리,
-                  드로잉 중 궤적 표시, 라벨 오버레이.
+                  `freehand`, `rectangle`, `circular`, `stamp-rectangle-4096px` 지원,
+                  폴리곤 닫힘 처리, 드로잉 중 궤적, 라벨/오버레이 렌더.
                 </p>
               </div>
               <div class="card">
                 <h3>React Surface</h3>
                 <p>
-                  `WsiViewerCanvas` 컴포넌트에서 타일 + 포인트 + 드로잉 + ROI 필터를
-                  통합 제어.
+                  `WsiViewerCanvas`에서 타일 + 포인트 + 드로잉 + ROI 필터/통계,
+                  월드 좌표 콜백, 회전 상태를 통합 제어.
                 </p>
               </div>
             </div>
@@ -111,6 +111,21 @@
               <div class="flow-step">
                 <strong>4. 확장 경로 확보:</strong> WebGPU는 연산 오프로딩(예:
                 point culling/aggregation) 경로로 단계적 확장.
+              </div>
+            </div>
+          </section>
+
+          <section class="panel reveal">
+            <h2>오픈소스 우선순위</h2>
+            <div class="flow">
+              <div class="flow-step">
+                <strong>1. 안정 기본 경로:</strong> 운영 기본값은 worker 기반 ROI clip을 유지.
+              </div>
+              <div class="flow-step">
+                <strong>2. 실험 경로 분리:</strong> WebGPU 기능은 실데이터 벤치마크 이득이 확인될 때만 opt-in 적용.
+              </div>
+              <div class="flow-step">
+                <strong>3. 문서 우선:</strong> 기능 추가보다 동작/기본값/폴백 규약 문서화를 먼저 수행.
               </div>
             </div>
           </section>

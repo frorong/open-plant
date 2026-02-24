@@ -17,7 +17,9 @@ type Bounds = [number, number, number, number];
 export interface OverviewMapProjector {
 	getViewState: () => WsiViewState;
 	setViewState: (next: Partial<WsiViewState>) => void;
+	setViewCenter?: (worldX: number, worldY: number) => void;
 	getViewBounds?: () => number[];
+	getViewCorners?: () => Array<[number, number]>;
 }
 
 export type OverviewMapPosition =
@@ -223,6 +225,7 @@ export function OverviewMap({
 
 		const projector = projectorRef.current;
 		const bounds = projector?.getViewBounds?.();
+		const corners = projector?.getViewCorners?.();
 		const safeBounds = isFiniteBounds(bounds)
 			? bounds
 			: isFiniteBounds(lastBoundsRef.current)
@@ -233,6 +236,37 @@ export function OverviewMap({
 
 		const sx = cssW / Math.max(1, source.width);
 		const sy = cssH / Math.max(1, source.height);
+
+		const safeCorners =
+			Array.isArray(corners) &&
+			corners.length >= 4 &&
+			corners.every(
+				(point) =>
+					Array.isArray(point) &&
+					point.length >= 2 &&
+					Number.isFinite(point[0]) &&
+					Number.isFinite(point[1]),
+			)
+				? (corners as Array<[number, number]>)
+				: null;
+
+		if (safeCorners) {
+			ctx.beginPath();
+			for (let i = 0; i < safeCorners.length; i += 1) {
+				const point = safeCorners[i];
+				const x = clamp(point[0] * sx, 0, cssW);
+				const y = clamp(point[1] * sy, 0, cssH);
+				if (i === 0) ctx.moveTo(x, y);
+				else ctx.lineTo(x, y);
+			}
+			ctx.closePath();
+			ctx.fillStyle = viewportFillColor;
+			ctx.fill();
+			ctx.strokeStyle = viewportStrokeColor;
+			ctx.lineWidth = 1.5;
+			ctx.stroke();
+			return;
+		}
 
 		const left = clamp(safeBounds[0] * sx, 0, cssW);
 		const top = clamp(safeBounds[1] * sy, 0, cssH);
@@ -294,6 +328,12 @@ export function OverviewMap({
 		(worldX: number, worldY: number) => {
 			const projector = projectorRef.current;
 			if (!projector) return;
+
+			if (projector.setViewCenter) {
+				projector.setViewCenter(worldX, worldY);
+				requestDraw();
+				return;
+			}
 
 			const bounds = projector.getViewBounds?.();
 			const safeBounds = isFiniteBounds(bounds)

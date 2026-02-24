@@ -3,15 +3,21 @@ import {
   buildTermPalette,
   calcScaleLength,
   clamp,
+  type DrawOverlayShape,
   type DrawResult,
   type DrawTool,
+  getWebGpuCapabilities,
   isSameViewState,
   normalizeImageInfo,
+  type PointClipMode,
+  type PointClipStatsEvent,
   type RegionClickEvent,
   type RegionHoverEvent,
   type RegionLabelStyle,
   type RegionStrokeStyle,
+  type RegionStyleContext,
   toBearerToken,
+  type WebGpuCapabilities,
   type WsiImageSource,
   type WsiPointData,
   type WsiRegion,
@@ -181,12 +187,19 @@ export default function App() {
   const [drawTool, setDrawTool] = useState<DrawTool>("cursor");
   const [stampRectangleAreaMm2, setStampRectangleAreaMm2] = useState(2);
   const [stampCircleAreaMm2, setStampCircleAreaMm2] = useState(2);
+  const [stampRectanglePixelSize, setStampRectanglePixelSize] = useState(4096);
   const [showOverviewMap, setShowOverviewMap] = useState(true);
+  const [ctrlDragRotate, setCtrlDragRotate] = useState(true);
+  const [rotationResetNonce, setRotationResetNonce] = useState(0);
+  const [clipMode, setClipMode] = useState<PointClipMode>("worker");
+  const [clipStats, setClipStats] = useState<PointClipStatsEvent | null>(null);
+  const [webGpuCaps, setWebGpuCaps] = useState<WebGpuCapabilities | null>(null);
   const [lastDraw, setLastDraw] = useState<DrawResult | null>(null);
   const [roiRegions, setRoiRegions] = useState<WsiRegion[]>([]);
   const [hoveredRegionId, setHoveredRegionId] = useState<string | number | null>(null);
   const [activeRegionId, setActiveRegionId] = useState<string | number | null>(null);
   const [clickedRegionId, setClickedRegionId] = useState<string | number | null>(null);
+  const [pointerWorld, setPointerWorld] = useState<[number, number] | null>(null);
   const [labelInput, setLabelInput] = useState("");
 
   const bearerToken = useMemo(() => toBearerToken(tokenInput), [tokenInput]);
@@ -204,6 +217,23 @@ export default function App() {
     localStorage.setItem("open-plant-token", tokenInput);
   }, [tokenInput]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getWebGpuCapabilities()
+      .then(caps => {
+        if (cancelled) return;
+        setWebGpuCaps(caps);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWebGpuCaps({ supported: false, features: [] });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const resetFormState = useCallback((): void => {
     setDrawTool("cursor");
     setLastDraw(null);
@@ -211,6 +241,7 @@ export default function App() {
     setHoveredRegionId(null);
     setActiveRegionId(null);
     setClickedRegionId(null);
+    setPointerWorld(null);
     setPointPayload(null);
     setPointStatus(INITIAL_POINT_STATUS);
   }, []);
@@ -406,6 +437,26 @@ export default function App() {
     []
   );
 
+  const resolveRegionStrokeStyle = useCallback((context: RegionStyleContext): Partial<RegionStrokeStyle> | undefined => {
+    if (context.state === "active") {
+      return {
+        color: "#ff2f2f",
+        width: 3.2,
+        shadowColor: "rgba(255, 47, 47, 0.95)",
+        shadowBlur: 12,
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+      };
+    }
+    if (context.state === "hover") {
+      return { color: "#ff2f2f", width: 3 };
+    }
+    if (context.regionIndex % 2 === 1) {
+      return { color: "#ffe08a", width: 2.25 };
+    }
+    return undefined;
+  }, []);
+
   const regionLabelStyle = useMemo<Partial<RegionLabelStyle>>(
     () => ({
       backgroundColor: "rgba(8, 14, 22, 0.9)",
@@ -481,6 +532,32 @@ export default function App() {
     setClickedRegionId(null);
   }, []);
 
+  const overlayShapes = useMemo<DrawOverlayShape[]>(() => {
+    if (!source) return [];
+    const left = source.width * 0.08;
+    const top = source.height * 0.08;
+    const right = source.width * 0.2;
+    const bottom = source.height * 0.2;
+    return [
+      {
+        id: "patch-guide",
+        coordinates: [
+          [left, top],
+          [right, top],
+          [right, bottom],
+          [left, bottom],
+        ],
+        closed: true,
+        fill: false,
+        strokeStyle: {
+          color: "rgba(255, 255, 255, 0.85)",
+          width: 1.5,
+          lineDash: [10, 8],
+        },
+      },
+    ];
+  }, [source]);
+
   return (
     <div className="app">
       <div className="topbar">
@@ -501,6 +578,12 @@ export default function App() {
         <div className="ctl-row">
           <button type="button" disabled={!source} onClick={() => setFitNonce(prev => prev + 1)}>
             Fit
+          </button>
+          <button type="button" disabled={!source} onClick={() => setRotationResetNonce(prev => prev + 1)}>
+            Reset Rotate
+          </button>
+          <button type="button" className={ctrlDragRotate ? "active" : ""} disabled={!source} onClick={() => setCtrlDragRotate(prev => !prev)}>
+            Ctrl+Drag Rotate
           </button>
           <button type="button" disabled={!source} className={showOverviewMap ? "active" : ""} onClick={() => setShowOverviewMap(prev => !prev)}>
             Overview
@@ -531,6 +614,9 @@ export default function App() {
             <button type="button" className={drawTool === "stamp-circle" ? "active" : ""} disabled={!source} onClick={() => setDrawTool("stamp-circle")}>
               Stamp ○
             </button>
+            <button type="button" className={drawTool === "stamp-rectangle-4096px" ? "active" : ""} disabled={!source} onClick={() => setDrawTool("stamp-rectangle-4096px")}>
+              Stamp 4096px
+            </button>
             <input
               className="stamp-input"
               type="number"
@@ -553,6 +639,20 @@ export default function App() {
               title="Circle stamp area (mm²)"
             />
             <span className="stamp-unit">Circle mm²</span>
+            <input
+              className="stamp-input"
+              type="number"
+              min={1}
+              step={1}
+              value={stampRectanglePixelSize}
+              onChange={e => {
+                const next = Number(e.target.value);
+                if (Number.isFinite(next) && next > 0) setStampRectanglePixelSize(Math.round(next));
+              }}
+              aria-label="Rectangle stamp pixel size"
+              title="Rectangle stamp pixel size"
+            />
+            <span className="stamp-unit">Rect px</span>
             <button
               type="button"
               className={drawTool === "stamp-circle" && Math.abs(stampCircleAreaMm2 - 0.2) < 1e-9 ? "active" : ""}
@@ -568,6 +668,15 @@ export default function App() {
             <button type="button" disabled={!source || roiRegions.length === 0} onClick={handleClearRoi}>
               Clear ROI
             </button>
+            <button type="button" className={clipMode === "worker" ? "active" : ""} onClick={() => setClipMode("worker")}>
+              Clip Worker
+            </button>
+            <button type="button" className={clipMode === "hybrid-webgpu" ? "active" : ""} onClick={() => setClipMode("hybrid-webgpu")}>
+              Clip Hybrid GPU
+            </button>
+            <button type="button" className={clipMode === "sync" ? "active" : ""} onClick={() => setClipMode("sync")}>
+              Clip Sync
+            </button>
           </div>
 
           <div className={`status ${error ? "error" : ""}`}>{error || `${imageSummary} | scale ${scaleSummary}`}</div>
@@ -579,6 +688,11 @@ export default function App() {
                 ? "points loading..."
                 : `points ${pointStatus.count.toLocaleString()} | terms ${pointStatus.terms} | nt ${pointStatus.hasNt ? "yes" : "no"} | stain ${pointStatus.hasPositivityRank ? "yes" : "no"}`}
           </div>
+
+          <div className="status">
+            webgpu {webGpuCaps?.supported ? "on" : "off"} | clip mode {clipMode}
+            {webGpuCaps?.supported && webGpuCaps.adapterName ? ` | adapter ${webGpuCaps.adapterName}` : ""}
+          </div>
         </div>
       </div>
 
@@ -589,21 +703,35 @@ export default function App() {
             source={source}
             viewState={viewState}
             fitNonce={fitNonce}
+            rotationResetNonce={rotationResetNonce}
             authToken={bearerToken}
+            ctrlDragRotate={ctrlDragRotate}
             pointData={pointPayload}
             pointPalette={termPalette.colors}
             roiRegions={roiRegions}
             clipPointsToRois
+            clipMode={clipMode}
+            onClipStats={setClipStats}
             interactionLock={drawTool !== "cursor"}
             drawTool={drawTool}
             stampOptions={{
               rectangleAreaMm2: stampRectangleAreaMm2,
               circleAreaMm2: stampCircleAreaMm2,
+              rectanglePixelSize: stampRectanglePixelSize,
             }}
             regionStrokeStyle={regionStrokeStyle}
             regionStrokeHoverStyle={regionStrokeHoverStyle}
             regionStrokeActiveStyle={regionStrokeActiveStyle}
+            resolveRegionStrokeStyle={resolveRegionStrokeStyle}
+            overlayShapes={overlayShapes}
             regionLabelStyle={regionLabelStyle}
+            onPointerWorldMove={event => {
+              if (event.coordinate) {
+                setPointerWorld([event.coordinate[0], event.coordinate[1]]);
+              } else {
+                setPointerWorld(null);
+              }
+            }}
             onRegionHover={handleRegionHover}
             onRegionClick={handleRegionClick}
             onActiveRegionChange={handleActiveRegionChange}
@@ -622,16 +750,26 @@ export default function App() {
         )}
 
         <div className="overlay">
-          Drag: Pan | Wheel: Zoom | Double Click: Zoom In | Shift+Double Click: Zoom Out | Draw Tool: {drawTool}
+          Drag: Pan | Wheel: Zoom | Ctrl/Cmd+Drag: Rotate | Double Click: Zoom In | Shift+Double Click: Zoom Out | Draw Tool: {drawTool}
           <br />
           tier {stats.tier} | visible {stats.visible} | rendered {stats.rendered} | points {stats.points} | fallback {stats.fallback} | cache {stats.cache} | inflight {stats.inflight}
           <br />
-          zoom {viewState?.zoom ? viewState.zoom.toFixed(4) : "fit"} | offset ({Math.round(viewState?.offsetX || 0)}, {Math.round(viewState?.offsetY || 0)}) | rois {roiRegions.length}
+          zoom {viewState?.zoom ? viewState.zoom.toFixed(4) : "fit"} | rotation {viewState?.rotationDeg ? viewState.rotationDeg.toFixed(2) : "0.00"}° | offset ({Math.round(viewState?.offsetX || 0)},{" "}
+          {Math.round(viewState?.offsetY || 0)}) | rois {roiRegions.length}
           <br />
-          hover {hoveredRegionId ?? "-"} | active {activeRegionId ?? "-"} | click {clickedRegionId ?? "-"}
+          hover {hoveredRegionId ?? "-"} | active {activeRegionId ?? "-"} | click {clickedRegionId ?? "-"} | pointer{" "}
+          {pointerWorld ? `${Math.round(pointerWorld[0])}, ${Math.round(pointerWorld[1])}` : "-"}
           <br />
           stamp rect {stampRectangleAreaMm2}mm² | stamp circle {stampCircleAreaMm2}
-          mm²
+          mm² | stamp rect px {stampRectanglePixelSize}
+          {clipStats ? (
+            <>
+              <br />
+              clip {clipStats.mode} | {clipStats.durationMs.toFixed(2)}ms | input {clipStats.inputCount.toLocaleString()} | output {clipStats.outputCount.toLocaleString()}
+              {typeof clipStats.usedWebGpu === "boolean" ? ` | webgpu ${clipStats.usedWebGpu ? "yes" : "no"}` : ""}
+              {typeof clipStats.candidateCount === "number" ? ` | candidates ${clipStats.candidateCount.toLocaleString()}` : ""}
+            </>
+          ) : null}
           {lastDraw ? (
             <>
               <br />

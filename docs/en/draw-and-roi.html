@@ -39,6 +39,7 @@
           <a href="#persist">Persisted regions</a>
           <a href="#style">Custom styles</a>
           <a href="#clip">Point clipping</a>
+          <a href="#roi-stats">ROI term stats</a>
         </aside>
 
         <article class="content">
@@ -48,7 +49,8 @@
             <p>
               When `drawTool` is not `cursor`, `DrawLayer` captures pointer events and returns
               closed polygon coordinates through `onDrawComplete`. Stamp tools place physical-size
-              ROI in one click (2mm² square/circle, 0.2mm² HPF circle).
+              ROI in one click (2mm² square/circle, 0.2mm² HPF circle) and fixed-pixel rectangle stamp
+              via <code>stamp-rectangle-4096px</code>.
             </p>
           </section>
 
@@ -61,6 +63,7 @@
 &lt;button onClick={() =&gt; setDrawTool("circular")}&gt;Circular&lt;/button&gt;
 &lt;button onClick={() =&gt; setDrawTool("stamp-rectangle")}&gt;Stamp □&lt;/button&gt;
 &lt;button onClick={() =&gt; setDrawTool("stamp-circle")}&gt;Stamp ○&lt;/button&gt;
+&lt;button onClick={() =&gt; setDrawTool("stamp-rectangle-4096px")}&gt;Stamp 4096px&lt;/button&gt;
 &lt;button onClick={() =&gt; setCircleAreaMm2(0.2)}&gt;HPF 0.2mm²&lt;/button&gt;
 &lt;button onClick={() =&gt; setDrawTool("cursor")}&gt;Cursor&lt;/button&gt;
 
@@ -86,6 +89,7 @@
             <h2>3. Stamp size props (outside control)</h2>
             <pre><code class="language-tsx">const [rectAreaMm2, setRectAreaMm2] = useState(2);
 const [circleAreaMm2, setCircleAreaMm2] = useState(2);
+const [rectPixelSize, setRectPixelSize] = useState(4096);
 
 &lt;WsiViewerCanvas
   source={source}
@@ -93,6 +97,7 @@ const [circleAreaMm2, setCircleAreaMm2] = useState(2);
   stampOptions={{
     rectangleAreaMm2: rectAreaMm2,
     circleAreaMm2: circleAreaMm2,
+    rectanglePixelSize: rectPixelSize,
   }}
 /&gt;</code></pre>
             <p>
@@ -147,6 +152,21 @@ const handleDrawComplete = (result) =&gt; {
     shadowOffsetX: 0,
     shadowOffsetY: 0,
   }}
+  resolveRegionStrokeStyle={(ctx) =&gt; {
+    if (ctx.state === "hover") return { color: "#ff2f2f", width: 3 };
+    if (ctx.state === "active") return { color: "#ff2f2f", width: 3.2, shadowBlur: 12 };
+  }}
+  overlayShapes={[
+    {
+      id: "patch-guide",
+      coordinates: [[1000,1000],[3000,1000],[3000,3000],[1000,3000]],
+      closed: true,
+      strokeStyle: { color: "rgba(255,255,255,0.85)", lineDash: [10, 8] },
+    },
+  ]}
+  onPointerWorldMove={(event) =&gt; {
+    // event.coordinate -> [x, y] | null
+  }}
   regionLabelStyle={{
     fontFamily: "IBM Plex Mono, monospace",
     fontSize: 12,
@@ -183,6 +203,33 @@ const handleDrawComplete = (result) =&gt; {
   pointPalette={pointPalette}
   roiRegions={regions}
   clipPointsToRois
+  clipMode="worker"
+  onClipStats={(stats) =&gt; {
+    console.log(stats.mode, stats.durationMs, stats.outputCount);
+  }}
+/&gt;</code></pre>
+            <p>
+              <code>clipMode</code> controls ROI filtering runtime:
+              <code>sync</code> (main thread), <code>worker</code> (recommended), and
+              <code>hybrid-webgpu</code> (experimental).
+            </p>
+          </section>
+
+          <section class="panel reveal" id="roi-stats">
+            <h2>7. ROI term-count stats API</h2>
+            <pre><code class="language-tsx">import { computeRoiPointGroups } from "open-plant";
+
+const stats = computeRoiPointGroups(pointData, regions, {
+  paletteIndexToTermId: ["bg", "negative", "positive"],
+});
+
+&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  roiRegions={regions}
+  onRoiPointGroups={(result) =&gt; {
+    // result.groups -> [{ regionId, totalCount, termCounts[] }]
+  }}
 /&gt;</code></pre>
           </section>
 

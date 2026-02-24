@@ -22,6 +22,7 @@ export interface WsiViewState {
 	zoom: number;
 	offsetX: number;
 	offsetY: number;
+	rotationDeg: number;
 }
 
 export interface WsiRenderStats {
