@@ -207,6 +207,7 @@ export function WsiViewerCanvas({
 		const value = Number(overviewMapOptions?.margin ?? 16);
 		return Number.isFinite(value) ? Math.max(0, value) : 16;
 	}, [overviewMapOptions?.margin]);
+	const overviewPosition = overviewMapOptions?.position || "bottom-right";
 
 	const commitActiveRegion = useCallback(
 		(next: string | number | null) => {
@@ -523,8 +524,12 @@ export function WsiViewerCanvas({
 							style={{
 								position: "absolute",
 								zIndex: 6,
-								right: overviewMargin,
-								bottom: overviewMargin + overviewHeight + 8,
+								...(overviewPosition.includes("left")
+									? { left: overviewMargin }
+									: { right: overviewMargin }),
+								...(overviewPosition.includes("top")
+									? { top: overviewMargin + overviewHeight + 8 }
+									: { bottom: overviewMargin + overviewHeight + 8 }),
 								width: 20,
 								height: 20,
 								borderRadius: 999,
@@ -548,8 +553,12 @@ export function WsiViewerCanvas({
 						style={{
 							position: "absolute",
 							zIndex: 6,
-							right: overviewMargin,
-							bottom: overviewMargin,
+							...(overviewPosition.includes("left")
+								? { left: overviewMargin }
+								: { right: overviewMargin }),
+							...(overviewPosition.includes("top")
+								? { top: overviewMargin }
+								: { bottom: overviewMargin }),
 							height: 24,
 							minWidth: 40,
 							borderRadius: 999,

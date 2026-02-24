@@ -135,16 +135,6 @@ button.active {
   height: 100%;
 }
 
-.viewer-canvas > canvas {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  display: block;
-  touch-action: none;
-}
-
 .viewer-canvas > canvas.wsi-render-canvas {
   cursor: grab;
 }

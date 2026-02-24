@@ -20,10 +20,17 @@ export interface OverviewMapProjector {
 	getViewBounds?: () => number[];
 }
 
+export type OverviewMapPosition =
+	| "bottom-right"
+	| "bottom-left"
+	| "top-right"
+	| "top-left";
+
 export interface OverviewMapOptions {
 	width: number;
 	height: number;
 	margin: number;
+	position: OverviewMapPosition;
 	borderRadius: number;
 	borderWidth: number;
 	backgroundColor: string;
@@ -49,6 +56,7 @@ const DEFAULT_OVERVIEW_MAP_OPTIONS: OverviewMapOptions = {
 	width: 220,
 	height: 140,
 	margin: 16,
+	position: "bottom-right",
 	borderRadius: 10,
 	borderWidth: 1.5,
 	backgroundColor: "rgba(4, 10, 18, 0.88)",
@@ -149,12 +157,19 @@ export function OverviewMap({
 		options?.interactive ?? DEFAULT_OVERVIEW_MAP_OPTIONS.interactive;
 	const showThumbnail =
 		options?.showThumbnail ?? DEFAULT_OVERVIEW_MAP_OPTIONS.showThumbnail;
+	const position =
+		options?.position || DEFAULT_OVERVIEW_MAP_OPTIONS.position;
 
-	const mergedStyle = useMemo<CSSProperties>(
-		() => ({
+	const mergedStyle = useMemo<CSSProperties>(() => {
+		const pos: CSSProperties = {};
+		if (position === "top-left" || position === "bottom-left") pos.left = margin;
+		else pos.right = margin;
+		if (position === "top-left" || position === "top-right") pos.top = margin;
+		else pos.bottom = margin;
+
+		return {
 			position: "absolute",
-			right: margin,
-			bottom: margin,
+			...pos,
 			width,
 			height,
 			borderRadius,
@@ -164,9 +179,8 @@ export function OverviewMap({
 			touchAction: "none",
 			boxShadow: "0 10px 22px rgba(0, 0, 0, 0.3)",
 			...style,
-		}),
-		[margin, width, height, borderRadius, interactive, style],
-	);
+		};
+	}, [margin, position, width, height, borderRadius, interactive, style]);
 
 	const draw = useCallback(() => {
 		const canvas = canvasRef.current;

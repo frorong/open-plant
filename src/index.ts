@@ -19,7 +19,7 @@ export {
   createRectangle,
   DrawLayer,
 } from "./react/draw-layer";
-export type { OverviewMapOptions } from "./react/overview-map";
+export type { OverviewMapOptions, OverviewMapPosition } from "./react/overview-map";
 export { OverviewMap } from "./react/overview-map";
 export { TileViewerCanvas } from "./react/tile-viewer-canvas";
 export type {

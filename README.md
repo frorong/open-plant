@@ -11,6 +11,8 @@
   <a href="https://github.com/frorong/open-plant">GitHub</a>
 </p>
 
+> Engine roadmap: [`engine-roadmap.md`](./engine-roadmap.md)
+
 ---
 
 ## Why Open Plant
