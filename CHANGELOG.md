@@ -16,15 +16,27 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Custom overlay shape API for patch/dashed guides: `overlayShapes`.
 - Fixed-pixel stamp tool: `stamp-rectangle-4096px` and `stampOptions.rectanglePixelSize`.
 - ROI term-group utility and callback path: `computeRoiPointGroups`, `onRoiPointGroups`.
+- Release gate workflow: `.github/workflows/release-gate.yml`.
+- PR template: `.github/pull_request_template.md`.
+- Contribution guides: root `CONTRIBUTING.md`, docs EN/KO `contributing.html`.
+- Hybrid WebGPU draw bridge payload support via `WsiPointData.drawIndices`.
+- Hybrid clip option `bridgeToDraw` and clip stat flag `bridgedToDraw`.
+- Unit test coverage for ROI term stats with draw-index bridge input.
 
 ### Changed
 - `WsiTileRenderer` projection, bounds, and zoom anchoring now account for rotation.
 - Overview map viewport indicator now supports rotated viewport polygon rendering.
 - Region active selection now toggles on same-region click and switches on different region click.
+- `WsiTileRenderer` point pass now supports indexed point rendering (`gl.drawElements`) when `drawIndices` are provided.
+- Hybrid WebGPU path now reuses original point buffers and passes subset indices to draw pipeline.
+- `computeRoiPointGroups` now respects `drawIndices` when present.
+- Publish gate now enforces `npm run release:gate` via `prepublishOnly`.
 
 ### Docs
 - Updated EN/KO API and guides for rotation, pointer world callbacks, overlay shapes, 4096px stamp, and ROI term stats.
 - Updated `todo.md` gap table with current support status and code-path references.
+- Added EN/KO migration guides with API stability/deprecation policy and release-gate contract.
+- Added EN/KO contributing pages and linked them across docs navigation.
 
 ## [0.1.0] - 2026-02-24
 
