@@ -15,6 +15,7 @@ export interface WsiImageSource {
 	tilePath: string;
 	tileBaseUrl: string;
 	terms: WsiTerm[];
+	tileUrlBuilder?: (tier: number, x: number, y: number) => string;
 }
 
 export interface WsiViewState {

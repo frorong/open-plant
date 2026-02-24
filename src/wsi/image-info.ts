@@ -44,11 +44,14 @@ export function normalizeImageInfo(
 }
 
 export function toTileUrl(
-	source: Pick<WsiImageSource, "tilePath" | "tileBaseUrl">,
+	source: Pick<WsiImageSource, "tilePath" | "tileBaseUrl" | "tileUrlBuilder">,
 	tier: number,
 	x: number,
 	y: number,
 ): string {
+	if (source.tileUrlBuilder) {
+		return source.tileUrlBuilder(tier, x, y);
+	}
 	const normalizedPath = source.tilePath.startsWith("/")
 		? source.tilePath
 		: `/${source.tilePath}`;

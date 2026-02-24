@@ -15,6 +15,14 @@
 
 ---
 
+<h3 align="center">10,000,000 cells · ~300 MB RAM · 60 fps</h3>
+
+https://github.com/user-attachments/assets/10m-points-demo.mov
+
+<video src="docs/assets/10m-points-demo.mov" width="100%" autoplay loop muted playsinline></video>
+
+---
+
 ## Why Open Plant
 
 범용 시각화 프레임워크 위에 병리 뷰어를 올리면 추상화 비용을 그대로 떠안게 됩니다.

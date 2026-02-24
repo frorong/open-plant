@@ -25,6 +25,64 @@ import { type LoadedPointData, loadPointsFromZst } from "./point-loader";
 const DEFAULT_INFO_URL = (import.meta.env.VITE_IMAGE_INFO_URL as string | undefined) ?? "";
 const S3_BASE_URL = (import.meta.env.VITE_S3_BASE_URL as string | undefined) ?? "";
 
+const DEMO_ZST_URL = "/sample/10000000cells.zst";
+
+const _demoTileCache = new Map<string, string>();
+let _demoCanvas: HTMLCanvasElement | null = null;
+let _demoCtx: CanvasRenderingContext2D | null = null;
+
+function buildDemoTileUrl(tier: number, x: number, y: number): string {
+  const key = `${tier}/${x}/${y}`;
+  const cached = _demoTileCache.get(key);
+  if (cached) return cached;
+
+  if (!_demoCanvas) {
+    _demoCanvas = document.createElement("canvas");
+    _demoCanvas.width = 256;
+    _demoCanvas.height = 256;
+    _demoCtx = _demoCanvas.getContext("2d")!;
+  }
+  const ctx = _demoCtx!;
+
+  const hue = (tier * 37 + (x * 7 + y * 13) * 11) % 360;
+  const l = 86 + (tier % 3) * 3;
+  ctx.fillStyle = `hsl(${hue},30%,${l}%)`;
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = "rgba(0,0,0,0.08)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0, 0, 256, 256);
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.font = "11px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`${tier}/${x},${y}`, 128, 128);
+
+  const url = _demoCanvas.toDataURL("image/png");
+  _demoTileCache.set(key, url);
+  return url;
+}
+
+function createDemoSource(): WsiImageSource {
+  return {
+    id: "demo",
+    name: "Demo (SS23-85517 C-erb_B2)",
+    width: 160000,
+    height: 80000,
+    mpp: 0.22,
+    tileSize: 256,
+    maxTierZoom: 10,
+    tilePath: "",
+    tileBaseUrl: "",
+    tileUrlBuilder: buildDemoTileUrl,
+    terms: [
+      { termId: "0", termName: "Background", termColor: "#888888" },
+      { termId: "1", termName: "Negative", termColor: "#4a90d9" },
+      { termId: "2", termName: "Positive", termColor: "#e74c3c" },
+      { termId: "3", termName: "Other", termColor: "#2ecc71" },
+    ],
+  };
+}
+
 interface PointStatus {
   loading: boolean;
   error: string;
@@ -157,6 +215,18 @@ export default function App() {
     setPointStatus(INITIAL_POINT_STATUS);
   }, []);
 
+  const loadDemo = useCallback((): void => {
+    setLoading(true);
+    setError("");
+    const demoSource = createDemoSource();
+    setSource(demoSource);
+    setPointZstUrl(DEMO_ZST_URL);
+    setViewState(null);
+    setFitNonce(prev => prev + 1);
+    resetFormState();
+    setLoading(false);
+  }, [resetFormState]);
+
   const loadImageInfo = useCallback(
     (url: string): void => {
       const trimmedUrl = String(url || "").trim();
@@ -202,8 +272,12 @@ export default function App() {
   useEffect(() => {
     if (initialLoadDoneRef.current) return;
     initialLoadDoneRef.current = true;
-    loadImageInfo(DEFAULT_INFO_URL);
-  }, [loadImageInfo]);
+    if (DEFAULT_INFO_URL) {
+      loadImageInfo(DEFAULT_INFO_URL);
+    } else {
+      loadDemo();
+    }
+  }, [loadImageInfo, loadDemo]);
 
   useEffect(() => {
     if (!pointZstUrl || !source) {
@@ -414,6 +488,9 @@ export default function App() {
           <input type="text" value={infoUrlInput} onChange={e => setInfoUrlInput(e.target.value)} placeholder="image info API URL" />
           <button type="button" disabled={loading} onClick={() => loadImageInfo(infoUrlInput)}>
             {loading ? "Loading..." : "Load"}
+          </button>
+          <button type="button" disabled={loading} onClick={loadDemo}>
+            Demo
           </button>
         </div>
 
