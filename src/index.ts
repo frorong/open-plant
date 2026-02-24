@@ -51,4 +51,15 @@ export {
   isSameViewState,
   toBearerToken,
 } from "./wsi/utils";
+export type {
+  ScheduledTile,
+  TileBounds,
+  TileSchedulerOptions,
+  TileSchedulerSnapshot,
+} from "./wsi/tile-scheduler";
+export { TileScheduler } from "./wsi/tile-scheduler";
+export type {
+  WsiTileRendererOptions,
+  WsiTileSchedulerConfig,
+} from "./wsi/wsi-tile-renderer";
 export { WsiTileRenderer } from "./wsi/wsi-tile-renderer";
