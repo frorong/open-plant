@@ -11,6 +11,7 @@ export function normalizeImageInfo(
 	const tileSize = Number(ims.tileSize ?? raw?.tileSize ?? 0);
 	const maxTierZoom = Number(ims.zoom ?? raw?.zoom ?? 0);
 	const tilePath = String(ims.path ?? raw?.path ?? "");
+	const mpp = Number(ims.mpp ?? raw?.mpp ?? 0);
 
 	if (!width || !height || !tileSize || !tilePath) {
 		throw new Error(
@@ -31,6 +32,7 @@ export function normalizeImageInfo(
 		name: raw?.name || "unknown",
 		width,
 		height,
+		mpp: Number.isFinite(mpp) && mpp > 0 ? mpp : undefined,
 		tileSize,
 		maxTierZoom: Number.isFinite(maxTierZoom)
 			? Math.max(0, Math.floor(maxTierZoom))

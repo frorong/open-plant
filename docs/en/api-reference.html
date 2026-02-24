@@ -64,7 +64,8 @@
                 <tr><td><code>roiPolygons</code></td><td><code>DrawCoordinate[][]</code></td><td>Simplified polygon-only ROI input.</td></tr>
                 <tr><td><code>clipPointsToRois</code></td><td><code>boolean</code></td><td>Render only points inside ROI polygons.</td></tr>
                 <tr><td><code>interactionLock</code></td><td><code>boolean</code></td><td>Locks pan/zoom interactions.</td></tr>
-                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular"</code></td><td>Active drawing tool.</td></tr>
+                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular" | "stamp-rectangle" | "stamp-circle"</code></td><td>Active draw tool. Stamp tools place fixed-size ROI on click. Legacy aliases (<code>stamp-rectangle-2mm2</code>, <code>stamp-circle-2mm2</code>, <code>stamp-circle-hpf-0.2mm2</code>) are still supported.</td></tr>
+                <tr><td><code>stampOptions</code></td><td><code>{ rectangleAreaMm2?: number; circleAreaMm2?: number }</code></td><td>Stamp size configuration from outside the library. Defaults are 2mm² for both tools.</td></tr>
                 <tr><td><code>regionStrokeStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Persisted region stroke override.</td></tr>
                 <tr><td><code>regionStrokeHoverStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override while hovering a region.</td></tr>
                 <tr><td><code>regionStrokeActiveStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override for active region (including shadow).</td></tr>
@@ -86,8 +87,9 @@
                 <tr><td><code>closeRing(coords)</code></td><td>Closes polygon by repeating first coordinate at the end.</td></tr>
                 <tr><td><code>createRectangle(start, end)</code></td><td>Generates closed rectangle coordinates.</td></tr>
                 <tr><td><code>createCircle(start, end)</code></td><td>Generates circle polygon coordinates.</td></tr>
-                <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code></td></tr>
+                <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code> where <code>tool</code> includes stamp tool names.</td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
+                <tr><td><code>StampOptions</code></td><td>Stamp area options (mm²) for rectangle/circle tools.</td></tr>
                 <tr><td><code>RegionStrokeStyle</code></td><td>Color/width/dash/cap/join + shadow (color/blur/offset) fields.</td></tr>
               </tbody>
             </table>
@@ -113,6 +115,7 @@
   name: string;
   width: number;
   height: number;
+  mpp?: number;
   tileSize: number;
   maxTierZoom: number;
   tilePath: string;
@@ -136,9 +139,16 @@ interface WsiPointData {
                 <tr><td><code>toTileUrl(source, tier, x, y)</code></td><td>Builds IMS tile URL.</td></tr>
                 <tr><td><code>buildTermPalette(terms)</code></td><td>Builds termId to palette mapping and RGBA texture.</td></tr>
                 <tr><td><code>filterPointDataByPolygons(data, polygons)</code></td><td>Filters points inside ROI polygons only.</td></tr>
+                <tr><td><code>calcScaleResolution(imageMpp, imageZoom, currentZoom)</code></td><td>Returns microns-per-screen-pixel for the current zoom.</td></tr>
+                <tr><td><code>calcScaleLength(imageMpp, imageZoom, currentZoom)</code></td><td>Formats a 100px scale-bar label in μm/mm.</td></tr>
                 <tr><td><code>toBearerToken(token)</code></td><td>Normalizes token to <code>Bearer ...</code> format.</td></tr>
               </tbody>
             </table>
+            <div class="callout">
+              <strong>What is mpp?</strong> <code>mpp</code> means microns per pixel at native pyramid level
+              (<code>maxTierZoom</code>). Stamp physical size depends on this value. If <code>mpp</code> is missing,
+              the renderer falls back to <code>1μm/px</code> assumption, so physical size is only approximate.
+            </div>
           </section>
 
           <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>

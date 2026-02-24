@@ -8,8 +8,21 @@ import {
 	useMemo,
 	useRef,
 } from "react";
+import { calcScaleResolution } from "../wsi/utils";
 
-export type DrawTool = "cursor" | "freehand" | "rectangle" | "circular";
+export type StampDrawTool =
+	| "stamp-rectangle"
+	| "stamp-circle"
+	| "stamp-rectangle-2mm2"
+	| "stamp-circle-2mm2"
+	| "stamp-circle-hpf-0.2mm2";
+
+export type DrawTool =
+	| "cursor"
+	| "freehand"
+	| "rectangle"
+	| "circular"
+	| StampDrawTool;
 
 export type DrawCoordinate = [number, number];
 
@@ -60,10 +73,18 @@ export interface DrawProjector {
 	getViewState?: () => { zoom: number };
 }
 
+export interface StampOptions {
+	rectangleAreaMm2?: number;
+	circleAreaMm2?: number;
+}
+
 export interface DrawLayerProps {
 	tool: DrawTool;
 	imageWidth: number;
 	imageHeight: number;
+	imageMpp?: number;
+	imageZoom?: number;
+	stampOptions?: StampOptions;
 	projectorRef: RefObject<DrawProjector | null>;
 	onDrawComplete?: (result: DrawResult) => void;
 	enabled?: boolean;
@@ -87,6 +108,7 @@ interface DrawSession {
 	start: DrawCoordinate | null;
 	current: DrawCoordinate | null;
 	points: DrawCoordinate[];
+	stampCenter: DrawCoordinate | null;
 }
 
 const DRAW_FILL = "rgba(255, 77, 79, 0.16)";
@@ -96,6 +118,10 @@ const CIRCLE_SIDES = 96;
 const MIN_AREA_PX = 1;
 const EMPTY_REGIONS: DrawRegion[] = [];
 const EMPTY_DASH: number[] = [];
+const MICRONS_PER_MM = 1000;
+const DEFAULT_STAMP_RECTANGLE_AREA_MM2 = 2;
+const DEFAULT_STAMP_CIRCLE_AREA_MM2 = 2;
+const LEGACY_HPF_CIRCLE_AREA_MM2 = 0.2;
 
 const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
 	color: "#ff4d4f",
@@ -126,6 +152,75 @@ const DEFAULT_REGION_LABEL_STYLE: RegionLabelStyle = {
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, value));
+}
+
+function isStampTool(tool: DrawTool): tool is StampDrawTool {
+	return (
+		tool === "stamp-rectangle" ||
+		tool === "stamp-circle" ||
+		tool === "stamp-rectangle-2mm2" ||
+		tool === "stamp-circle-2mm2" ||
+		tool === "stamp-circle-hpf-0.2mm2"
+	);
+}
+
+function clampPositiveOrFallback(
+	value: number | undefined,
+	fallback: number,
+): number {
+	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+		return fallback;
+	}
+	return value;
+}
+
+function resolveStampOptions(options: StampOptions | undefined): Required<StampOptions> {
+	return {
+		rectangleAreaMm2: clampPositiveOrFallback(
+			options?.rectangleAreaMm2,
+			DEFAULT_STAMP_RECTANGLE_AREA_MM2,
+		),
+		circleAreaMm2: clampPositiveOrFallback(
+			options?.circleAreaMm2,
+			DEFAULT_STAMP_CIRCLE_AREA_MM2,
+		),
+	};
+}
+
+function mm2ToUm2(areaMm2: number): number {
+	return areaMm2 * MICRONS_PER_MM * MICRONS_PER_MM;
+}
+
+function createSquareFromCenter(
+	center: DrawCoordinate | null,
+	halfLength: number,
+): DrawCoordinate[] {
+	if (!center || !Number.isFinite(halfLength) || halfLength <= 0) return [];
+	return closeRing([
+		[center[0] - halfLength, center[1] - halfLength],
+		[center[0] + halfLength, center[1] - halfLength],
+		[center[0] + halfLength, center[1] + halfLength],
+		[center[0] - halfLength, center[1] + halfLength],
+	]);
+}
+
+function createCircleFromCenter(
+	center: DrawCoordinate | null,
+	radius: number,
+	sides = CIRCLE_SIDES,
+): DrawCoordinate[] {
+	if (!center || !Number.isFinite(radius) || radius <= 0) return [];
+
+	const coords: DrawCoordinate[] = [];
+	for (let i = 0; i <= sides; i += 1) {
+		const t = (i / sides) * Math.PI * 2;
+		coords.push([
+			center[0] + Math.cos(t) * radius,
+			center[1] + Math.sin(t) * radius,
+		]);
+	}
+
+	return closeRing(coords);
 }
 
 export function closeRing(coords: DrawCoordinate[]): DrawCoordinate[] {
@@ -486,6 +581,9 @@ export function DrawLayer({
 	tool,
 	imageWidth,
 	imageHeight,
+	imageMpp,
+	imageZoom,
+	stampOptions,
 	projectorRef,
 	onDrawComplete,
 	enabled,
@@ -511,6 +609,7 @@ export function DrawLayer({
 		start: null,
 		current: null,
 		points: [],
+		stampCenter: null,
 	});
 
 	const active = enabled ?? tool !== "cursor";
@@ -543,6 +642,10 @@ export function DrawLayer({
 	const resolvedLabelStyle = useMemo(
 		() => resolveLabelStyle(regionLabelStyle),
 		[regionLabelStyle],
+	);
+	const resolvedStampOptions = useMemo(
+		() => resolveStampOptions(stampOptions),
+		[stampOptions],
 	);
 
 	const mergedStyle = useMemo<CSSProperties>(
@@ -594,8 +697,86 @@ export function DrawLayer({
 		[projectorRef],
 	);
 
+	const micronsToWorldPixels = useCallback(
+		(lengthUm: number): number => {
+			if (!Number.isFinite(lengthUm) || lengthUm <= 0) return 0;
+
+			// If mpp is missing, fall back to 1um/px assumption.
+			const mppValue =
+				typeof imageMpp === "number" && Number.isFinite(imageMpp) && imageMpp > 0
+					? imageMpp
+					: 1;
+			const imageZoomValue =
+				typeof imageZoom === "number" && Number.isFinite(imageZoom)
+					? imageZoom
+					: 0;
+			const viewZoomRaw = projectorRef.current?.getViewState?.().zoom;
+			const viewZoom =
+				typeof viewZoomRaw === "number" &&
+				Number.isFinite(viewZoomRaw) &&
+				viewZoomRaw > 0
+					? viewZoomRaw
+					: 1;
+			const continuousZoom = imageZoomValue + Math.log2(viewZoom);
+			const umPerScreenPixel = Math.max(
+				1e-9,
+				calcScaleResolution(mppValue, imageZoomValue, continuousZoom),
+			);
+			const screenPixels = lengthUm / umPerScreenPixel;
+			return screenPixels / viewZoom;
+		},
+		[imageMpp, imageZoom, projectorRef],
+	);
+
+	const buildStampCoords = useCallback(
+		(stampTool: StampDrawTool, center: DrawCoordinate | null): DrawCoordinate[] => {
+			if (!center) return [];
+
+			let areaMm2 = 0;
+			if (stampTool === "stamp-rectangle" || stampTool === "stamp-rectangle-2mm2") {
+				areaMm2 =
+					stampTool === "stamp-rectangle-2mm2"
+						? DEFAULT_STAMP_RECTANGLE_AREA_MM2
+						: resolvedStampOptions.rectangleAreaMm2;
+			} else if (
+				stampTool === "stamp-circle" ||
+				stampTool === "stamp-circle-2mm2" ||
+				stampTool === "stamp-circle-hpf-0.2mm2"
+			) {
+				areaMm2 =
+					stampTool === "stamp-circle-hpf-0.2mm2"
+						? LEGACY_HPF_CIRCLE_AREA_MM2
+						: stampTool === "stamp-circle-2mm2"
+							? DEFAULT_STAMP_CIRCLE_AREA_MM2
+							: resolvedStampOptions.circleAreaMm2;
+			}
+			if (!Number.isFinite(areaMm2) || areaMm2 <= 0) return [];
+
+			const areaUm2 = mm2ToUm2(areaMm2);
+			let coords: DrawCoordinate[] = [];
+			if (stampTool === "stamp-rectangle" || stampTool === "stamp-rectangle-2mm2") {
+				const halfLength = micronsToWorldPixels(Math.sqrt(areaUm2) * 0.5);
+				coords = createSquareFromCenter(center, halfLength);
+			} else if (
+				stampTool === "stamp-circle" ||
+				stampTool === "stamp-circle-2mm2" ||
+				stampTool === "stamp-circle-hpf-0.2mm2"
+			) {
+				const radius = micronsToWorldPixels(Math.sqrt(areaUm2 / Math.PI));
+				coords = createCircleFromCenter(center, radius);
+			}
+
+			if (!coords.length) return [];
+			return coords.map((point) => clampWorld(point, imageWidth, imageHeight));
+		},
+		[micronsToWorldPixels, imageWidth, imageHeight, resolvedStampOptions],
+	);
+
 	const buildPreviewCoords = useCallback((): DrawCoordinate[] => {
 		const session = sessionRef.current;
+		if (isStampTool(tool)) {
+			return buildStampCoords(tool, session.stampCenter);
+		}
 		if (!session.isDrawing) return [];
 
 		if (tool === "freehand") {
@@ -609,7 +790,7 @@ export function DrawLayer({
 		}
 
 		return [];
-	}, [tool]);
+	}, [tool, buildStampCoords]);
 
 	const drawOverlay = useCallback(() => {
 		resizeCanvas();
@@ -743,6 +924,7 @@ export function DrawLayer({
 		session.start = null;
 		session.current = null;
 		session.points = [];
+		session.stampCenter = null;
 	}, []);
 
 	const toWorld = useCallback(
@@ -795,6 +977,20 @@ export function DrawLayer({
 		requestDraw();
 	}, [tool, onDrawComplete, resetSession, requestDraw]);
 
+	const handleStampAt = useCallback(
+		(stampTool: StampDrawTool, center: DrawCoordinate): void => {
+			const coordinates = buildStampCoords(stampTool, center);
+			if (!isValidPolygon(coordinates) || !onDrawComplete) return;
+			onDrawComplete({
+				tool: stampTool,
+				coordinates,
+				bbox: computeBounds(coordinates),
+				areaPx: polygonArea(coordinates),
+			});
+		},
+		[buildStampCoords, onDrawComplete],
+	);
+
 	const handlePointerDown = useCallback(
 		(event: ReactPointerEvent<HTMLCanvasElement>) => {
 			if (!active) return;
@@ -806,6 +1002,15 @@ export function DrawLayer({
 
 			event.preventDefault();
 			event.stopPropagation();
+
+			if (isStampTool(tool)) {
+				const session = sessionRef.current;
+				session.stampCenter = world;
+				handleStampAt(tool, world);
+				requestDraw();
+				return;
+			}
+
 			const canvas = canvasRef.current;
 			if (canvas) {
 				canvas.setPointerCapture(event.pointerId);
@@ -819,20 +1024,30 @@ export function DrawLayer({
 			session.points = tool === "freehand" ? [world] : [];
 			requestDraw();
 		},
-		[active, tool, toWorld, requestDraw],
+		[active, tool, toWorld, handleStampAt, requestDraw],
 	);
 
 	const handlePointerMove = useCallback(
 		(event: ReactPointerEvent<HTMLCanvasElement>) => {
 			if (!active) return;
+			if (tool === "cursor") return;
+
+			const world = toWorld(event);
+			if (!world) return;
+
+			if (isStampTool(tool)) {
+				const session = sessionRef.current;
+				session.stampCenter = world;
+				event.preventDefault();
+				event.stopPropagation();
+				requestDraw();
+				return;
+			}
 
 			const session = sessionRef.current;
 			if (!session.isDrawing || session.pointerId !== event.pointerId) {
 				return;
 			}
-
-			const world = toWorld(event);
-			if (!world) return;
 			event.preventDefault();
 			event.stopPropagation();
 
@@ -881,6 +1096,14 @@ export function DrawLayer({
 		},
 		[finishSession],
 	);
+
+	const handlePointerLeave = useCallback(() => {
+		if (!isStampTool(tool)) return;
+		const session = sessionRef.current;
+		if (!session.stampCenter) return;
+		session.stampCenter = null;
+		requestDraw();
+	}, [tool, requestDraw]);
 
 	useEffect(() => {
 		resizeCanvas();
@@ -954,6 +1177,7 @@ export function DrawLayer({
 			onPointerMove={handlePointerMove}
 			onPointerUp={handlePointerUp}
 			onPointerCancel={handlePointerUp}
+			onPointerLeave={handlePointerLeave}
 			onContextMenu={(event) => {
 				if (active) event.preventDefault();
 			}}

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ROI Draw | Open Plant WSI Docs</title>
-    <meta name="description" content="freehand/rectangle/circular ROI 드로잉 가이드" />
+    <meta name="description" content="freehand/rectangle/circular + stamp ROI 드로잉 가이드" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -35,6 +35,7 @@
           <h2>ROI 그리기</h2>
           <a href="#toolbar">툴바 상태 모델</a>
           <a href="#draw-complete">결과 수신</a>
+          <a href="#stamp-size">Stamp 크기</a>
           <a href="#persist">영역 유지/라벨</a>
           <a href="#style">스타일 커스터마이징</a>
           <a href="#clip">ROI 기반 포인트 필터</a>
@@ -43,11 +44,11 @@
         <article class="content">
           <section class="hero reveal">
             <div class="kicker">Interactive Region</div>
-            <h1>Freehand / Rectangle / Circular 드로잉</h1>
+            <h1>Draw + Stamp ROI 툴</h1>
             <p>
               `drawTool`이 `cursor`가 아닌 동안 `DrawLayer`가 활성화되어
               pan/zoom과 충돌 없이 ROI를 생성합니다. 결과는 닫힌 polygon 좌표로
-              반환됩니다.
+              반환됩니다. stamp 툴은 클릭 한 번으로 물리 크기 ROI(2mm² 사각형/원, 0.2mm² HPF 원)를 생성합니다.
             </p>
           </section>
 
@@ -62,6 +63,9 @@ const [drawTool, setDrawTool] = useState("cursor");
   &lt;button onClick={() =&gt; setDrawTool("freehand")}&gt;Freehand&lt;/button&gt;
   &lt;button onClick={() =&gt; setDrawTool("rectangle")}&gt;Rectangle&lt;/button&gt;
   &lt;button onClick={() =&gt; setDrawTool("circular")}&gt;Circular&lt;/button&gt;
+  &lt;button onClick={() =&gt; setDrawTool("stamp-rectangle")}&gt;Stamp □&lt;/button&gt;
+  &lt;button onClick={() =&gt; setDrawTool("stamp-circle")}&gt;Stamp ○&lt;/button&gt;
+  &lt;button onClick={() =&gt; setCircleAreaMm2(0.2)}&gt;HPF 0.2mm²&lt;/button&gt;
   &lt;button onClick={() =&gt; setDrawTool("cursor")}&gt;Cursor&lt;/button&gt;
 &lt;/div&gt;
 
@@ -75,7 +79,7 @@ const [drawTool, setDrawTool] = useState("cursor");
           <section class="panel reveal" id="draw-complete">
             <h2>2. Draw 완료 결과</h2>
             <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
-  console.log(result.tool); // freehand | rectangle | circular
+  console.log(result.tool); // freehand | rectangle | circular | stamp-...
   console.log(result.coordinates); // closed ring
   console.log(result.bbox); // [minX, minY, maxX, maxY]
   console.log(result.areaPx); // polygon area
@@ -87,12 +91,31 @@ const [drawTool, setDrawTool] = useState("cursor");
   onDrawComplete={onDrawComplete}
 /&gt;</code></pre>
             <div class="callout">
-              드로잉 중 ESC를 누르면 현재 세션이 취소됩니다.
+              드로잉 중 ESC를 누르면 현재 세션이 취소됩니다. stamp 툴은 클릭 즉시 완료됩니다.
             </div>
           </section>
 
+          <section class="panel reveal" id="stamp-size">
+            <h2>3. Stamp 크기 prop 제어</h2>
+            <pre><code class="language-tsx">const [rectAreaMm2, setRectAreaMm2] = useState(2);
+const [circleAreaMm2, setCircleAreaMm2] = useState(2);
+
+&lt;WsiViewerCanvas
+  source={source}
+  drawTool={drawTool}
+  stampOptions={{
+    rectangleAreaMm2: rectAreaMm2,
+    circleAreaMm2: circleAreaMm2,
+  }}
+/&gt;</code></pre>
+            <p>
+              <code>mpp</code>는 네이티브 레벨(<code>maxTierZoom</code>)에서의 픽셀당 마이크론(μm/px)입니다.
+              stamp 면적(mm²)은 <code>mpp</code>와 현재 줌으로 환산되어 줌이 바뀌어도 물리 크기가 유지됩니다.
+            </p>
+          </section>
+
           <section class="panel reveal" id="persist">
-            <h2>3. ROI 영속화와 라벨 표시</h2>
+            <h2>4. ROI 영속화와 라벨 표시</h2>
             <pre><code class="language-tsx">const [regions, setRegions] = useState([]);
 const [labelInput, setLabelInput] = useState("ROI");
 
@@ -121,7 +144,7 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="style">
-            <h2>4. 라벨/스트로크 스타일 외부 주입</h2>
+            <h2>5. 라벨/스트로크 스타일 외부 주입</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   roiRegions={regions}
@@ -170,7 +193,7 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="clip">
-            <h2>5. Draw 영역에만 셀 렌더</h2>
+            <h2>6. Draw 영역에만 셀 렌더</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}

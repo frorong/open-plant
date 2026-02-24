@@ -9,6 +9,7 @@ export interface WsiImageSource {
 	name: string;
 	width: number;
 	height: number;
+	mpp?: number;
 	tileSize: number;
 	maxTierZoom: number;
 	tilePath: string;

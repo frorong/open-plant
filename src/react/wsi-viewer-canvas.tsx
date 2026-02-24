@@ -21,6 +21,7 @@ import type {
 	DrawCoordinate,
 	DrawResult,
 	DrawTool,
+	StampOptions,
 	RegionLabelStyle,
 	RegionStrokeStyle,
 } from "./draw-layer";
@@ -104,6 +105,7 @@ export interface WsiViewerCanvasProps {
 	clipPointsToRois?: boolean;
 	interactionLock?: boolean;
 	drawTool?: DrawTool;
+	stampOptions?: StampOptions;
 	regionStrokeStyle?: Partial<RegionStrokeStyle>;
 	regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
 	regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
@@ -132,6 +134,7 @@ export function WsiViewerCanvas({
 	clipPointsToRois = false,
 	interactionLock = false,
 	drawTool = "cursor",
+	stampOptions,
 	regionStrokeStyle,
 	regionStrokeHoverStyle,
 	regionStrokeActiveStyle,
@@ -367,9 +370,10 @@ export function WsiViewerCanvas({
 				return;
 			}
 
-			let nextActive: string | number | null = null;
-			if (activeRegionId === null) {
-				nextActive = hit.regionId;
+			let nextActive: string | number | null = hit.regionId;
+			if (activeRegionId !== null) {
+				nextActive =
+					String(activeRegionId) === String(hit.regionId) ? activeRegionId : null;
 			}
 			commitActiveRegion(nextActive);
 			onRegionClick?.({
@@ -486,6 +490,9 @@ export function WsiViewerCanvas({
 					enabled={drawTool !== "cursor"}
 					imageWidth={source.width}
 					imageHeight={source.height}
+					imageMpp={source.mpp}
+					imageZoom={source.maxTierZoom}
+					stampOptions={stampOptions}
 					projectorRef={rendererRef}
 					viewStateSignal={viewState}
 					persistedRegions={effectiveRoiRegions}
@@ -516,8 +523,8 @@ export function WsiViewerCanvas({
 							style={{
 								position: "absolute",
 								zIndex: 6,
-								right: overviewMargin + 8,
-								bottom: overviewMargin + overviewHeight - 28,
+								right: overviewMargin,
+								bottom: overviewMargin + overviewHeight + 8,
 								width: 20,
 								height: 20,
 								borderRadius: 999,
@@ -541,8 +548,8 @@ export function WsiViewerCanvas({
 						style={{
 							position: "absolute",
 							zIndex: 6,
-							right: overviewMargin + 4,
-							bottom: overviewMargin + overviewHeight - 30,
+							right: overviewMargin,
+							bottom: overviewMargin,
 							height: 24,
 							minWidth: 40,
 							borderRadius: 999,
@@ -555,7 +562,7 @@ export function WsiViewerCanvas({
 							padding: "0 8px",
 						}}
 					>
-						ON
+						Map
 					</button>
 				)
 			) : null}

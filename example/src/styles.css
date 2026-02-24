@@ -82,6 +82,7 @@ button:disabled {
 .tool-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin-left: 4px;
   padding-left: 10px;
@@ -92,6 +93,18 @@ button:disabled {
   min-width: 180px;
   width: 220px;
   flex: 0 0 auto;
+}
+
+.tool-group .stamp-input {
+  min-width: 84px;
+  width: 92px;
+  flex: 0 0 auto;
+}
+
+.tool-group .stamp-unit {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 4px;
 }
 
 button.active {

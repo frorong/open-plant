@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ROI Draw | Open Plant WSI Docs</title>
-    <meta name="description" content="Freehand, rectangle, and circular ROI drawing" />
+    <meta name="description" content="Freehand/rectangle/circular draw and fixed-size stamp ROI tools" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -35,6 +35,7 @@
           <h2>ROI Draw</h2>
           <a href="#toolbar">Toolbar model</a>
           <a href="#complete">Draw completion</a>
+          <a href="#stamp-size">Stamp sizing</a>
           <a href="#persist">Persisted regions</a>
           <a href="#style">Custom styles</a>
           <a href="#clip">Point clipping</a>
@@ -43,10 +44,11 @@
         <article class="content">
           <section class="hero reveal">
             <div class="kicker">Interactive Region</div>
-            <h1>Freehand / Rectangle / Circular ROI</h1>
+            <h1>Draw + Stamp ROI Tools</h1>
             <p>
               When `drawTool` is not `cursor`, `DrawLayer` captures pointer events and returns
-              closed polygon coordinates through `onDrawComplete`.
+              closed polygon coordinates through `onDrawComplete`. Stamp tools place physical-size
+              ROI in one click (2mm² square/circle, 0.2mm² HPF circle).
             </p>
           </section>
 
@@ -57,6 +59,9 @@
 &lt;button onClick={() =&gt; setDrawTool("freehand")}&gt;Freehand&lt;/button&gt;
 &lt;button onClick={() =&gt; setDrawTool("rectangle")}&gt;Rectangle&lt;/button&gt;
 &lt;button onClick={() =&gt; setDrawTool("circular")}&gt;Circular&lt;/button&gt;
+&lt;button onClick={() =&gt; setDrawTool("stamp-rectangle")}&gt;Stamp □&lt;/button&gt;
+&lt;button onClick={() =&gt; setDrawTool("stamp-circle")}&gt;Stamp ○&lt;/button&gt;
+&lt;button onClick={() =&gt; setCircleAreaMm2(0.2)}&gt;HPF 0.2mm²&lt;/button&gt;
 &lt;button onClick={() =&gt; setDrawTool("cursor")}&gt;Cursor&lt;/button&gt;
 
 &lt;WsiViewerCanvas
@@ -69,16 +74,35 @@
           <section class="panel reveal" id="complete">
             <h2>2. Completion payload</h2>
             <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
-  console.log(result.tool);        // freehand | rectangle | circular
+  console.log(result.tool);        // freehand | rectangle | circular | stamp-...
   console.log(result.coordinates); // closed ring
   console.log(result.bbox);        // [minX, minY, maxX, maxY]
   console.log(result.areaPx);      // polygon area
 };</code></pre>
-            <div class="callout">Press <code>Esc</code> to cancel current drawing session.</div>
+            <div class="callout">Press <code>Esc</code> to cancel an active drawing gesture. Stamp tools complete on click.</div>
+          </section>
+
+          <section class="panel reveal" id="stamp-size">
+            <h2>3. Stamp size props (outside control)</h2>
+            <pre><code class="language-tsx">const [rectAreaMm2, setRectAreaMm2] = useState(2);
+const [circleAreaMm2, setCircleAreaMm2] = useState(2);
+
+&lt;WsiViewerCanvas
+  source={source}
+  drawTool={drawTool}
+  stampOptions={{
+    rectangleAreaMm2: rectAreaMm2,
+    circleAreaMm2: circleAreaMm2,
+  }}
+/&gt;</code></pre>
+            <p>
+              <code>mpp</code> means <em>microns per pixel</em> at native level (<code>maxTierZoom</code>).
+              Stamp area in mm² is converted using <code>mpp</code> plus current zoom, so physical size remains consistent while zooming.
+            </p>
           </section>
 
           <section class="panel reveal" id="persist">
-            <h2>3. Persist regions and labels</h2>
+            <h2>4. Persist regions and labels</h2>
             <pre><code class="language-tsx">const [regions, setRegions] = useState([]);
 
 const handleDrawComplete = (result) =&gt; {
@@ -103,7 +127,7 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="style">
-            <h2>4. External label and stroke styling</h2>
+            <h2>5. External label and stroke styling</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   roiRegions={regions}
@@ -152,7 +176,7 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="clip">
-            <h2>5. Render cells only inside drawn regions</h2>
+            <h2>6. Render cells only inside drawn regions</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}

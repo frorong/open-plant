@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	buildTermPalette,
+	calcScaleLength,
 	clamp,
 	isSameViewState,
 	normalizeImageInfo,
@@ -105,6 +106,8 @@ export default function App() {
 	});
 	const [pointPayload, setPointPayload] = useState(null);
 	const [drawTool, setDrawTool] = useState("cursor");
+	const [stampRectangleAreaMm2, setStampRectangleAreaMm2] = useState(2);
+	const [stampCircleAreaMm2, setStampCircleAreaMm2] = useState(2);
 	const [showOverviewMap, setShowOverviewMap] = useState(true);
 	const [lastDraw, setLastDraw] = useState(null);
 	const [roiRegions, setRoiRegions] = useState([]);
@@ -307,6 +310,13 @@ export default function App() {
 		return `${source.name} | ${source.width} x ${source.height} | tile ${source.tileSize} | max tier ${source.maxTierZoom}`;
 	}, [source]);
 
+	const scaleSummary = useMemo(() => {
+		if (!source) return "-";
+		const zoom = Math.max(1e-6, viewState?.zoom || 1);
+		const currentZoom = source.maxTierZoom + Math.log2(zoom);
+		return calcScaleLength(source.mpp || 0, source.maxTierZoom, currentZoom);
+	}, [source, viewState?.zoom]);
+
 	const regionStrokeStyle = useMemo(
 		() => ({
 			color: "#ffd166",
@@ -488,6 +498,70 @@ export default function App() {
 						>
 							Circular
 						</button>
+						<button
+							type="button"
+							className={drawTool === "stamp-rectangle" ? "active" : ""}
+							disabled={!source}
+							onClick={() => setDrawTool("stamp-rectangle")}
+						>
+							Stamp □
+						</button>
+						<button
+							type="button"
+							className={drawTool === "stamp-circle" ? "active" : ""}
+							disabled={!source}
+							onClick={() => setDrawTool("stamp-circle")}
+						>
+							Stamp ○
+						</button>
+						<input
+							className="stamp-input"
+							type="number"
+							min={0.001}
+							step={0.1}
+							value={stampRectangleAreaMm2}
+							onChange={(event) => {
+								const next = Number(event.target.value);
+								if (Number.isFinite(next) && next > 0) {
+									setStampRectangleAreaMm2(next);
+								}
+							}}
+							aria-label="Rectangle stamp area mm2"
+							title="Rectangle stamp area (mm²)"
+						/>
+						<span className="stamp-unit">Rect mm²</span>
+						<input
+							className="stamp-input"
+							type="number"
+							min={0.001}
+							step={0.1}
+							value={stampCircleAreaMm2}
+							onChange={(event) => {
+								const next = Number(event.target.value);
+								if (Number.isFinite(next) && next > 0) {
+									setStampCircleAreaMm2(next);
+								}
+							}}
+							aria-label="Circle stamp area mm2"
+							title="Circle stamp area (mm²)"
+						/>
+						<span className="stamp-unit">Circle mm²</span>
+						<button
+							type="button"
+							className={
+								drawTool === "stamp-circle" &&
+								Math.abs(stampCircleAreaMm2 - 0.2) < 1e-9
+									? "active"
+									: ""
+							}
+							disabled={!source}
+							onClick={() => {
+								setStampCircleAreaMm2(0.2);
+								setDrawTool("stamp-circle");
+							}}
+						>
+							HPF 0.2mm²
+						</button>
 						<input
 							className="label-input"
 							type="text"
@@ -510,7 +584,7 @@ export default function App() {
 					</div>
 
 					<div className={`status ${error ? "error" : ""}`}>
-						{error || imageSummary}
+						{error || `${imageSummary} | scale ${scaleSummary}`}
 					</div>
 
 					<div className={`status ${pointStatus.error ? "error" : ""}`}>
@@ -525,34 +599,39 @@ export default function App() {
 
 			<div className="viewer-wrap">
 				{source ? (
-						<WsiViewerCanvas
-							className="viewer-canvas"
-							source={source}
-							viewState={viewState}
-							fitNonce={fitNonce}
-							authToken={bearerToken}
-							pointData={pointPayload}
-							pointPalette={termPalette.colors}
-							roiRegions={roiRegions}
-							clipPointsToRois
+					<WsiViewerCanvas
+						className="viewer-canvas"
+						source={source}
+						viewState={viewState}
+						fitNonce={fitNonce}
+						authToken={bearerToken}
+						pointData={pointPayload}
+						pointPalette={termPalette.colors}
+						roiRegions={roiRegions}
+						clipPointsToRois
 							interactionLock={drawTool !== "cursor"}
-								drawTool={drawTool}
-								regionStrokeStyle={regionStrokeStyle}
-								regionStrokeHoverStyle={regionStrokeHoverStyle}
-								regionStrokeActiveStyle={regionStrokeActiveStyle}
-								regionLabelStyle={regionLabelStyle}
-								onRegionHover={handleRegionHover}
-								onRegionClick={handleRegionClick}
-								onActiveRegionChange={handleActiveRegionChange}
-								onDrawComplete={handleDrawComplete}
-								onViewStateChange={handleViewStateChange}
-								onStats={setStats}
-							showOverviewMap={showOverviewMap}
-							overviewMapOptions={{
-								width: 220,
-								height: 140,
+							drawTool={drawTool}
+							stampOptions={{
+								rectangleAreaMm2: stampRectangleAreaMm2,
+								circleAreaMm2: stampCircleAreaMm2,
 							}}
-						/>
+							regionStrokeStyle={regionStrokeStyle}
+						regionStrokeHoverStyle={regionStrokeHoverStyle}
+						regionStrokeActiveStyle={regionStrokeActiveStyle}
+						regionLabelStyle={regionLabelStyle}
+						onRegionHover={handleRegionHover}
+						onRegionClick={handleRegionClick}
+						onActiveRegionChange={handleActiveRegionChange}
+						onDrawComplete={handleDrawComplete}
+						onViewStateChange={handleViewStateChange}
+						onStats={setStats}
+						showOverviewMap={showOverviewMap}
+						overviewMapOptions={{
+							width: 220,
+							height: 140,
+							margin: 24,
+						}}
+					/>
 				) : (
 					<div className="empty">
 						토큰 입력 후 Load를 누르면 뷰어가 표시됩니다.
@@ -571,9 +650,12 @@ export default function App() {
 					{Math.round(viewState?.offsetX || 0)},{" "}
 					{Math.round(viewState?.offsetY || 0)}) | rois {roiRegions.length}
 					<br />
-					hover {hoveredRegionId ?? "-"} | active {activeRegionId ?? "-"} | click{" "}
-					{clickedRegionId ?? "-"}
-					{lastDraw ? (
+						hover {hoveredRegionId ?? "-"} | active {activeRegionId ?? "-"} | click{" "}
+						{clickedRegionId ?? "-"}
+						<br />
+						stamp rect {stampRectangleAreaMm2}mm² | stamp circle {stampCircleAreaMm2}
+						mm²
+						{lastDraw ? (
 						<>
 							<br />
 							last draw {lastDraw.tool} | points{" "}

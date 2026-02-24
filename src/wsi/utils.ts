@@ -5,6 +5,37 @@ export function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, value));
 }
 
+export function calcScaleResolution(
+	imageMpp: number,
+	imageZoom: number,
+	currentZoom: number,
+): number {
+	const mpp = Number(imageMpp);
+	const z0 = Number(imageZoom);
+	const z1 = Number(currentZoom);
+	if (!Number.isFinite(mpp) || mpp <= 0) return 1;
+	if (!Number.isFinite(z0) || !Number.isFinite(z1)) return mpp;
+	return Math.pow(2, z0 - z1) * mpp;
+}
+
+export function calcScaleLength(
+	imageMpp: number,
+	imageZoom: number,
+	currentZoom: number,
+): string {
+	const resolution = calcScaleResolution(imageMpp, imageZoom, currentZoom);
+	let length = 100 * resolution;
+	if (Number(imageMpp)) {
+		let unit = "μm";
+		if (length > 1000) {
+			length /= 1000;
+			unit = "mm";
+		}
+		return `${length.toPrecision(3)} ${unit}`;
+	}
+	return `${Math.round(length * 1000) / 1000} pixels`;
+}
+
 export function isSameViewState(
 	a: Partial<WsiViewState> | null | undefined,
 	b: Partial<WsiViewState> | null | undefined,

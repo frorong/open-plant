@@ -69,7 +69,8 @@
                 <tr><td><code>roiPolygons</code></td><td><code>DrawCoordinate[][]</code></td><td>간소화 ROI 입력.</td></tr>
                 <tr><td><code>clipPointsToRois</code></td><td><code>boolean</code></td><td>ROI 외부 포인트 제거.</td></tr>
                 <tr><td><code>interactionLock</code></td><td><code>boolean</code></td><td>캔버스 pan/zoom 잠금.</td></tr>
-                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular"</code></td><td>드로우 툴 모드.</td></tr>
+                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular" | "stamp-rectangle" | "stamp-circle"</code></td><td>드로우 툴 모드. stamp 툴은 클릭 즉시 고정 크기 ROI를 생성합니다. 레거시 별칭(<code>stamp-rectangle-2mm2</code>, <code>stamp-circle-2mm2</code>, <code>stamp-circle-hpf-0.2mm2</code>)도 계속 지원됩니다.</td></tr>
+                <tr><td><code>stampOptions</code></td><td><code>{ rectangleAreaMm2?: number; circleAreaMm2?: number }</code></td><td>라이브러리 외부에서 스탬프 크기(mm²)를 제어합니다. 기본값은 둘 다 2mm²입니다.</td></tr>
                 <tr><td><code>regionStrokeStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI stroke 스타일 override.</td></tr>
                 <tr><td><code>regionStrokeHoverStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI hover 시 stroke 스타일 override.</td></tr>
                 <tr><td><code>regionStrokeActiveStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI active 시 stroke 스타일 override (shadow 포함).</td></tr>
@@ -93,8 +94,9 @@
                 <tr><td><code>closeRing(coords)</code></td><td>첫점/끝점을 닫아 polygon ring 생성.</td></tr>
                 <tr><td><code>createRectangle(start, end)</code></td><td>사각형 폐곡선 좌표 생성.</td></tr>
                 <tr><td><code>createCircle(start, end)</code></td><td>원형 다각형 좌표 생성.</td></tr>
-                <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code></td></tr>
+                <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code> (`tool`은 stamp 툴 이름 포함)</td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
+                <tr><td><code>StampOptions</code></td><td>사각형/원 스탬프 면적(mm²) 옵션.</td></tr>
                 <tr><td><code>RegionStrokeStyle</code></td><td>색상/두께/점선/캡/조인 + shadow(색상/블러/오프셋) 제어.</td></tr>
                 <tr><td><code>RegionLabelStyle</code></td><td>폰트/배경/패딩/오프셋/라운드 제어.</td></tr>
               </tbody>
@@ -123,6 +125,7 @@
   name: string;
   width: number;
   height: number;
+  mpp?: number;
   tileSize: number;
   maxTierZoom: number;
   tilePath: string;
@@ -148,9 +151,16 @@ interface WsiPointData {
                 <tr><td><code>toTileUrl(source, tier, x, y)</code></td><td>IMS 타일 URL 생성.</td></tr>
                 <tr><td><code>buildTermPalette(terms)</code></td><td>termId → palette index 매핑 + RGBA 팔레트 생성.</td></tr>
                 <tr><td><code>filterPointDataByPolygons(data, polygons)</code></td><td>ROI 다각형 기반 포인트 필터링.</td></tr>
+                <tr><td><code>calcScaleResolution(imageMpp, imageZoom, currentZoom)</code></td><td>현재 줌 기준 μm/스크린픽셀 해상도 계산.</td></tr>
+                <tr><td><code>calcScaleLength(imageMpp, imageZoom, currentZoom)</code></td><td>100px 스케일바 길이를 μm/mm 문자열로 포맷.</td></tr>
                 <tr><td><code>toBearerToken(token)</code></td><td>`Bearer ...` 정규화.</td></tr>
               </tbody>
             </table>
+            <div class="callout">
+              <strong>mpp란?</strong> <code>mpp</code>는 네이티브 피라미드 레벨(<code>maxTierZoom</code>)에서의
+              <em>microns per pixel</em>(픽셀당 마이크론)입니다. 스탬프 물리 크기(mm²)는 이 값으로 환산됩니다.
+              <code>mpp</code>가 없으면 <code>1μm/px</code> 가정으로 계산되어 물리 크기는 근사치가 됩니다.
+            </div>
           </section>
 
           <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
