@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contributing | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI 기여 워크플로우와 품질 게이트" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="contributing">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="migration-guide.html" data-nav="migration-guide">마이그레이션</a>
+          <a href="contributing.html" data-nav="contributing">기여 가이드</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/contributing.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>기여</h2>
+          <a href="#scope">기여 범위</a>
+          <a href="#setup">로컬 실행</a>
+          <a href="#workflow">브랜치 + PR 흐름</a>
+          <a href="#quality">품질 규칙</a>
+          <a href="#performance">성능 가드레일</a>
+          <a href="#release-gate">릴리스 게이트</a>
+          <a href="#checklist">PR 체크리스트</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Open Source Workflow</div>
+            <h1>기여 가이드</h1>
+            <p>
+              코드, 문서, 테스트 기여를 위한 실무 흐름입니다.
+              Markdown 원본은 저장소 루트 <code>CONTRIBUTING.md</code>를 참고하세요.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="scope">
+            <h2>1. 기여 범위</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>런타임:</strong> tile/point/draw 렌더 정확성 및 성능 개선.</div>
+              <div class="flow-step"><strong>안정성:</strong> 타입 안전성, API 일관성, 마이그레이션 가능성 유지.</div>
+              <div class="flow-step"><strong>DX:</strong> 문서, 테스트, 재현 가능한 벤치마크 개선.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="setup">
+            <h2>2. 로컬 실행</h2>
+            <pre><code class="language-bash">npm install
+npm run dev:example
+# http://localhost:5174</code></pre>
+            <div class="callout">
+              큰 변경을 시작하기 전에 <code>engine-roadmap.md</code> 우선 확인.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="workflow">
+            <h2>3. 브랜치 + PR 흐름</h2>
+            <ol>
+              <li><code>main</code>에서 기능 브랜치를 생성합니다.</li>
+              <li>커밋은 작고 목적이 명확하게 유지합니다.</li>
+              <li>로컬에서 release gate를 먼저 통과시킵니다.</li>
+              <li>API/동작 변경 시 EN/KO 문서를 함께 갱신합니다.</li>
+              <li>PR에 문제/접근/성능 변화를 명시합니다.</li>
+            </ol>
+            <pre><code class="language-bash">npm run release:gate</code></pre>
+          </section>
+
+          <section class="panel reveal" id="quality">
+            <h2>4. 품질 규칙</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>타입 우선:</strong> strict TypeScript 유지, 엔진 경로에 <code>@ts-nocheck</code> 금지.</div>
+              <div class="flow-step"><strong>무통보 변경 금지:</strong> 사용자 영향 변경은 API 문서/마이그레이션 가이드 동시 갱신.</div>
+              <div class="flow-step"><strong>런타임 경량화:</strong> 핫패스에서 불필요 의존성 추가 금지.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="performance">
+            <h2>5. 성능 가드레일</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>TypedArray 우선:</strong> 객체 할당보다 버퍼 재사용.</div>
+              <div class="flow-step"><strong>수치 첨부:</strong> 렌더/클립 변경 시 시간 측정값 포함.</div>
+              <div class="flow-step"><strong>가정 명시:</strong> 데이터셋 크기/clip 모드를 함께 기록.</div>
+            </div>
+            <pre><code class="language-bash">npm run test:perf</code></pre>
+          </section>
+
+          <section class="panel reveal" id="release-gate">
+            <h2>6. 릴리스 게이트</h2>
+            <p>배포 전 아래 검증이 반드시 통과해야 합니다.</p>
+            <pre><code class="language-bash">npm run release:gate
+# typecheck + test:ws9 + build:lib</code></pre>
+            <p>CI 워크플로우: <code>.github/workflows/release-gate.yml</code></p>
+          </section>
+
+          <section class="panel reveal" id="checklist">
+            <h2>7. PR 체크리스트</h2>
+            <ul>
+              <li>[ ] Typecheck 통과</li>
+              <li>[ ] 테스트 통과(<code>test:ws9</code>)</li>
+              <li>[ ] 라이브러리 빌드 통과</li>
+              <li>[ ] EN/KO 문서 갱신(필요 시)</li>
+              <li>[ ] 브레이킹 변경 시 migration 노트 갱신</li>
+            </ul>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

@@ -8,6 +8,7 @@
 - `en/`: English documentation
 - `ko/`: 한국어 문서
 - `en/migration-guide.html`, `ko/migration-guide.html`: API 수명주기/마이그레이션 기준
+- `en/contributing.html`, `ko/contributing.html`: 오픈소스 기여 워크플로우/품질 게이트
 - `assets/site.css`: 공통 스타일
 - `assets/site.js`: 공통 스크립트
 

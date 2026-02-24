@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contributing | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI contribution workflow and quality gates" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="contributing">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="migration-guide.html" data-nav="migration-guide">Migration</a>
+          <a href="contributing.html" data-nav="contributing">Contributing</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/contributing.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Contributing</h2>
+          <a href="#scope">Scope</a>
+          <a href="#setup">Local setup</a>
+          <a href="#workflow">Branch + PR flow</a>
+          <a href="#quality">Quality rules</a>
+          <a href="#performance">Performance guardrails</a>
+          <a href="#release-gate">Release gate</a>
+          <a href="#checklist">PR checklist</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Open Source Workflow</div>
+            <h1>Contribution Guide</h1>
+            <p>
+              This page is the practical workflow for contributing code, docs, and tests.
+              For markdown version, see repository root <code>CONTRIBUTING.md</code>.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="scope">
+            <h2>1. Scope</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Runtime:</strong> tile/point/draw rendering correctness and performance.</div>
+              <div class="flow-step"><strong>Stability:</strong> type safety, API consistency, migration readiness.</div>
+              <div class="flow-step"><strong>DX:</strong> docs, tests, and reproducible benchmarks.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="setup">
+            <h2>2. Local setup</h2>
+            <pre><code class="language-bash">npm install
+npm run dev:example
+# http://localhost:5174</code></pre>
+            <div class="callout">
+              Check <code>engine-roadmap.md</code> before starting larger changes.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="workflow">
+            <h2>3. Branch + PR flow</h2>
+            <ol>
+              <li>Create a feature branch from <code>main</code>.</li>
+              <li>Keep commits focused and small.</li>
+              <li>Run release gate locally.</li>
+              <li>Update docs if API or behavior changes.</li>
+              <li>Open PR with problem/design/perf notes.</li>
+            </ol>
+            <pre><code class="language-bash">npm run release:gate</code></pre>
+          </section>
+
+          <section class="panel reveal" id="quality">
+            <h2>4. Quality rules</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Type-first:</strong> keep strict TypeScript, no <code>@ts-nocheck</code> in engine paths.</div>
+              <div class="flow-step"><strong>No silent breakage:</strong> update EN/KO API docs and migration guide for user-facing changes.</div>
+              <div class="flow-step"><strong>Minimal runtime overhead:</strong> avoid unnecessary dependencies in hot paths.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="performance">
+            <h2>5. Performance guardrails</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Typed arrays first:</strong> prefer buffer reuse over object allocations.</div>
+              <div class="flow-step"><strong>Measure changes:</strong> include timing metrics for rendering/clip changes.</div>
+              <div class="flow-step"><strong>Report assumptions:</strong> mention dataset size and clip mode when sharing numbers.</div>
+            </div>
+            <pre><code class="language-bash">npm run test:perf</code></pre>
+          </section>
+
+          <section class="panel reveal" id="release-gate">
+            <h2>6. Release gate</h2>
+            <p>Publish is blocked unless this passes:</p>
+            <pre><code class="language-bash">npm run release:gate
+# typecheck + test:ws9 + build:lib</code></pre>
+            <p>CI workflow: <code>.github/workflows/release-gate.yml</code></p>
+          </section>
+
+          <section class="panel reveal" id="checklist">
+            <h2>7. PR checklist</h2>
+            <ul>
+              <li>[ ] Typecheck passed</li>
+              <li>[ ] Tests passed (<code>test:ws9</code>)</li>
+              <li>[ ] Library build passed</li>
+              <li>[ ] EN/KO docs updated (if needed)</li>
+              <li>[ ] Migration notes updated (if breaking)</li>
+            </ul>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>
