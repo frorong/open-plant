@@ -108,6 +108,9 @@ export default function App() {
 	const [showOverviewMap, setShowOverviewMap] = useState(true);
 	const [lastDraw, setLastDraw] = useState(null);
 	const [roiRegions, setRoiRegions] = useState([]);
+	const [hoveredRegionId, setHoveredRegionId] = useState(null);
+	const [activeRegionId, setActiveRegionId] = useState(null);
+	const [clickedRegionId, setClickedRegionId] = useState(null);
 	const [labelInput, setLabelInput] = useState("");
 
 	const bearerToken = useMemo(() => toBearerToken(tokenInput), [tokenInput]);
@@ -160,6 +163,9 @@ export default function App() {
 				setDrawTool("cursor");
 				setLastDraw(null);
 				setRoiRegions([]);
+				setHoveredRegionId(null);
+				setActiveRegionId(null);
+				setClickedRegionId(null);
 				setPointPayload(null);
 				setPointStatus({
 					loading: false,
@@ -176,6 +182,9 @@ export default function App() {
 				setDrawTool("cursor");
 				setLastDraw(null);
 				setRoiRegions([]);
+				setHoveredRegionId(null);
+				setActiveRegionId(null);
+				setClickedRegionId(null);
 				setPointPayload(null);
 				setPointStatus({
 					loading: false,
@@ -306,6 +315,26 @@ export default function App() {
 		[],
 	);
 
+	const regionStrokeHoverStyle = useMemo(
+		() => ({
+			color: "#ff2f2f",
+			width: 3,
+		}),
+		[],
+	);
+
+	const regionStrokeActiveStyle = useMemo(
+		() => ({
+			color: "#ff2f2f",
+			width: 3,
+			shadowColor: "rgba(255, 47, 47, 0.95)",
+			shadowBlur: 12,
+			shadowOffsetX: 0,
+			shadowOffsetY: 0,
+		}),
+		[],
+	);
+
 	const regionLabelStyle = useMemo(
 		() => ({
 			backgroundColor: "rgba(8, 14, 22, 0.9)",
@@ -332,6 +361,18 @@ export default function App() {
 		}
 		setDrawTool("cursor");
 	}, [labelInput]);
+
+	const handleRegionHover = useCallback((event) => {
+		setHoveredRegionId(event?.regionId ?? null);
+	}, []);
+
+	const handleActiveRegionChange = useCallback((regionId) => {
+		setActiveRegionId(regionId ?? null);
+	}, []);
+
+	const handleRegionClick = useCallback((event) => {
+		setClickedRegionId(event?.regionId ?? null);
+	}, []);
 
 	return (
 		<div className="app">
@@ -457,7 +498,12 @@ export default function App() {
 						<button
 							type="button"
 							disabled={!source || roiRegions.length === 0}
-							onClick={() => setRoiRegions([])}
+							onClick={() => {
+								setRoiRegions([]);
+								setHoveredRegionId(null);
+								setActiveRegionId(null);
+								setClickedRegionId(null);
+							}}
 						>
 							Clear ROI
 						</button>
@@ -490,12 +536,17 @@ export default function App() {
 							roiRegions={roiRegions}
 							clipPointsToRois
 							interactionLock={drawTool !== "cursor"}
-							drawTool={drawTool}
-							regionStrokeStyle={regionStrokeStyle}
-							regionLabelStyle={regionLabelStyle}
-							onDrawComplete={handleDrawComplete}
-							onViewStateChange={handleViewStateChange}
-							onStats={setStats}
+								drawTool={drawTool}
+								regionStrokeStyle={regionStrokeStyle}
+								regionStrokeHoverStyle={regionStrokeHoverStyle}
+								regionStrokeActiveStyle={regionStrokeActiveStyle}
+								regionLabelStyle={regionLabelStyle}
+								onRegionHover={handleRegionHover}
+								onRegionClick={handleRegionClick}
+								onActiveRegionChange={handleActiveRegionChange}
+								onDrawComplete={handleDrawComplete}
+								onViewStateChange={handleViewStateChange}
+								onStats={setStats}
 							showOverviewMap={showOverviewMap}
 							overviewMapOptions={{
 								width: 220,
@@ -519,6 +570,9 @@ export default function App() {
 					zoom {viewState?.zoom ? viewState.zoom.toFixed(4) : "fit"} | offset (
 					{Math.round(viewState?.offsetX || 0)},{" "}
 					{Math.round(viewState?.offsetY || 0)}) | rois {roiRegions.length}
+					<br />
+					hover {hoveredRegionId ?? "-"} | active {activeRegionId ?? "-"} | click{" "}
+					{clickedRegionId ?? "-"}
 					{lastDraw ? (
 						<>
 							<br />

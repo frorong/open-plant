@@ -110,9 +110,18 @@ const handleDrawComplete = (result) =&gt; {
   regionStrokeStyle={{
     color: "#ffd166",
     width: 2.5,
-    lineDash: [8, 4],
-    lineJoin: "round",
-    lineCap: "round",
+  }}
+  regionStrokeHoverStyle={{
+    color: "#ff2f2f",
+    width: 3,
+  }}
+  regionStrokeActiveStyle={{
+    color: "#ff2f2f",
+    width: 3,
+    shadowColor: "rgba(255, 47, 47, 0.95)",
+    shadowBlur: 12,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
   }}
   regionLabelStyle={{
     fontFamily: "IBM Plex Mono, monospace",
@@ -126,7 +135,20 @@ const handleDrawComplete = (result) =&gt; {
     offsetY: 12,
     borderRadius: 4,
   }}
+  onRegionHover={(event) =&gt; {
+    // event.regionId, event.regionIndex, event.coordinate
+  }}
+  onRegionClick={(event) =&gt; {
+    // event.regionId, event.region, event.coordinate
+  }}
+  onActiveRegionChange={(regionId) =&gt; {
+    // active region id or null
+  }}
 /&gt;</code></pre>
+            <p>
+              Default active behavior: if a region is active, clicking empty space or a different
+              region clears the active state.
+            </p>
           </section>
 
           <section class="panel reveal" id="clip">

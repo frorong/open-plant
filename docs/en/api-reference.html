@@ -66,7 +66,12 @@
                 <tr><td><code>interactionLock</code></td><td><code>boolean</code></td><td>Locks pan/zoom interactions.</td></tr>
                 <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular"</code></td><td>Active drawing tool.</td></tr>
                 <tr><td><code>regionStrokeStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Persisted region stroke override.</td></tr>
+                <tr><td><code>regionStrokeHoverStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override while hovering a region.</td></tr>
+                <tr><td><code>regionStrokeActiveStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override for active region (including shadow).</td></tr>
                 <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>Persisted region label override.</td></tr>
+                <tr><td><code>onRegionHover</code></td><td><code>(event) =&gt; void</code></td><td>Region hover event in cursor mode.</td></tr>
+                <tr><td><code>onRegionClick</code></td><td><code>(event) =&gt; void</code></td><td>Region click event in cursor mode.</td></tr>
+                <tr><td><code>onActiveRegionChange</code></td><td><code>(regionId) =&gt; void</code></td><td>Active region changed event. Default behavior clears active when clicking empty space or a different region.</td></tr>
                 <tr><td><code>onDrawComplete</code></td><td><code>(result) =&gt; void</code></td><td>Draw completion callback payload.</td></tr>
               </tbody>
             </table>
@@ -83,6 +88,7 @@
                 <tr><td><code>createCircle(start, end)</code></td><td>Generates circle polygon coordinates.</td></tr>
                 <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code></td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
+                <tr><td><code>RegionStrokeStyle</code></td><td>Color/width/dash/cap/join + shadow (color/blur/offset) fields.</td></tr>
               </tbody>
             </table>
           </section>

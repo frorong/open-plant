@@ -71,7 +71,12 @@
                 <tr><td><code>interactionLock</code></td><td><code>boolean</code></td><td>캔버스 pan/zoom 잠금.</td></tr>
                 <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular"</code></td><td>드로우 툴 모드.</td></tr>
                 <tr><td><code>regionStrokeStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI stroke 스타일 override.</td></tr>
+                <tr><td><code>regionStrokeHoverStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI hover 시 stroke 스타일 override.</td></tr>
+                <tr><td><code>regionStrokeActiveStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI active 시 stroke 스타일 override (shadow 포함).</td></tr>
                 <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>ROI 라벨 스타일 override.</td></tr>
+                <tr><td><code>onRegionHover</code></td><td><code>(event) =&gt; void</code></td><td>cursor 모드에서 region hover 변경 이벤트.</td></tr>
+                <tr><td><code>onRegionClick</code></td><td><code>(event) =&gt; void</code></td><td>cursor 모드에서 region 클릭 이벤트.</td></tr>
+                <tr><td><code>onActiveRegionChange</code></td><td><code>(regionId) =&gt; void</code></td><td>active region 변경 이벤트. 기본 동작은 active 상태에서 다른 영역/다른 region 클릭 시 해제.</td></tr>
                 <tr><td><code>onDrawComplete</code></td><td><code>(result) =&gt; void</code></td><td>도형 완료 결과 수신.</td></tr>
               </tbody>
             </table>
@@ -90,7 +95,7 @@
                 <tr><td><code>createCircle(start, end)</code></td><td>원형 다각형 좌표 생성.</td></tr>
                 <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code></td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
-                <tr><td><code>RegionStrokeStyle</code></td><td>색상/두께/점선/캡/조인 제어.</td></tr>
+                <tr><td><code>RegionStrokeStyle</code></td><td>색상/두께/점선/캡/조인 + shadow(색상/블러/오프셋) 제어.</td></tr>
                 <tr><td><code>RegionLabelStyle</code></td><td>폰트/배경/패딩/오프셋/라운드 제어.</td></tr>
               </tbody>
             </table>

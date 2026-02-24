@@ -20,6 +20,11 @@ export {
 export type { OverviewMapOptions } from "./react/overview-map";
 export { OverviewMap } from "./react/overview-map";
 export { TileViewerCanvas } from "./react/tile-viewer-canvas";
+export type {
+	RegionClickEvent,
+	RegionHoverEvent,
+	WsiViewerCanvasProps,
+} from "./react/wsi-viewer-canvas";
 export { WsiViewerCanvas } from "./react/wsi-viewer-canvas";
 export { DEFAULT_POINT_COLOR } from "./wsi/constants";
 export { normalizeImageInfo, toTileUrl } from "./wsi/image-info";

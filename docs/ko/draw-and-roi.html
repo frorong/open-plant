@@ -128,9 +128,18 @@ const handleDrawComplete = (result) =&gt; {
   regionStrokeStyle={{
     color: "#ffd166",
     width: 2.5,
-    lineDash: [8, 4],
-    lineJoin: "round",
-    lineCap: "round",
+  }}
+  regionStrokeHoverStyle={{
+    color: "#ff2f2f",
+    width: 3,
+  }}
+  regionStrokeActiveStyle={{
+    color: "#ff2f2f",
+    width: 3,
+    shadowColor: "rgba(255, 47, 47, 0.95)",
+    shadowBlur: 12,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
   }}
   regionLabelStyle={{
     fontFamily: "IBM Plex Mono, monospace",
@@ -144,7 +153,20 @@ const handleDrawComplete = (result) =&gt; {
     offsetY: 12,
     borderRadius: 4,
   }}
+  onRegionHover={(event) =&gt; {
+    // event.regionId, event.regionIndex, event.coordinate
+  }}
+  onRegionClick={(event) =&gt; {
+    // event.regionId, event.region, event.coordinate
+  }}
+  onActiveRegionChange={(regionId) =&gt; {
+    // active region id 또는 null
+  }}
 /&gt;</code></pre>
+            <p>
+              기본 active 동작: active 상태에서 다른 영역(빈 공간)이나 다른 region을 클릭하면
+              active가 해제됩니다.
+            </p>
           </section>
 
           <section class="panel reveal" id="clip">

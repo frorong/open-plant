@@ -34,6 +34,10 @@ export interface RegionStrokeStyle {
 	lineDash: number[];
 	lineJoin: CanvasLineJoin;
 	lineCap: CanvasLineCap;
+	shadowColor: string;
+	shadowBlur: number;
+	shadowOffsetX: number;
+	shadowOffsetY: number;
 }
 
 export interface RegionLabelStyle {
@@ -67,6 +71,10 @@ export interface DrawLayerProps {
 	persistedRegions?: DrawRegion[];
 	persistedPolygons?: DrawCoordinate[][];
 	regionStrokeStyle?: Partial<RegionStrokeStyle>;
+	regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
+	regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
+	hoveredRegionId?: string | number | null;
+	activeRegionId?: string | number | null;
 	regionLabelStyle?: Partial<RegionLabelStyle>;
 	invalidateRef?: MutableRefObject<(() => void) | null>;
 	className?: string;
@@ -95,6 +103,10 @@ const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
 	lineDash: EMPTY_DASH,
 	lineJoin: "round",
 	lineCap: "round",
+	shadowColor: "rgba(0, 0, 0, 0)",
+	shadowBlur: 0,
+	shadowOffsetX: 0,
+	shadowOffsetY: 0,
 };
 
 const DEFAULT_REGION_LABEL_STYLE: RegionLabelStyle = {
@@ -235,9 +247,17 @@ function drawPath(
 	ctx.lineWidth = strokeStyle.width;
 	ctx.lineJoin = strokeStyle.lineJoin;
 	ctx.lineCap = strokeStyle.lineCap;
+	ctx.shadowColor = strokeStyle.shadowColor;
+	ctx.shadowBlur = strokeStyle.shadowBlur;
+	ctx.shadowOffsetX = strokeStyle.shadowOffsetX;
+	ctx.shadowOffsetY = strokeStyle.shadowOffsetY;
 	ctx.setLineDash(strokeStyle.lineDash);
 	ctx.stroke();
 	ctx.setLineDash(EMPTY_DASH);
+	ctx.shadowColor = "rgba(0, 0, 0, 0)";
+	ctx.shadowBlur = 0;
+	ctx.shadowOffsetX = 0;
+	ctx.shadowOffsetY = 0;
 }
 
 function resolveStrokeStyle(
@@ -250,13 +270,59 @@ function resolveStrokeStyle(
 		typeof style?.width === "number" && Number.isFinite(style.width)
 			? Math.max(0, style.width)
 			: DEFAULT_REGION_STROKE_STYLE.width;
+	const shadowBlur =
+		typeof style?.shadowBlur === "number" && Number.isFinite(style.shadowBlur)
+			? Math.max(0, style.shadowBlur)
+			: DEFAULT_REGION_STROKE_STYLE.shadowBlur;
+	const shadowOffsetX =
+		typeof style?.shadowOffsetX === "number" &&
+		Number.isFinite(style.shadowOffsetX)
+			? style.shadowOffsetX
+			: DEFAULT_REGION_STROKE_STYLE.shadowOffsetX;
+	const shadowOffsetY =
+		typeof style?.shadowOffsetY === "number" &&
+		Number.isFinite(style.shadowOffsetY)
+			? style.shadowOffsetY
+			: DEFAULT_REGION_STROKE_STYLE.shadowOffsetY;
 	return {
 		color: style?.color || DEFAULT_REGION_STROKE_STYLE.color,
 		width,
 		lineDash: dash.length ? dash : EMPTY_DASH,
 		lineJoin: style?.lineJoin || DEFAULT_REGION_STROKE_STYLE.lineJoin,
 		lineCap: style?.lineCap || DEFAULT_REGION_STROKE_STYLE.lineCap,
+		shadowColor: style?.shadowColor || DEFAULT_REGION_STROKE_STYLE.shadowColor,
+		shadowBlur,
+		shadowOffsetX,
+		shadowOffsetY,
 	};
+}
+
+function mergeStrokeStyle(
+	base: RegionStrokeStyle,
+	override: Partial<RegionStrokeStyle> | undefined,
+): RegionStrokeStyle {
+	if (!override) return base;
+	return resolveStrokeStyle({
+		color: override.color ?? base.color,
+		width: override.width ?? base.width,
+		lineDash: override.lineDash ?? base.lineDash,
+		lineJoin: override.lineJoin ?? base.lineJoin,
+		lineCap: override.lineCap ?? base.lineCap,
+		shadowColor: override.shadowColor ?? base.shadowColor,
+		shadowBlur: override.shadowBlur ?? base.shadowBlur,
+		shadowOffsetX: override.shadowOffsetX ?? base.shadowOffsetX,
+		shadowOffsetY: override.shadowOffsetY ?? base.shadowOffsetY,
+	});
+}
+
+function isSameRegionId(
+	a: string | number | null | undefined,
+	b: string | number | null | undefined,
+): boolean {
+	if (a === null || a === undefined || b === null || b === undefined) {
+		return false;
+	}
+	return String(a) === String(b);
 }
 
 function resolveLabelStyle(
@@ -427,6 +493,10 @@ export function DrawLayer({
 	persistedRegions,
 	persistedPolygons,
 	regionStrokeStyle,
+	regionStrokeHoverStyle,
+	regionStrokeActiveStyle,
+	hoveredRegionId = null,
+	activeRegionId = null,
 	regionLabelStyle,
 	invalidateRef,
 	className,
@@ -460,6 +530,14 @@ export function DrawLayer({
 	const resolvedStrokeStyle = useMemo(
 		() => resolveStrokeStyle(regionStrokeStyle),
 		[regionStrokeStyle],
+	);
+	const resolvedHoverStrokeStyle = useMemo(
+		() => mergeStrokeStyle(resolvedStrokeStyle, regionStrokeHoverStyle),
+		[resolvedStrokeStyle, regionStrokeHoverStyle],
+	);
+	const resolvedActiveStrokeStyle = useMemo(
+		() => mergeStrokeStyle(resolvedStrokeStyle, regionStrokeActiveStyle),
+		[resolvedStrokeStyle, regionStrokeActiveStyle],
 	);
 
 	const resolvedLabelStyle = useMemo(
@@ -551,13 +629,20 @@ export function DrawLayer({
 
 		// Persisted ROI outlines always remain visible.
 		if (mergedPersistedRegions.length > 0) {
-			for (const region of mergedPersistedRegions) {
+			for (let i = 0; i < mergedPersistedRegions.length; i += 1) {
+				const region = mergedPersistedRegions[i];
 				const ring = region?.coordinates;
 				if (!ring || ring.length < 3) continue;
 				const closed = closeRing(ring);
 				const screen = worldToScreenPoints(closed);
 				if (screen.length >= 4) {
-					drawPath(ctx, screen, resolvedStrokeStyle, true, false);
+					const regionKey = region.id ?? i;
+					const strokeStyle = isSameRegionId(activeRegionId, regionKey)
+						? resolvedActiveStrokeStyle
+						: isSameRegionId(hoveredRegionId, regionKey)
+							? resolvedHoverStrokeStyle
+							: resolvedStrokeStyle;
+					drawPath(ctx, screen, strokeStyle, true, false);
 				}
 			}
 		}
@@ -620,7 +705,11 @@ export function DrawLayer({
 		worldToScreenPoints,
 		projectorRef,
 		mergedPersistedRegions,
+		hoveredRegionId,
+		activeRegionId,
 		resolvedStrokeStyle,
+		resolvedHoverStrokeStyle,
+		resolvedActiveStrokeStyle,
 		resolvedLabelStyle,
 	]);
 
