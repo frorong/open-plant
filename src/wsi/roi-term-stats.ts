@@ -139,7 +139,7 @@ export function computeRoiPointGroups(
 	regions: readonly WsiRegion[] | null | undefined,
 	options: RoiPointGroupOptions = {},
 ): RoiPointGroupStats {
-	const inputCount = Math.max(
+	const baseCount = Math.max(
 		0,
 		Math.min(
 			Math.floor(pointData?.count ?? 0),
@@ -147,6 +147,34 @@ export function computeRoiPointGroups(
 			pointData?.paletteIndices?.length ?? 0,
 		),
 	);
+
+	let drawIndices: Uint32Array | null = null;
+	if (pointData?.drawIndices instanceof Uint32Array) {
+		const source = pointData.drawIndices;
+		let valid = source.length;
+		for (let i = 0; i < source.length; i += 1) {
+			const idx = source[i];
+			if (idx < baseCount) continue;
+			valid -= 1;
+		}
+		if (valid === source.length) {
+			drawIndices = source;
+		} else if (valid > 0) {
+			const filtered = new Uint32Array(valid);
+			let cursor = 0;
+			for (let i = 0; i < source.length; i += 1) {
+				const idx = source[i];
+				if (idx >= baseCount) continue;
+				filtered[cursor] = idx;
+				cursor += 1;
+			}
+			drawIndices = filtered;
+		} else {
+			drawIndices = new Uint32Array(0);
+		}
+	}
+
+	const inputCount = drawIndices ? drawIndices.length : baseCount;
 
 	const preparedRegions = prepareRegions(regions ?? []);
 	if (!pointData || inputCount === 0 || preparedRegions.length === 0) {
@@ -163,8 +191,9 @@ export function computeRoiPointGroups(
 	let insideCount = 0;
 
 	for (let i = 0; i < inputCount; i += 1) {
-		const x = pointData.positions[i * 2];
-		const y = pointData.positions[i * 2 + 1];
+		const pointIndex = drawIndices ? drawIndices[i] : i;
+		const x = pointData.positions[pointIndex * 2];
+		const y = pointData.positions[pointIndex * 2 + 1];
 		let bestRegion: PreparedRegion | null = null;
 
 		for (const region of preparedRegions) {
@@ -180,7 +209,7 @@ export function computeRoiPointGroups(
 		if (!bestRegion) continue;
 		insideCount += 1;
 
-		const paletteIndex = pointData.paletteIndices[i] ?? 0;
+		const paletteIndex = pointData.paletteIndices[pointIndex] ?? 0;
 		const regionTermMap =
 			regionTermCounters.get(bestRegion.regionIndex) ?? new Map<number, number>();
 		regionTermMap.set(paletteIndex, (regionTermMap.get(paletteIndex) ?? 0) + 1);

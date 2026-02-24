@@ -22,6 +22,7 @@
           <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
           <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
           <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="migration-guide.html" data-nav="migration-guide">Migration</a>
           <a href="architecture.html" data-nav="architecture">Architecture</a>
           <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
           <a href="../ko/architecture.html">KO</a>
@@ -35,6 +36,7 @@
           <h2>Architecture</h2>
           <a href="#runtime">Runtime layout</a>
           <a href="#tile">Tile pipeline</a>
+          <a href="#recovery">Runtime resilience</a>
           <a href="#point">Point pipeline</a>
           <a href="#roi-accel">ROI acceleration</a>
           <a href="#draw">Draw pipeline</a>
@@ -73,6 +75,17 @@
             </div>
           </section>
 
+          <section class="panel reveal" id="recovery">
+            <h2>Runtime resilience (WS-7)</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Context loss:</strong> renderer pauses frame loop, drag state, and tile scheduler on <code>webglcontextlost</code>.</div>
+              <div class="flow-step"><strong>Safe recovery:</strong> on <code>webglcontextrestored</code>, shader programs and GPU buffers/textures are recreated.</div>
+              <div class="flow-step"><strong>Point replay:</strong> last point buffers and palette are re-uploaded automatically after restore.</div>
+              <div class="flow-step"><strong>Network degrade:</strong> retry/backoff + fallback tile rendering keep viewport continuity during tile failures.</div>
+              <div class="flow-step"><strong>Hooks:</strong> <code>onContextLost</code>, <code>onContextRestored</code>, <code>onTileError</code> expose runtime fault signals to host apps.</div>
+            </div>
+          </section>
+
           <section class="panel reveal" id="point">
             <h2>Point pipeline</h2>
             <div class="flow">
@@ -98,11 +111,11 @@
               </div>
               <div class="card">
                 <h3>`hybrid-webgpu`</h3>
-                <p>Experimental path: WebGPU bbox prefilter + exact polygon test. Requires runtime benchmarking per dataset.</p>
+                <p>Experimental path: WebGPU bbox prefilter + exact polygon test, then draw-bridge via <code>drawIndices</code> for indexed point rendering.</p>
               </div>
               <div class="card">
                 <h3>Observability</h3>
-                <p><code>onClipStats</code> exposes mode/duration/input/output for profiling and regression checks.</p>
+                <p><code>onStats</code>/<code>onClipStats</code> plus built-in <code>debugOverlay</code> provide runtime profiling signals and fast regression checks.</p>
               </div>
             </div>
           </section>

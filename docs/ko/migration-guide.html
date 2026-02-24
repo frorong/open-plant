@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Migration Guide | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI API 안정성 정책, deprecated 수명주기, 마이그레이션 체크리스트" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="migration-guide">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="migration-guide.html" data-nav="migration-guide">마이그레이션</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/migration-guide.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>마이그레이션</h2>
+          <a href="#contract">안정성 계약</a>
+          <a href="#deprecation">Deprecation 수명주기</a>
+          <a href="#checklist">브레이킹 변경 체크리스트</a>
+          <a href="#mpp">mpp/스탬프 변환식</a>
+          <a href="#examples">Before/After 예시</a>
+          <a href="#release-gate">릴리스 게이트</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">WS-10</div>
+            <h1>마이그레이션 가이드와 API 수명주기</h1>
+            <p>
+              API 변경을 도입하고 문서화하고 검증하는 기준 문서입니다.
+              업그레이드 시 이 페이지를 기준으로 판단하세요.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="contract">
+            <h2>1. 안정성 계약</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>SemVer:</strong> patch = 버그 수정, minor = 하위호환 기능 추가, major = 브레이킹 변경.</div>
+              <div class="flow-step"><strong>무통보 변경 금지:</strong> 런타임 동작 변경은 배포 전 문서/체인지로그 공지가 필수.</div>
+              <div class="flow-step"><strong>타입 우선:</strong> 공개 타입 변경 시 API 표와 마이그레이션 예시를 같은 PR에서 갱신.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="deprecation">
+            <h2>2. Deprecation 수명주기</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>N:</strong> 대체 API 추가 후 기존 API를 문서에서 deprecated 표시.</div>
+              <div class="flow-step"><strong>N+1 minor:</strong> 호환 유지 + 릴리스 노트에 마이그레이션 안내.</div>
+              <div class="flow-step"><strong>N+2 minor:</strong> 호환을 한 번 더 유지(보안 이슈 제외).</div>
+              <div class="flow-step"><strong>다음 major:</strong> deprecated API 제거 + 마이그레이션 섹션 유지.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="checklist">
+            <h2>3. 브레이킹 변경 체크리스트</h2>
+            <ol>
+              <li>export 타입과 런타임 코드를 하나의 변경셋으로 반영한다.</li>
+              <li>이 문서에 before/after 사용 예시를 추가한다.</li>
+              <li>`docs/en/api-reference.html`, `docs/ko/api-reference.html`를 동시 갱신한다.</li>
+              <li>`CHANGELOG.md`에 마이그레이션 노트를 기록한다.</li>
+              <li>릴리스 게이트(`typecheck`, `test:ws9`, `build:lib`)를 통과한다.</li>
+            </ol>
+          </section>
+
+          <section class="panel reveal" id="mpp">
+            <h2>4. `mpp`와 스탬프 물리 크기 변환식</h2>
+            <p>
+              <code>mpp</code>는 네이티브 피라미드 레벨(<code>maxTierZoom</code>) 기준 픽셀당 마이크론(μm/px)입니다.
+              스탬프 물리 크기는 <code>mpp</code>와 현재 줌으로 환산됩니다.
+            </p>
+            <pre><code class="language-txt">resolution_um_per_px = 2^(imageZoom - currentZoom) * imageMpp
+area_um2 = area_mm2 * 1000 * 1000
+
+square_side_px = sqrt(area_um2) / resolution_um_per_px
+circle_radius_px = sqrt(area_um2 / PI) / resolution_um_per_px</code></pre>
+            <div class="callout">
+              <code>mpp</code>가 없으면 <code>1μm/px</code> 가정으로 계산합니다. 이 경우 물리 크기는 근사치입니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="examples">
+            <h2>5. Before/After 예시</h2>
+            <pre><code class="language-tsx">// Before (레거시 별칭, 아직 지원)
+&lt;WsiViewerCanvas drawTool="stamp-circle-hpf-0.2mm2" /&gt;
+
+// After (권장)
+&lt;WsiViewerCanvas
+  drawTool="stamp-circle"
+  stampOptions={{ circleAreaMm2: 0.2 }}
+/&gt;</code></pre>
+            <pre><code class="language-tsx">// Before (메인 스레드 클립)
+&lt;WsiViewerCanvas clipPointsToRois clipMode="sync" /&gt;
+
+// After (권장 기본값)
+&lt;WsiViewerCanvas clipPointsToRois clipMode="worker" /&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="release-gate">
+            <h2>6. 릴리스 게이트(고정)</h2>
+            <p>배포 전 아래 명령을 로컬과 CI에서 동일하게 통과해야 합니다.</p>
+            <pre><code class="language-bash">npm run release:gate
+# typecheck + test:ws9 + build:lib</code></pre>
+            <p>
+              CI 워크플로우: <code>.github/workflows/release-gate.yml</code><br />
+              publish 훅: <code>prepublishOnly</code>에서 <code>release:gate</code>를 선행 실행합니다.
+            </p>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

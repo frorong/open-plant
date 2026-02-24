@@ -35,7 +35,10 @@ export type {
 export { WsiViewerCanvas } from "./react/wsi-viewer-canvas";
 export { DEFAULT_POINT_COLOR } from "./wsi/constants";
 export { normalizeImageInfo, toTileUrl } from "./wsi/image-info";
-export type { HybridPointClipResult } from "./wsi/point-clip-hybrid";
+export type {
+  HybridPointClipOptions,
+  HybridPointClipResult,
+} from "./wsi/point-clip-hybrid";
 export { filterPointDataByPolygonsHybrid } from "./wsi/point-clip-hybrid";
 export type { RoiCoordinate, RoiPolygon } from "./wsi/point-clip";
 export { filterPointDataByPolygons } from "./wsi/point-clip";
@@ -90,6 +93,7 @@ export type {
 } from "./wsi/tile-scheduler";
 export { TileScheduler } from "./wsi/tile-scheduler";
 export type {
+  WsiTileErrorEvent,
   WsiTileRendererOptions,
   WsiTileSchedulerConfig,
 } from "./wsi/wsi-tile-renderer";

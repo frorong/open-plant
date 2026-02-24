@@ -22,6 +22,7 @@
           <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
           <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
           <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="migration-guide.html" data-nav="migration-guide">마이그레이션</a>
           <a href="architecture.html" data-nav="architecture">아키텍처</a>
           <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
           <a href="../en/deploy-github-pages.html">EN</a>
@@ -55,8 +56,9 @@
             <div class="flow">
               <div class="flow-step"><strong>1.</strong> `.github/workflows/docs-pages.yml` 커밋</div>
               <div class="flow-step"><strong>2.</strong> 리포 Settings → Pages → Source: GitHub Actions</div>
-              <div class="flow-step"><strong>3.</strong> 브랜치 푸시 후 Actions 완료 확인</div>
-              <div class="flow-step"><strong>4.</strong> 배포 URL에서 `docs/index.html` 확인</div>
+              <div class="flow-step"><strong>3.</strong> publish 전 `Release Gate` 워크플로우 통과 확인</div>
+              <div class="flow-step"><strong>4.</strong> 브랜치 푸시 후 Actions 완료 확인</div>
+              <div class="flow-step"><strong>5.</strong> 배포 URL에서 `docs/index.html` 확인</div>
             </div>
           </section>
 
@@ -105,6 +107,10 @@ jobs:
               <li><code>Source</code>를 <code>GitHub Actions</code>로 선택</li>
               <li>Actions 탭에서 최근 배포 job 성공 여부 확인</li>
             </ol>
+            <div class="callout">
+              릴리스 게이트 워크플로우: <code>.github/workflows/release-gate.yml</code><br />
+              로컬 동일 검증: <code>npm run release:gate</code>
+            </div>
           </section>
 
           <section class="panel reveal" id="local-check">

@@ -36,6 +36,7 @@ interface PointProgram {
 	vao: WebGLVertexArrayObject;
 	posBuffer: WebGLBuffer;
 	termBuffer: WebGLBuffer;
+	indexBuffer: WebGLBuffer;
 	paletteTexture: WebGLTexture;
 	uCamera: WebGLUniformLocation;
 	uPointSize: WebGLUniformLocation;
@@ -66,6 +67,15 @@ export interface WsiTileRendererOptions {
 	ctrlDragRotate?: boolean;
 	rotationDragSensitivityDegPerPixel?: number;
 	tileScheduler?: WsiTileSchedulerConfig;
+	onTileError?: (event: WsiTileErrorEvent) => void;
+	onContextLost?: () => void;
+	onContextRestored?: () => void;
+}
+
+export interface WsiTileErrorEvent {
+	tile: ScheduledTile;
+	error: unknown;
+	attemptCount: number;
 }
 
 class OrthoCamera {
@@ -182,6 +192,13 @@ function toRadians(deg: number): number {
 	return (deg * Math.PI) / 180;
 }
 
+function nowMs(): number {
+	if (typeof performance !== "undefined" && typeof performance.now === "function") {
+		return performance.now();
+	}
+	return Date.now();
+}
+
 function requireUniformLocation(
 	gl: WebGL2RenderingContext,
 	program: WebGLProgram,
@@ -194,6 +211,18 @@ function requireUniformLocation(
 	return location;
 }
 
+function isSameArrayView(
+	a: ArrayBufferView | null | undefined,
+	b: ArrayBufferView | null | undefined,
+): boolean {
+	if (!a || !b) return a === b;
+	return (
+		a.buffer === b.buffer &&
+		a.byteOffset === b.byteOffset &&
+		a.byteLength === b.byteLength
+	);
+}
+
 export class WsiTileRenderer {
 	private readonly canvas: HTMLCanvasElement;
 	private readonly source: WsiImageSource;
@@ -201,13 +230,17 @@ export class WsiTileRenderer {
 	private readonly camera = new OrthoCamera();
 	private readonly onViewStateChange?: (next: WsiViewState) => void;
 	private readonly onStats?: (stats: WsiRenderStats) => void;
+	private readonly onTileError?: (event: WsiTileErrorEvent) => void;
+	private readonly onContextLost?: () => void;
+	private readonly onContextRestored?: () => void;
 	private readonly resizeObserver: ResizeObserver;
-	private readonly tileProgram: TileVertexProgram;
-	private readonly pointProgram: PointProgram;
+	private tileProgram: TileVertexProgram;
+	private pointProgram: PointProgram;
 	private readonly tileScheduler: TileScheduler;
 
 	private authToken: string;
 	private destroyed = false;
+	private contextLost = false;
 	private frame: number | null = null;
 	private frameSerial = 0;
 	private dragging = false;
@@ -225,7 +258,11 @@ export class WsiTileRenderer {
 	private maxZoom = 1;
 	private currentTier = 0;
 	private pointCount = 0;
+	private usePointIndices = false;
+	private pointBuffersDirty = true;
 	private pointPaletteSize = 1;
+	private lastPointData: WsiPointData | null = null;
+	private lastPointPalette: Uint8Array | null = null;
 	private cache = new Map<string, CachedTile>();
 
 	private readonly boundPointerDown: (event: PointerEvent) => void;
@@ -234,6 +271,8 @@ export class WsiTileRenderer {
 	private readonly boundWheel: (event: WheelEvent) => void;
 	private readonly boundDoubleClick: (event: MouseEvent) => void;
 	private readonly boundContextMenu: (event: MouseEvent) => void;
+	private readonly boundContextLost: (event: Event) => void;
+	private readonly boundContextRestored: (event: Event) => void;
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -244,6 +283,9 @@ export class WsiTileRenderer {
 		this.source = source;
 		this.onViewStateChange = options.onViewStateChange;
 		this.onStats = options.onStats;
+		this.onTileError = options.onTileError;
+		this.onContextLost = options.onContextLost;
+		this.onContextRestored = options.onContextRestored;
 		this.authToken = options.authToken ?? "";
 		this.maxCacheTiles = Math.max(32, Math.floor(options.maxCacheTiles ?? 320));
 		this.ctrlDragRotate = options.ctrlDragRotate ?? true;
@@ -274,7 +316,8 @@ export class WsiTileRenderer {
 			retryBaseDelayMs: options.tileScheduler?.retryBaseDelayMs ?? 120,
 			retryMaxDelayMs: options.tileScheduler?.retryMaxDelayMs ?? 1200,
 			onTileLoad: (tile, bitmap) => this.handleTileLoaded(tile, bitmap),
-			onTileError: (tile, error) => {
+			onTileError: (tile, error, attemptCount) => {
+				this.onTileError?.({ tile, error, attemptCount });
 				console.warn("tile load failed", tile.url, error);
 			},
 		});
@@ -288,6 +331,9 @@ export class WsiTileRenderer {
 		this.boundWheel = (event: WheelEvent) => this.onWheel(event);
 		this.boundDoubleClick = (event: MouseEvent) => this.onDoubleClick(event);
 		this.boundContextMenu = (event: MouseEvent) => this.onContextMenu(event);
+		this.boundContextLost = (event: Event) => this.onWebGlContextLost(event);
+		this.boundContextRestored = (event: Event) =>
+			this.onWebGlContextRestored(event);
 
 		canvas.addEventListener("pointerdown", this.boundPointerDown);
 		canvas.addEventListener("pointermove", this.boundPointerMove);
@@ -296,6 +342,8 @@ export class WsiTileRenderer {
 		canvas.addEventListener("wheel", this.boundWheel, { passive: false });
 		canvas.addEventListener("dblclick", this.boundDoubleClick);
 		canvas.addEventListener("contextmenu", this.boundContextMenu);
+		canvas.addEventListener("webglcontextlost", this.boundContextLost);
+		canvas.addEventListener("webglcontextrestored", this.boundContextRestored);
 
 		this.fitToImage();
 		this.resize();
@@ -322,9 +370,14 @@ export class WsiTileRenderer {
 	}
 
 	setPointPalette(colors: Uint8Array | null | undefined): void {
-		if (!colors || colors.length === 0) return;
+		if (!colors || colors.length === 0) {
+			this.lastPointPalette = null;
+			return;
+		}
+		this.lastPointPalette = new Uint8Array(colors);
+		if (this.contextLost || this.gl.isContextLost()) return;
 		const gl = this.gl;
-		const paletteSize = Math.max(1, Math.floor(colors.length / 4));
+		const paletteSize = Math.max(1, Math.floor(this.lastPointPalette.length / 4));
 		this.pointPaletteSize = paletteSize;
 		gl.bindTexture(gl.TEXTURE_2D, this.pointProgram.paletteTexture);
 		gl.texImage2D(
@@ -336,29 +389,120 @@ export class WsiTileRenderer {
 			0,
 			gl.RGBA,
 			gl.UNSIGNED_BYTE,
-			colors,
+			this.lastPointPalette,
 		);
 		gl.bindTexture(gl.TEXTURE_2D, null);
 		this.requestRender();
 	}
 
 	setPointData(points: WsiPointData | null | undefined): void {
-		const gl = this.gl;
 		if (!points || !points.count || !points.positions || !points.paletteIndices) {
+			this.lastPointData = null;
 			this.pointCount = 0;
+			this.usePointIndices = false;
 			this.requestRender();
 			return;
 		}
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.pointProgram.posBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, points.positions, gl.STATIC_DRAW);
+		const safeCount = Math.max(
+			0,
+			Math.min(
+				points.count,
+				Math.floor(points.positions.length / 2),
+				points.paletteIndices.length,
+			),
+		);
+		const nextPositions = points.positions.subarray(0, safeCount * 2);
+		const nextPaletteIndices = points.paletteIndices.subarray(0, safeCount);
+		const hasDrawIndices = points.drawIndices instanceof Uint32Array;
+		const nextDrawIndices = hasDrawIndices
+			? this.sanitizeDrawIndices(points.drawIndices as Uint32Array, safeCount)
+			: null;
+		const prev = this.lastPointData;
+		let geometryChanged =
+			this.pointBuffersDirty ||
+			!prev ||
+			prev.count !== safeCount ||
+			!isSameArrayView(prev.positions, nextPositions) ||
+			!isSameArrayView(prev.paletteIndices, nextPaletteIndices);
+		let drawIndicesChanged =
+			this.pointBuffersDirty ||
+			(hasDrawIndices &&
+				(!prev?.drawIndices ||
+					!isSameArrayView(prev.drawIndices, nextDrawIndices))) ||
+			(!hasDrawIndices && !!prev?.drawIndices);
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, this.pointProgram.termBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, points.paletteIndices, gl.STATIC_DRAW);
-		gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		this.lastPointData = {
+			count: safeCount,
+			positions: nextPositions,
+			paletteIndices: nextPaletteIndices,
+			drawIndices: hasDrawIndices ? nextDrawIndices ?? undefined : undefined,
+		};
+		if (this.contextLost || this.gl.isContextLost()) return;
 
-		this.pointCount = points.count;
+		const gl = this.gl;
+		if (geometryChanged) {
+			gl.bindBuffer(gl.ARRAY_BUFFER, this.pointProgram.posBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, this.lastPointData.positions, gl.STATIC_DRAW);
+
+			gl.bindBuffer(gl.ARRAY_BUFFER, this.pointProgram.termBuffer);
+			gl.bufferData(
+				gl.ARRAY_BUFFER,
+				this.lastPointData.paletteIndices,
+				gl.STATIC_DRAW,
+			);
+			gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		}
+
+		if (hasDrawIndices && drawIndicesChanged) {
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.pointProgram.indexBuffer);
+			gl.bufferData(
+				gl.ELEMENT_ARRAY_BUFFER,
+				nextDrawIndices ?? new Uint32Array(0),
+				gl.DYNAMIC_DRAW,
+			);
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+		}
+
+		this.usePointIndices = hasDrawIndices;
+		this.pointCount = hasDrawIndices
+			? (nextDrawIndices?.length ?? 0)
+			: this.lastPointData.count;
+		if (geometryChanged || drawIndicesChanged) {
+			this.pointBuffersDirty = false;
+		}
 		this.requestRender();
+	}
+
+	private sanitizeDrawIndices(
+		drawIndices: Uint32Array,
+		maxExclusive: number,
+	): Uint32Array {
+		if (maxExclusive <= 0 || drawIndices.length === 0) {
+			return new Uint32Array(0);
+		}
+
+		let validCount = drawIndices.length;
+		for (let i = 0; i < drawIndices.length; i += 1) {
+			if (drawIndices[i] < maxExclusive) continue;
+			validCount -= 1;
+		}
+		if (validCount === drawIndices.length) {
+			return drawIndices;
+		}
+		if (validCount <= 0) {
+			return new Uint32Array(0);
+		}
+
+		const filtered = new Uint32Array(validCount);
+		let cursor = 0;
+		for (let i = 0; i < drawIndices.length; i += 1) {
+			const idx = drawIndices[i];
+			if (idx >= maxExclusive) continue;
+			filtered[cursor] = idx;
+			cursor += 1;
+		}
+		return filtered;
 	}
 
 	setInteractionLock(locked: boolean): void {
@@ -654,7 +798,8 @@ export class WsiTileRenderer {
 	}
 
 	render(): void {
-		if (this.destroyed) return;
+		if (this.destroyed || this.contextLost || this.gl.isContextLost()) return;
+		const frameStartMs = nowMs();
 		this.frameSerial += 1;
 
 		const gl = this.gl;
@@ -733,7 +878,11 @@ export class WsiTileRenderer {
 			gl.uniform1i(pointProgram.uPalette, 1);
 			gl.activeTexture(gl.TEXTURE1);
 			gl.bindTexture(gl.TEXTURE_2D, pointProgram.paletteTexture);
-			gl.drawArrays(gl.POINTS, 0, this.pointCount);
+			if (this.usePointIndices) {
+				gl.drawElements(gl.POINTS, this.pointCount, gl.UNSIGNED_INT, 0);
+			} else {
+				gl.drawArrays(gl.POINTS, 0, this.pointCount);
+			}
 			gl.bindTexture(gl.TEXTURE_2D, null);
 			gl.bindVertexArray(null);
 			renderedPoints = this.pointCount;
@@ -741,6 +890,10 @@ export class WsiTileRenderer {
 
 		if (this.onStats) {
 			const schedulerStats = this.tileScheduler.getSnapshot();
+			const cacheHits = renderedTiles;
+			const cacheMisses = missingTiles.length;
+			const drawCalls =
+				fallbackTiles.length + renderedTiles + (renderedPoints > 0 ? 1 : 0);
 			this.onStats({
 				tier: this.currentTier,
 				visible: visible.length,
@@ -749,12 +902,26 @@ export class WsiTileRenderer {
 				fallback: fallbackTiles.length,
 				cache: this.cache.size,
 				inflight: schedulerStats.inflight,
+				queued: schedulerStats.queued,
+				retries: schedulerStats.retries,
+				failed: schedulerStats.failed,
+				aborted: schedulerStats.aborted,
+				cacheHits,
+				cacheMisses,
+				drawCalls,
+				frameMs: nowMs() - frameStartMs,
 			});
 		}
 	}
 
 	requestRender(): void {
-		if (this.frame !== null || this.destroyed) return;
+		if (
+			this.frame !== null ||
+			this.destroyed ||
+			this.contextLost ||
+			this.gl.isContextLost()
+		)
+			return;
 		this.frame = requestAnimationFrame(() => {
 			this.frame = null;
 			this.render();
@@ -883,6 +1050,46 @@ export class WsiTileRenderer {
 		}
 	}
 
+	private onWebGlContextLost(event: Event): void {
+		event.preventDefault();
+		if (this.destroyed || this.contextLost) return;
+		this.contextLost = true;
+		this.pointBuffersDirty = true;
+
+		if (this.frame !== null) {
+			cancelAnimationFrame(this.frame);
+			this.frame = null;
+		}
+
+		this.cancelDrag();
+		this.tileScheduler.clear();
+		this.cache.clear();
+		this.onContextLost?.();
+	}
+
+	private onWebGlContextRestored(_event: Event): void {
+		if (this.destroyed) return;
+		this.contextLost = false;
+		this.cache.clear();
+
+		this.tileProgram = this.initTileProgram();
+		this.pointProgram = this.initPointProgram();
+		this.pointBuffersDirty = true;
+
+		if (this.lastPointPalette && this.lastPointPalette.length > 0) {
+			this.setPointPalette(this.lastPointPalette);
+		}
+		if (this.lastPointData) {
+			this.setPointData(this.lastPointData);
+		} else {
+			this.pointCount = 0;
+		}
+
+		this.resize();
+		this.requestRender();
+		this.onContextRestored?.();
+	}
+
 	destroy(): void {
 		if (this.destroyed) return;
 		this.destroyed = true;
@@ -900,23 +1107,30 @@ export class WsiTileRenderer {
 		this.canvas.removeEventListener("wheel", this.boundWheel);
 		this.canvas.removeEventListener("dblclick", this.boundDoubleClick);
 		this.canvas.removeEventListener("contextmenu", this.boundContextMenu);
+		this.canvas.removeEventListener("webglcontextlost", this.boundContextLost);
+		this.canvas.removeEventListener(
+			"webglcontextrestored",
+			this.boundContextRestored,
+		);
 		this.cancelDrag();
 		this.tileScheduler.destroy();
 
-		for (const [, value] of this.cache) {
-			this.gl.deleteTexture(value.texture);
+		if (!this.contextLost && !this.gl.isContextLost()) {
+			for (const [, value] of this.cache) {
+				this.gl.deleteTexture(value.texture);
+			}
+			this.gl.deleteBuffer(this.tileProgram.vbo);
+			this.gl.deleteVertexArray(this.tileProgram.vao);
+			this.gl.deleteProgram(this.tileProgram.program);
+
+			this.gl.deleteBuffer(this.pointProgram.posBuffer);
+			this.gl.deleteBuffer(this.pointProgram.termBuffer);
+			this.gl.deleteBuffer(this.pointProgram.indexBuffer);
+			this.gl.deleteTexture(this.pointProgram.paletteTexture);
+			this.gl.deleteVertexArray(this.pointProgram.vao);
+			this.gl.deleteProgram(this.pointProgram.program);
 		}
 		this.cache.clear();
-
-		this.gl.deleteBuffer(this.tileProgram.vbo);
-		this.gl.deleteVertexArray(this.tileProgram.vao);
-		this.gl.deleteProgram(this.tileProgram.program);
-
-		this.gl.deleteBuffer(this.pointProgram.posBuffer);
-		this.gl.deleteBuffer(this.pointProgram.termBuffer);
-		this.gl.deleteTexture(this.pointProgram.paletteTexture);
-		this.gl.deleteVertexArray(this.pointProgram.vao);
-		this.gl.deleteProgram(this.pointProgram.program);
 	}
 
 	private initTileProgram(): TileVertexProgram {
@@ -1038,8 +1252,9 @@ export class WsiTileRenderer {
 		const vao = gl.createVertexArray();
 		const posBuffer = gl.createBuffer();
 		const termBuffer = gl.createBuffer();
+		const indexBuffer = gl.createBuffer();
 		const paletteTexture = gl.createTexture();
-		if (!vao || !posBuffer || !termBuffer || !paletteTexture) {
+		if (!vao || !posBuffer || !termBuffer || !indexBuffer || !paletteTexture) {
 			throw new Error("point buffer allocation failed");
 		}
 
@@ -1063,8 +1278,12 @@ export class WsiTileRenderer {
 		gl.enableVertexAttribArray(termLoc);
 		gl.vertexAttribIPointer(termLoc, 1, gl.UNSIGNED_SHORT, 0, 0);
 
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
+
 		gl.bindVertexArray(null);
 		gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
 		gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -1089,6 +1308,7 @@ export class WsiTileRenderer {
 			vao,
 			posBuffer,
 			termBuffer,
+			indexBuffer,
 			paletteTexture,
 			uCamera,
 			uPointSize,
@@ -1098,7 +1318,7 @@ export class WsiTileRenderer {
 	}
 
 	private handleTileLoaded(tile: ScheduledTile, bitmap: ImageBitmap): void {
-		if (this.destroyed) {
+		if (this.destroyed || this.contextLost || this.gl.isContextLost()) {
 			bitmap.close();
 			return;
 		}
@@ -1123,6 +1343,7 @@ export class WsiTileRenderer {
 	}
 
 	private createTextureFromBitmap(bitmap: ImageBitmap): WebGLTexture | null {
+		if (this.contextLost || this.gl.isContextLost()) return null;
 		const gl = this.gl;
 		const texture = gl.createTexture();
 		if (!texture) return null;

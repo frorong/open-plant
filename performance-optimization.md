@@ -47,29 +47,7 @@
 - ROI 지표: `onClipStats` (`mode`, `durationMs`, `inputCount`, `outputCount`, `candidateCount`)
 - 사용자 체감: zoom/pan 시 빈 타일 노출 여부, ROI draw 시 입력 지연 여부
 
-## 3) 바로 적용 가능한 추가 최적화 후보
-
-### 3.1 포인트 가시영역 컷
-- 현재는 point buffer 전체를 draw하는 구조.
-- viewport 교차 기반으로 point subset buffer를 구성하면 저배율/초고밀도에서 프래그먼트 비용을 크게 줄일 수 있음.
-
-### 3.2 포인트 LOD 샘플링
-- 저배율에서 모든 포인트를 그대로 그리는 대신 grid/bin 샘플링 적용.
-- ROI 통계는 원본으로 계산, 화면 렌더는 샘플링 버퍼로 분리 가능.
-
-### 3.3 타일 메모리 예산(MB) 기반 캐시
-- 현재는 tile 개수 기준 trim.
-- 텍스처 byte 기준 예산으로 바꾸면 디바이스별 OOM 리스크를 더 잘 제어 가능.
-
-### 3.4 ROI 통계 워커 오프로드
-- `computeRoiPointGroups`는 현재 메인 스레드 계산.
-- ROI/포인트가 큰 경우 worker 경로를 추가하면 UI 일시정지를 줄일 수 있음.
-
-### 3.5 WebGPU 확장
-- 현재는 bbox prefilter 단계 중심.
-- 장기적으로 term histogram, density aggregation까지 compute로 이동 가능.
-
-## 4) 운영 기본값 권장
+## 3) 운영 기본값 권장
 
 - ROI clip 기본값: `worker`
 - WebGPU: `hybrid-webgpu`는 벤치마크로 이득이 확인된 환경에서만 opt-in

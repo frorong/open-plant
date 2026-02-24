@@ -33,12 +33,21 @@ export interface WsiRenderStats {
 	fallback: number;
 	cache: number;
 	inflight: number;
+	queued?: number;
+	retries?: number;
+	failed?: number;
+	aborted?: number;
+	cacheHits?: number;
+	cacheMisses?: number;
+	drawCalls?: number;
+	frameMs?: number;
 }
 
 export interface WsiPointData {
 	count: number;
 	positions: Float32Array;
 	paletteIndices: Uint16Array;
+	drawIndices?: Uint32Array;
 }
 
 export type WsiCoordinate = [number, number];

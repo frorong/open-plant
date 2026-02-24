@@ -10,6 +10,10 @@ interface PreparedPolygon {
   maxY: number;
 }
 
+export interface HybridPointClipOptions {
+  bridgeToDraw?: boolean;
+}
+
 export interface HybridPointClipResult {
   data: WsiPointData | null;
   meta: {
@@ -17,6 +21,7 @@ export interface HybridPointClipResult {
     durationMs: number;
     usedWebGpu: boolean;
     candidateCount: number;
+    bridgedToDraw?: boolean;
   };
 }
 
@@ -85,8 +90,13 @@ function isInsideAnyPolygon(x: number, y: number, polygons: PreparedPolygon[]): 
   return false;
 }
 
-export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | null | undefined, polygons: RoiPolygon[] | null | undefined): Promise<HybridPointClipResult> {
+export async function filterPointDataByPolygonsHybrid(
+  pointData: WsiPointData | null | undefined,
+  polygons: RoiPolygon[] | null | undefined,
+  options: HybridPointClipOptions = {}
+): Promise<HybridPointClipResult> {
   const start = nowMs();
+  const bridgeToDraw = options.bridgeToDraw === true;
   if (!pointData || !pointData.count || !pointData.positions || !pointData.paletteIndices) {
     return {
       data: null,
@@ -95,6 +105,7 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
         durationMs: nowMs() - start,
         usedWebGpu: false,
         candidateCount: 0,
+        bridgedToDraw: false,
       },
     };
   }
@@ -112,6 +123,7 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
         durationMs: nowMs() - start,
         usedWebGpu: false,
         candidateCount: 0,
+        bridgedToDraw: false,
       },
     };
   }
@@ -129,6 +141,7 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
         durationMs: nowMs() - start,
         usedWebGpu: false,
         candidateCount: 0,
+        bridgedToDraw: false,
       },
     };
   }
@@ -162,6 +175,7 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
         durationMs: nowMs() - start,
         usedWebGpu: false,
         candidateCount: safeCount,
+        bridgedToDraw: false,
       },
     };
   }
@@ -170,7 +184,36 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
   for (let i = 0; i < safeCount; i += 1) {
     if (candidateMask[i] === 1) candidateCount += 1;
   }
+
+  const candidateIndices = new Uint32Array(candidateCount);
+  if (candidateCount > 0) {
+    let candidateCursor = 0;
+    for (let i = 0; i < safeCount; i += 1) {
+      if (candidateMask[i] !== 1) continue;
+      candidateIndices[candidateCursor] = i;
+      candidateCursor += 1;
+    }
+  }
+
   if (candidateCount === 0) {
+    if (bridgeToDraw) {
+      return {
+        data: {
+          count: safeCount,
+          positions: pointData.positions.subarray(0, safeCount * 2),
+          paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
+          drawIndices: new Uint32Array(0),
+        },
+        meta: {
+          mode: "hybrid-webgpu",
+          durationMs: nowMs() - start,
+          usedWebGpu: true,
+          candidateCount: 0,
+          bridgedToDraw: true,
+        },
+      };
+    }
+
     return {
       data: {
         count: 0,
@@ -182,6 +225,37 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
         durationMs: nowMs() - start,
         usedWebGpu: true,
         candidateCount: 0,
+        bridgedToDraw: false,
+      },
+    };
+  }
+
+  if (bridgeToDraw) {
+    const drawIndices = new Uint32Array(candidateCount);
+    let visibleCount = 0;
+
+    for (let i = 0; i < candidateCount; i += 1) {
+      const pointIndex = candidateIndices[i] ?? 0;
+      const x = pointData.positions[pointIndex * 2];
+      const y = pointData.positions[pointIndex * 2 + 1];
+      if (!isInsideAnyPolygon(x, y, prepared)) continue;
+      drawIndices[visibleCount] = pointIndex;
+      visibleCount += 1;
+    }
+
+    return {
+      data: {
+        count: safeCount,
+        positions: pointData.positions.subarray(0, safeCount * 2),
+        paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
+        drawIndices: drawIndices.subarray(0, visibleCount),
+      },
+      meta: {
+        mode: "hybrid-webgpu",
+        durationMs: nowMs() - start,
+        usedWebGpu: true,
+        candidateCount,
+        bridgedToDraw: true,
       },
     };
   }
@@ -190,14 +264,14 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
   const nextTerms = new Uint16Array(candidateCount);
   let cursor = 0;
 
-  for (let i = 0; i < safeCount; i += 1) {
-    if (candidateMask[i] !== 1) continue;
-    const x = pointData.positions[i * 2];
-    const y = pointData.positions[i * 2 + 1];
+  for (let i = 0; i < candidateCount; i += 1) {
+    const pointIndex = candidateIndices[i] ?? 0;
+    const x = pointData.positions[pointIndex * 2];
+    const y = pointData.positions[pointIndex * 2 + 1];
     if (!isInsideAnyPolygon(x, y, prepared)) continue;
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
-    nextTerms[cursor] = pointData.paletteIndices[i];
+    nextTerms[cursor] = pointData.paletteIndices[pointIndex];
     cursor += 1;
   }
 
@@ -212,6 +286,7 @@ export async function filterPointDataByPolygonsHybrid(pointData: WsiPointData | 
       durationMs: nowMs() - start,
       usedWebGpu: true,
       candidateCount,
+      bridgedToDraw: false,
     },
   };
 }

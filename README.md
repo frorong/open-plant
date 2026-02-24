@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://frorong.github.io/open-plant/">📖 Documentation</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://frorong.github.io/open-plant/ko/migration-guide.html">Migration Guide</a>&nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/frorong/open-plant">GitHub</a>
 </p>
 
@@ -177,6 +178,8 @@ npm run dev:example    # 예제 앱 (전체 WSI 뷰어, port 5174)
 npm run build          # 프로덕션 빌드
 npm run build:example  # 예제 앱 빌드
 npm run typecheck      # 타입 체크
+npm run test:ws9       # unit + perf + e2e(smoke)
+npm run release:gate   # typecheck + test:ws9 + build:lib
 ```
 
 ## License

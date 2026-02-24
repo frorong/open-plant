@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Migration Guide | Open Plant WSI Docs</title>
+    <meta name="description" content="Versioning, deprecation lifecycle, and migration checklist for Open Plant WSI" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="migration-guide">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="migration-guide.html" data-nav="migration-guide">Migration</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/migration-guide.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Migration</h2>
+          <a href="#contract">Stability contract</a>
+          <a href="#deprecation">Deprecation lifecycle</a>
+          <a href="#checklist">Breaking-change checklist</a>
+          <a href="#mpp">mpp and stamp formulas</a>
+          <a href="#examples">Before/after examples</a>
+          <a href="#release-gate">Release gate</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">WS-10</div>
+            <h1>Migration Guide and API Lifecycle</h1>
+            <p>
+              This page defines how API changes are introduced, documented, and validated before release.
+              Use it as the source of truth for upgrades.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="contract">
+            <h2>1. Stability contract</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>SemVer:</strong> patch = fixes only, minor = backward-compatible additions, major = breaking changes.</div>
+              <div class="flow-step"><strong>No silent breakage:</strong> runtime behavior changes must be announced in docs and changelog before release.</div>
+              <div class="flow-step"><strong>Type-first policy:</strong> public type changes require updated API tables and migration examples in the same PR.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="deprecation">
+            <h2>2. Deprecation lifecycle</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>N:</strong> add replacement API and mark old API deprecated in docs.</div>
+              <div class="flow-step"><strong>N+1 minor:</strong> keep compatibility and emit migration guidance in release notes.</div>
+              <div class="flow-step"><strong>N+2 minor:</strong> keep compatibility one more cycle unless security issue forces faster removal.</div>
+              <div class="flow-step"><strong>Next major:</strong> remove deprecated API, keep explicit migration section.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="checklist">
+            <h2>3. Breaking-change checklist</h2>
+            <ol>
+              <li>Update exported types and runtime code in one change-set.</li>
+              <li>Add before/after usage snippets in this guide.</li>
+              <li>Update `docs/en/api-reference.html` and `docs/ko/api-reference.html`.</li>
+              <li>Update `CHANGELOG.md` with migration notes.</li>
+              <li>Pass release gate (`typecheck`, `test:ws9`, `build:lib`).</li>
+            </ol>
+          </section>
+
+          <section class="panel reveal" id="mpp">
+            <h2>4. `mpp` and stamp conversion formulas</h2>
+            <p>
+              <code>mpp</code> means microns per pixel at native pyramid level (<code>maxTierZoom</code>).
+              Stamp physical size is computed from <code>mpp</code> and current zoom.
+            </p>
+            <pre><code class="language-txt">resolution_um_per_px = 2^(imageZoom - currentZoom) * imageMpp
+area_um2 = area_mm2 * 1000 * 1000
+
+square_side_px = sqrt(area_um2) / resolution_um_per_px
+circle_radius_px = sqrt(area_um2 / PI) / resolution_um_per_px</code></pre>
+            <div class="callout">
+              If <code>mpp</code> is missing, Open Plant falls back to <code>1μm/px</code>. In that case, stamp physical size is approximate.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="examples">
+            <h2>5. Before/after examples</h2>
+            <pre><code class="language-tsx">// Before (legacy alias, still supported)
+&lt;WsiViewerCanvas drawTool="stamp-circle-hpf-0.2mm2" /&gt;
+
+// After (preferred explicit control)
+&lt;WsiViewerCanvas
+  drawTool="stamp-circle"
+  stampOptions={{ circleAreaMm2: 0.2 }}
+/&gt;</code></pre>
+            <pre><code class="language-tsx">// Before (main-thread clipping)
+&lt;WsiViewerCanvas clipPointsToRois clipMode="sync" /&gt;
+
+// After (recommended default)
+&lt;WsiViewerCanvas clipPointsToRois clipMode="worker" /&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="release-gate">
+            <h2>6. Release gate (fixed)</h2>
+            <p>
+              Every publish must pass the same command locally and in CI.
+            </p>
+            <pre><code class="language-bash">npm run release:gate
+# typecheck + test:ws9 + build:lib</code></pre>
+            <p>
+              CI workflow: <code>.github/workflows/release-gate.yml</code><br />
+              Publish hook: <code>prepublishOnly</code> runs <code>release:gate</code> before packing.
+            </p>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

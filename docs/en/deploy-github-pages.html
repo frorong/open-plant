@@ -22,6 +22,7 @@
           <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
           <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
           <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="migration-guide.html" data-nav="migration-guide">Migration</a>
           <a href="architecture.html" data-nav="architecture">Architecture</a>
           <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
           <a href="../ko/deploy-github-pages.html">KO</a>
@@ -52,8 +53,9 @@
             <div class="flow">
               <div class="flow-step"><strong>1.</strong> Commit `.github/workflows/docs-pages.yml`.</div>
               <div class="flow-step"><strong>2.</strong> Set Pages Source to <code>GitHub Actions</code>.</div>
-              <div class="flow-step"><strong>3.</strong> Push and verify workflow success.</div>
-              <div class="flow-step"><strong>4.</strong> Open deployed URL.</div>
+              <div class="flow-step"><strong>3.</strong> Ensure `Release Gate` workflow passes before publish.</div>
+              <div class="flow-step"><strong>4.</strong> Push and verify workflow success.</div>
+              <div class="flow-step"><strong>5.</strong> Open deployed URL.</div>
             </div>
           </section>
 
@@ -102,6 +104,10 @@ jobs:
               <li>Set <code>Source</code> to <code>GitHub Actions</code>.</li>
               <li>Check the latest deployment in <code>Actions</code>.</li>
             </ol>
+            <div class="callout">
+              Release gate workflow: <code>.github/workflows/release-gate.yml</code><br />
+              Local equivalent: <code>npm run release:gate</code>
+            </div>
           </section>
 
           <section class="panel reveal" id="local">

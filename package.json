@@ -48,8 +48,13 @@
     "build": "npm run build:lib",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "test:unit": "npm run build:lib && node --test tests/unit/*.test.mjs",
+    "test:perf": "npm run build:lib && node tests/perf/ws9-perf.mjs",
+    "test:e2e": "npm run build:example && node tests/e2e/ws9-e2e-smoke.mjs",
+    "test:ws9": "npm run test:unit && npm run test:perf && npm run test:e2e",
+    "release:gate": "npm run typecheck && WS9_ENFORCE_BUDGET=1 npm run test:ws9 && npm run build:lib",
     "pack:dry-run": "npm_config_cache=.npm-cache npm pack --dry-run",
-    "prepublishOnly": "npm run build:lib && npm run pack:dry-run"
+    "prepublishOnly": "npm run release:gate && npm run pack:dry-run"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
