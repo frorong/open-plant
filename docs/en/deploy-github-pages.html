@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deploy | Open Plant WSI Docs</title>
+    <meta name="description" content="GitHub Pages deployment guide for docs" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="deploy-github-pages">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/deploy-github-pages.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Deploy</h2>
+          <a href="#summary">Summary</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#settings">Repository settings</a>
+          <a href="#local">Local preview</a>
+          <a href="#issues">Troubleshooting</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">GitHub Pages</div>
+            <h1>Deploy `docs/` as static site</h1>
+            <p>On push to `main` or `master`, the workflow uploads `docs` and deploys to GitHub Pages.</p>
+          </section>
+
+          <section class="panel reveal" id="summary">
+            <h2>Summary</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>1.</strong> Commit `.github/workflows/docs-pages.yml`.</div>
+              <div class="flow-step"><strong>2.</strong> Set Pages Source to <code>GitHub Actions</code>.</div>
+              <div class="flow-step"><strong>3.</strong> Push and verify workflow success.</div>
+              <div class="flow-step"><strong>4.</strong> Open deployed URL.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="workflow">
+            <h2>Workflow file</h2>
+            <pre><code class="language-yaml">name: Deploy Docs to GitHub Pages
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4</code></pre>
+          </section>
+
+          <section class="panel reveal" id="settings">
+            <h2>Repository settings</h2>
+            <ol>
+              <li>Open <code>Settings</code> in your repository.</li>
+              <li>Go to <code>Pages</code>.</li>
+              <li>Set <code>Source</code> to <code>GitHub Actions</code>.</li>
+              <li>Check the latest deployment in <code>Actions</code>.</li>
+            </ol>
+          </section>
+
+          <section class="panel reveal" id="local">
+            <h2>Local preview</h2>
+            <pre><code class="language-bash">cd docs
+python3 -m http.server 4173
+# http://localhost:4173</code></pre>
+          </section>
+
+          <section class="panel reveal" id="issues">
+            <h2>Troubleshooting</h2>
+            <table>
+              <thead><tr><th>Issue</th><th>Fix</th></tr></thead>
+              <tbody>
+                <tr><td>404 on refresh</td><td>Use static `.html` links for each page (no SPA rewrite needed).</td></tr>
+                <tr><td>Styles not loaded</td><td>Verify path to <code>../assets/site.css</code> in language pages.</td></tr>
+                <tr><td>Old page still shown</td><td>Clear browser cache and verify latest Pages deployment artifact.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

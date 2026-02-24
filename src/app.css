@@ -1,0 +1,42 @@
+.app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #101925;
+  color: #d7e4f2;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #26374a;
+  background: #152232;
+}
+
+.toolbar button {
+  border: 1px solid #38516c;
+  color: #e8f1fb;
+  background: #223347;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.toolbar button:hover {
+  background: #2d435a;
+}
+
+.stats {
+  margin-left: auto;
+  font-size: 13px;
+  color: #9fc2e5;
+}
+
+.viewer-frame {
+  width: 100%;
+  height: calc(100% - 48px);
+  min-height: 360px;
+}

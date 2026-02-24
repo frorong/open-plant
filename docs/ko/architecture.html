@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Architecture | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI 렌더링 아키텍처" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="architecture">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/architecture.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>아키텍처</h2>
+          <a href="#runtime">런타임 구성</a>
+          <a href="#tile-pipeline">타일 파이프라인</a>
+          <a href="#point-pipeline">포인트 파이프라인</a>
+          <a href="#draw-pipeline">드로잉 파이프라인</a>
+          <a href="#webgpu">WebGPU 확장 방향</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Engine</div>
+            <h1>단일 캔버스 렌더 루프 + 오버레이 드로잉</h1>
+            <p>
+              타일/포인트는 WebGL2에서 합성하고, ROI 인터랙션은 독립 Overlay
+              Canvas에서 처리합니다. 성능과 UX를 분리해 안정적으로 유지하는 구조입니다.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="runtime">
+            <h2>런타임 구성</h2>
+            <pre><code class="language-txt">React
+ └─ WsiViewerCanvas
+    ├─ WebGL Canvas (WsiTileRenderer)
+    │  ├─ Tile pass (bitmap quads)
+    │  └─ Point pass (palette indexed ring points)
+    └─ DrawLayer Canvas (pointer capture, ROI preview/labels)</code></pre>
+          </section>
+
+          <section class="panel reveal" id="tile-pipeline">
+            <h2>타일 파이프라인</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>tier 선택:</strong> `rawTier = maxTierZoom + log2(zoom)`.</div>
+              <div class="flow-step"><strong>visible tile 계산:</strong> viewport와 tile grid 교차 범위를 계산.</div>
+              <div class="flow-step"><strong>캐시 우선 렌더:</strong> 기존 캐시 타일(특히 이전 tier) 먼저 draw.</div>
+              <div class="flow-step"><strong>신규 타일 비동기 요청:</strong> 요청 완료 시 texture 업로드 후 다음 frame에서 반영.</div>
+              <div class="flow-step"><strong>LRU trim:</strong> `maxCacheTiles` 초과 시 오래된 texture 정리.</div>
+            </div>
+            <div class="callout">
+              fallback 타일을 먼저 렌더하기 때문에 줌 변경 직후 검은 화면이 아닌 점진적 채움이 유지됩니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="point-pipeline">
+            <h2>포인트 파이프라인</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>외부 파싱:</strong> 포인트 로딩/디코딩(zstd+MVT 등)은 호출자 책임.</div>
+              <div class="flow-step"><strong>입력 계약:</strong> 라이브러리는 `Float32Array` positions + `Uint16Array` paletteIndices만 수신.</div>
+              <div class="flow-step"><strong>업로드:</strong> positions/paletteIndices를 GPU 버퍼로 전송.</div>
+              <div class="flow-step"><strong>셰이더 렌더:</strong> 포인트는 ring 형태 fragment shader로 표현.</div>
+              <div class="flow-step"><strong>ROI clip:</strong> 필요 시 polygon 내부 포인트만 새 버퍼로 필터링.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="draw-pipeline">
+            <h2>드로잉 파이프라인</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Pointer capture:</strong> draw 활성 시 입력을 DrawLayer가 독점.</div>
+              <div class="flow-step"><strong>미리보기:</strong> freehand는 궤적 line, rectangle/circular는 polygon preview.</div>
+              <div class="flow-step"><strong>완료:</strong> tool별 좌표를 닫힌 ring으로 변환 후 `onDrawComplete` emit.</div>
+              <div class="flow-step"><strong>영속 표시:</strong> `persistedRegions`로 outline와 label을 계속 렌더.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="webgpu">
+            <h2>WebGPU 확장 방향 (연산 전용)</h2>
+            <div class="card-grid">
+              <div class="card">
+                <h3>ROI Culling</h3>
+                <p>수백만 포인트의 polygon 포함 판정(Spatial binning + compute).</p>
+              </div>
+              <div class="card">
+                <h3>LOD Aggregation</h3>
+                <p>저배율에서 cell density 집계를 compute pass로 사전 생성.</p>
+              </div>
+              <div class="card">
+                <h3>Term Histogram</h3>
+                <p>ROI 단위 term count/positivity 통계를 GPU에서 병렬 계산.</p>
+              </div>
+              <div class="card">
+                <h3>Interop</h3>
+                <p>연산 결과를 WebGL 업로드 가능한 packed buffer로 반환.</p>
+              </div>
+            </div>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

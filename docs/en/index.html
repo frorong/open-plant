@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI documentation overview" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="index">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-dot"></span>
+          <span>Open Plant WSI</span>
+        </a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/index.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Docs</h2>
+          <a href="index.html" data-nav="index">1. Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">2. Quick Start</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">3. ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">4. API Reference</a>
+          <a href="architecture.html" data-nav="architecture">5. Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">6. Deploy</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">WebGL Runtime</div>
+            <h1>Minimal Features, Maximum Throughput for Pathology WSI</h1>
+            <p>
+              Open Plant WSI is a React-first viewer runtime for large pathology slides,
+              designed for tile rendering, immediate point overlays from binary buffers,
+              and deterministic interaction behavior.
+            </p>
+          </section>
+
+          <section class="panel reveal">
+            <span class="pill">M1 Prototype Scope</span>
+            <h2>Current Capabilities</h2>
+            <div class="card-grid">
+              <div class="card">
+                <h3>Tile Renderer</h3>
+                <p>WebGL2 tile pipeline with zoom/pan, cache/inflight management, and fallback rendering.</p>
+              </div>
+              <div class="card">
+                <h3>Point Renderer</h3>
+                <p>Accepts pre-parsed typed arrays, term-color palette texture rendering, and ROI clipping.</p>
+              </div>
+              <div class="card">
+                <h3>Draw Layer</h3>
+                <p>`freehand`, `rectangle`, `circular` ROI tools with persisted outlines and labels.</p>
+              </div>
+              <div class="card">
+                <h3>React Surface</h3>
+                <p>`WsiViewerCanvas` unifies tiles, points, drawing, ROI filtering, and stats callbacks.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel reveal">
+            <h2>Design Principles</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>1. Visual continuity:</strong> keep old tiles visible until next tier is ready.</div>
+              <div class="flow-step"><strong>2. Binary-first data:</strong> use typed arrays for immediate GPU upload.</div>
+              <div class="flow-step"><strong>3. Interaction isolation:</strong> drawing mode locks pan events deterministically.</div>
+              <div class="flow-step"><strong>4. Compute-ready path:</strong> reserve WebGPU for heavy compute stages.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal">
+            <h2>Recommended Reading Order</h2>
+            <ol>
+              <li><a href="getting-started.html">Quick Start</a></li>
+              <li><a href="draw-and-roi.html">ROI Draw</a></li>
+              <li><a href="api-reference.html">API Reference</a></li>
+              <li><a href="architecture.html">Architecture</a></li>
+              <li><a href="deploy-github-pages.html">Deployment</a></li>
+            </ol>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

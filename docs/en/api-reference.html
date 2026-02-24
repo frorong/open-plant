@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API Reference | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI API reference" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="api-reference">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/api-reference.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>API</h2>
+          <a href="#wsi-viewer">WsiViewerCanvas</a>
+          <a href="#draw-layer">DrawLayer</a>
+          <a href="#tile-viewer">TileViewerCanvas</a>
+          <a href="#types">Core types</a>
+          <a href="#utils">Utilities</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Reference</div>
+            <h1>Public API Surface</h1>
+            <p>All items below are exported from <code>src/index.ts</code>.</p>
+          </section>
+
+          <section class="panel reveal" id="wsi-viewer">
+            <h2>`WsiViewerCanvas` props</h2>
+            <table>
+              <thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>source</code></td><td><code>WsiImageSource | null</code></td><td>Image source metadata.</td></tr>
+                <tr><td><code>authToken</code></td><td><code>string</code></td><td>Authorization header token when required.</td></tr>
+                <tr><td><code>viewState</code></td><td><code>Partial&lt;WsiViewState&gt;</code></td><td>Controlled zoom/offset state.</td></tr>
+                <tr><td><code>onViewStateChange</code></td><td><code>(next) =&gt; void</code></td><td>Camera state callback.</td></tr>
+                <tr><td><code>onStats</code></td><td><code>(stats) =&gt; void</code></td><td>Per-frame tile/point stats.</td></tr>
+                <tr><td><code>fitNonce</code></td><td><code>number</code></td><td>Re-triggers fit-to-image when changed.</td></tr>
+                <tr><td><code>pointData</code></td><td><code>WsiPointData | null</code></td><td>Point position + palette index buffers.</td></tr>
+                <tr><td><code>pointPalette</code></td><td><code>Uint8Array | null</code></td><td>RGBA palette texture data.</td></tr>
+                <tr><td><code>roiRegions</code></td><td><code>WsiRegion[]</code></td><td>Persisted ROI list with labels.</td></tr>
+                <tr><td><code>roiPolygons</code></td><td><code>DrawCoordinate[][]</code></td><td>Simplified polygon-only ROI input.</td></tr>
+                <tr><td><code>clipPointsToRois</code></td><td><code>boolean</code></td><td>Render only points inside ROI polygons.</td></tr>
+                <tr><td><code>interactionLock</code></td><td><code>boolean</code></td><td>Locks pan/zoom interactions.</td></tr>
+                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular"</code></td><td>Active drawing tool.</td></tr>
+                <tr><td><code>regionStrokeStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Persisted region stroke override.</td></tr>
+                <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>Persisted region label override.</td></tr>
+                <tr><td><code>onDrawComplete</code></td><td><code>(result) =&gt; void</code></td><td>Draw completion callback payload.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="draw-layer">
+            <h2>`DrawLayer` and shape utilities</h2>
+            <table>
+              <thead><tr><th>Export</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>DrawLayer</code></td><td>Standalone draw overlay canvas component.</td></tr>
+                <tr><td><code>closeRing(coords)</code></td><td>Closes polygon by repeating first coordinate at the end.</td></tr>
+                <tr><td><code>createRectangle(start, end)</code></td><td>Generates closed rectangle coordinates.</td></tr>
+                <tr><td><code>createCircle(start, end)</code></td><td>Generates circle polygon coordinates.</td></tr>
+                <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code></td></tr>
+                <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="tile-viewer">
+            <h2>`TileViewerCanvas` props</h2>
+            <table>
+              <thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>imageWidth</code></td><td><code>number</code></td><td>Source image width in pixels.</td></tr>
+                <tr><td><code>imageHeight</code></td><td><code>number</code></td><td>Source image height in pixels.</td></tr>
+                <tr><td><code>tiles</code></td><td><code>TileDefinition[]</code></td><td>M1 tile definition list.</td></tr>
+                <tr><td><code>viewState</code></td><td><code>Partial&lt;ViewState&gt;</code></td><td>Optional controlled camera state.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="types">
+            <h2>Core types</h2>
+            <pre><code class="language-ts">interface WsiImageSource {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  tileSize: number;
+  maxTierZoom: number;
+  tilePath: string;
+  tileBaseUrl: string;
+  terms: WsiTerm[];
+}
+
+interface WsiPointData {
+  count: number;
+  positions: Float32Array;
+  paletteIndices: Uint16Array;
+}</code></pre>
+          </section>
+
+          <section class="panel reveal" id="utils">
+            <h2>Utility exports</h2>
+            <table>
+              <thead><tr><th>Function</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>normalizeImageInfo(raw, tileBaseUrl)</code></td><td>Converts backend payload + tile base URL to <code>WsiImageSource</code>.</td></tr>
+                <tr><td><code>toTileUrl(source, tier, x, y)</code></td><td>Builds IMS tile URL.</td></tr>
+                <tr><td><code>buildTermPalette(terms)</code></td><td>Builds termId to palette mapping and RGBA texture.</td></tr>
+                <tr><td><code>filterPointDataByPolygons(data, polygons)</code></td><td>Filters points inside ROI polygons only.</td></tr>
+                <tr><td><code>toBearerToken(token)</code></td><td>Normalizes token to <code>Bearer ...</code> format.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

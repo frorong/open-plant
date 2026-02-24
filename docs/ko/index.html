@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Plant WSI Docs</title>
+    <meta
+      name="description"
+      content="Open Plant WSI Viewer 라이브러리 문서: 타일 렌더링, 포인트 렌더링, ROI 드로잉, 배포 가이드"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="index">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-dot"></span>
+          <span>Open Plant WSI</span>
+        </a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/index.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>문서</h2>
+          <a href="index.html" data-nav="index">1. 프로젝트 개요</a>
+          <a href="getting-started.html" data-nav="getting-started">2. 빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">3. ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">4. API 레퍼런스</a>
+          <a href="architecture.html" data-nav="architecture">5. 아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">6. GitHub Pages 배포</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">WebGL Runtime</div>
+            <h1>병리 WSI 뷰어를 위한 최소 기능, 최대 성능</h1>
+            <p>
+              Open Plant WSI는 대용량 Whole Slide Image를 타일로 렌더링하고,
+              ZST 기반 세포 포인트를 즉시 합성하며, ROI 드로잉으로 분석 영역을
+              제어하는 React 라이브러리입니다.
+            </p>
+          </section>
+
+          <section class="panel reveal">
+            <span class="pill">M1 Prototype Scope</span>
+            <h2>현재 제공 범위</h2>
+            <div class="card-grid">
+              <div class="card">
+                <h3>Tile Renderer</h3>
+                <p>
+                  WebGL2 기반 타일 파이프라인, 줌/팬 인터랙션, 캐시/인플라이트 제어,
+                  타일 fallback 렌더링.
+                </p>
+              </div>
+              <div class="card">
+                <h3>Point Renderer</h3>
+                <p>
+                  파싱된 TypedArray 수신, term 팔레트 텍스처 렌더링, 줌 레벨 기반 링 크기
+                  보간, ROI clip.
+                </p>
+              </div>
+              <div class="card">
+                <h3>Draw Layer</h3>
+                <p>
+                  `freehand`, `rectangle`, `circular` 도형 생성, 폴리곤 닫힘 처리,
+                  드로잉 중 궤적 표시, 라벨 오버레이.
+                </p>
+              </div>
+              <div class="card">
+                <h3>React Surface</h3>
+                <p>
+                  `WsiViewerCanvas` 컴포넌트에서 타일 + 포인트 + 드로잉 + ROI 필터를
+                  통합 제어.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel reveal">
+            <h2>핵심 설계 원칙</h2>
+            <div class="flow">
+              <div class="flow-step">
+                <strong>1. 화면 유지:</strong> 줌 전환 중에도 이전 타일을 먼저 유지해
+                검은 프레임 없이 연속적으로 렌더링.
+              </div>
+              <div class="flow-step">
+                <strong>2. 데이터 직결:</strong> 포인트는 배열 버퍼 기반으로 GPU 버퍼에
+                직접 업로드.
+              </div>
+              <div class="flow-step">
+                <strong>3. 인터랙션 분리:</strong> draw 활성 시 pan 이벤트를 잠그고,
+                draw 비활성 시 일반 네비게이션 복귀.
+              </div>
+              <div class="flow-step">
+                <strong>4. 확장 경로 확보:</strong> WebGPU는 연산 오프로딩(예:
+                point culling/aggregation) 경로로 단계적 확장.
+              </div>
+            </div>
+          </section>
+
+          <section class="panel reveal">
+            <h2>추천 문서 흐름</h2>
+            <ol>
+              <li><a href="getting-started.html">빠른 시작</a>: 설치/초기 렌더 확인</li>
+              <li><a href="draw-and-roi.html">ROI 그리기</a>: 도형 생성과 라벨 스타일</li>
+              <li><a href="api-reference.html">API</a>: props, 타입, 유틸 함수 상세</li>
+              <li><a href="architecture.html">아키텍처</a>: 렌더 루프와 데이터 파이프라인</li>
+              <li><a href="deploy-github-pages.html">배포</a>: GitHub Pages 고정 배포</li>
+            </ol>
+            <div class="callout">
+              API 엔드포인트 예시: `https://your-api.example.com/api/v4/images/:id/info`
+              결과를 `normalizeImageInfo`로 정규화해 뷰어 입력으로 사용합니다.
+            </div>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

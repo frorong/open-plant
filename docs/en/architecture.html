@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Architecture | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI runtime architecture" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="architecture">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/architecture.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Architecture</h2>
+          <a href="#runtime">Runtime layout</a>
+          <a href="#tile">Tile pipeline</a>
+          <a href="#point">Point pipeline</a>
+          <a href="#draw">Draw pipeline</a>
+          <a href="#webgpu">WebGPU path</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Engine</div>
+            <h1>Single render loop + isolated draw overlay</h1>
+            <p>
+              Tiles and points are composited in WebGL2. ROI interaction runs in a separate overlay canvas
+              to keep input handling deterministic and simple.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="runtime">
+            <h2>Runtime layout</h2>
+            <pre><code class="language-txt">React
+ └─ WsiViewerCanvas
+    ├─ WebGL Canvas (WsiTileRenderer)
+    │  ├─ Tile pass
+    │  └─ Point pass
+    └─ DrawLayer Canvas (ROI input + preview + labels)</code></pre>
+          </section>
+
+          <section class="panel reveal" id="tile">
+            <h2>Tile pipeline</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Tier selection:</strong> <code>tier = floor(maxTierZoom + log2(zoom))</code>.</div>
+              <div class="flow-step"><strong>Visible set:</strong> intersect viewport bounds with tile grid at the selected tier.</div>
+              <div class="flow-step"><strong>Fallback first:</strong> draw cached overlapping tiles before new-tier tiles are ready.</div>
+              <div class="flow-step"><strong>Async fetch/upload:</strong> fetch bitmap, upload texture, schedule new frame.</div>
+              <div class="flow-step"><strong>LRU trim:</strong> evict least-used textures when cache exceeds budget.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="point">
+            <h2>Point pipeline</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>External parsing:</strong> point loading/decoding (e.g. zstd+MVT) is the caller's responsibility.</div>
+              <div class="flow-step"><strong>Input contract:</strong> the library accepts <code>Float32Array</code> positions + <code>Uint16Array</code> palette indices.</div>
+              <div class="flow-step"><strong>GPU upload:</strong> positions and palette index buffers.</div>
+              <div class="flow-step"><strong>Shader render:</strong> ring-shaped point fragments with palette texture lookup.</div>
+              <div class="flow-step"><strong>ROI filter:</strong> optional polygon clip before upload/render.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="draw">
+            <h2>Draw pipeline</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>Pointer capture:</strong> draw layer captures active pointer in draw mode.</div>
+              <div class="flow-step"><strong>Preview:</strong> freehand trajectory or rectangle/circle preview polygon.</div>
+              <div class="flow-step"><strong>Finalize:</strong> close ring and emit <code>DrawResult</code>.</div>
+              <div class="flow-step"><strong>Persist:</strong> region outlines and labels remain visible across camera changes.</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="webgpu">
+            <h2>WebGPU expansion path (compute-focused)</h2>
+            <div class="card-grid">
+              <div class="card"><h3>ROI culling</h3><p>Massive point-in-polygon on compute shaders.</p></div>
+              <div class="card"><h3>LOD aggregation</h3><p>Low-zoom density aggregation and binning on GPU.</p></div>
+              <div class="card"><h3>Term histogram</h3><p>ROI-level term counts and positivity stats in parallel.</p></div>
+              <div class="card"><h3>Interop</h3><p>Pack compute output for direct WebGL buffer upload.</p></div>
+            </div>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

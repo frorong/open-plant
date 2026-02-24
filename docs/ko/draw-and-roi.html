@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ROI Draw | Open Plant WSI Docs</title>
+    <meta name="description" content="freehand/rectangle/circular ROI 드로잉 가이드" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="draw-and-roi">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/draw-and-roi.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>ROI 그리기</h2>
+          <a href="#toolbar">툴바 상태 모델</a>
+          <a href="#draw-complete">결과 수신</a>
+          <a href="#persist">영역 유지/라벨</a>
+          <a href="#style">스타일 커스터마이징</a>
+          <a href="#clip">ROI 기반 포인트 필터</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Interactive Region</div>
+            <h1>Freehand / Rectangle / Circular 드로잉</h1>
+            <p>
+              `drawTool`이 `cursor`가 아닌 동안 `DrawLayer`가 활성화되어
+              pan/zoom과 충돌 없이 ROI를 생성합니다. 결과는 닫힌 polygon 좌표로
+              반환됩니다.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="toolbar">
+            <h2>1. 툴바와 draw 상태</h2>
+            <pre><code class="language-tsx">import { useState } from "react";
+import { WsiViewerCanvas } from "open-plant";
+
+const [drawTool, setDrawTool] = useState("cursor");
+
+&lt;div className="toolbar"&gt;
+  &lt;button onClick={() =&gt; setDrawTool("freehand")}&gt;Freehand&lt;/button&gt;
+  &lt;button onClick={() =&gt; setDrawTool("rectangle")}&gt;Rectangle&lt;/button&gt;
+  &lt;button onClick={() =&gt; setDrawTool("circular")}&gt;Circular&lt;/button&gt;
+  &lt;button onClick={() =&gt; setDrawTool("cursor")}&gt;Cursor&lt;/button&gt;
+&lt;/div&gt;
+
+&lt;WsiViewerCanvas
+  source={source}
+  drawTool={drawTool}
+  interactionLock={drawTool !== "cursor"}
+/&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="draw-complete">
+            <h2>2. Draw 완료 결과</h2>
+            <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
+  console.log(result.tool); // freehand | rectangle | circular
+  console.log(result.coordinates); // closed ring
+  console.log(result.bbox); // [minX, minY, maxX, maxY]
+  console.log(result.areaPx); // polygon area
+};
+
+&lt;WsiViewerCanvas
+  source={source}
+  drawTool={drawTool}
+  onDrawComplete={onDrawComplete}
+/&gt;</code></pre>
+            <div class="callout">
+              드로잉 중 ESC를 누르면 현재 세션이 취소됩니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="persist">
+            <h2>3. ROI 영속화와 라벨 표시</h2>
+            <pre><code class="language-tsx">const [regions, setRegions] = useState([]);
+const [labelInput, setLabelInput] = useState("ROI");
+
+const handleDrawComplete = (result) =&gt; {
+  setRegions((prev) =&gt; [
+    ...prev,
+    {
+      id: `${Date.now()}`,
+      label: labelInput,
+      coordinates: result.coordinates,
+    },
+  ]);
+  setDrawTool("cursor");
+};
+
+&lt;WsiViewerCanvas
+  source={source}
+  drawTool={drawTool}
+  roiRegions={regions}
+  onDrawComplete={handleDrawComplete}
+/&gt;</code></pre>
+            <p>
+              라벨은 각 region의 최상단(anchor) 기준으로 마지막에 그려지므로,
+              윤곽선/채움 위에 항상 보입니다.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="style">
+            <h2>4. 라벨/스트로크 스타일 외부 주입</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  roiRegions={regions}
+  regionStrokeStyle={{
+    color: "#ffd166",
+    width: 2.5,
+    lineDash: [8, 4],
+    lineJoin: "round",
+    lineCap: "round",
+  }}
+  regionLabelStyle={{
+    fontFamily: "IBM Plex Mono, monospace",
+    fontSize: 12,
+    textColor: "#fff4cc",
+    backgroundColor: "rgba(8, 14, 22, 0.9)",
+    borderColor: "#ffd166",
+    borderWidth: 1,
+    paddingX: 8,
+    paddingY: 4,
+    offsetY: 12,
+    borderRadius: 4,
+  }}
+/&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="clip">
+            <h2>5. Draw 영역에만 셀 렌더</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  pointPalette={pointPalette}
+  roiRegions={regions}
+  clipPointsToRois
+/&gt;</code></pre>
+            <p>
+              `clipPointsToRois`를 켜면 포인트 버퍼가 ROI polygon 내부 포인트만 남도록
+              필터링되어 렌더됩니다.
+            </p>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

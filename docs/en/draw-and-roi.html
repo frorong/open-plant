@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ROI Draw | Open Plant WSI Docs</title>
+    <meta name="description" content="Freehand, rectangle, and circular ROI drawing" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="draw-and-roi">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/draw-and-roi.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>ROI Draw</h2>
+          <a href="#toolbar">Toolbar model</a>
+          <a href="#complete">Draw completion</a>
+          <a href="#persist">Persisted regions</a>
+          <a href="#style">Custom styles</a>
+          <a href="#clip">Point clipping</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Interactive Region</div>
+            <h1>Freehand / Rectangle / Circular ROI</h1>
+            <p>
+              When `drawTool` is not `cursor`, `DrawLayer` captures pointer events and returns
+              closed polygon coordinates through `onDrawComplete`.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="toolbar">
+            <h2>1. Toolbar state</h2>
+            <pre><code class="language-tsx">const [drawTool, setDrawTool] = useState("cursor");
+
+&lt;button onClick={() =&gt; setDrawTool("freehand")}&gt;Freehand&lt;/button&gt;
+&lt;button onClick={() =&gt; setDrawTool("rectangle")}&gt;Rectangle&lt;/button&gt;
+&lt;button onClick={() =&gt; setDrawTool("circular")}&gt;Circular&lt;/button&gt;
+&lt;button onClick={() =&gt; setDrawTool("cursor")}&gt;Cursor&lt;/button&gt;
+
+&lt;WsiViewerCanvas
+  source={source}
+  drawTool={drawTool}
+  interactionLock={drawTool !== "cursor"}
+/&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="complete">
+            <h2>2. Completion payload</h2>
+            <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
+  console.log(result.tool);        // freehand | rectangle | circular
+  console.log(result.coordinates); // closed ring
+  console.log(result.bbox);        // [minX, minY, maxX, maxY]
+  console.log(result.areaPx);      // polygon area
+};</code></pre>
+            <div class="callout">Press <code>Esc</code> to cancel current drawing session.</div>
+          </section>
+
+          <section class="panel reveal" id="persist">
+            <h2>3. Persist regions and labels</h2>
+            <pre><code class="language-tsx">const [regions, setRegions] = useState([]);
+
+const handleDrawComplete = (result) =&gt; {
+  setRegions((prev) =&gt; [
+    ...prev,
+    {
+      id: `${Date.now()}`,
+      label: "Tumor Core",
+      coordinates: result.coordinates,
+    },
+  ]);
+  setDrawTool("cursor");
+};
+
+&lt;WsiViewerCanvas
+  source={source}
+  drawTool={drawTool}
+  roiRegions={regions}
+  onDrawComplete={handleDrawComplete}
+/&gt;</code></pre>
+            <p>Labels are painted last and anchored to the top edge of each region.</p>
+          </section>
+
+          <section class="panel reveal" id="style">
+            <h2>4. External label and stroke styling</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  roiRegions={regions}
+  regionStrokeStyle={{
+    color: "#ffd166",
+    width: 2.5,
+    lineDash: [8, 4],
+    lineJoin: "round",
+    lineCap: "round",
+  }}
+  regionLabelStyle={{
+    fontFamily: "IBM Plex Mono, monospace",
+    fontSize: 12,
+    textColor: "#fff4cc",
+    backgroundColor: "rgba(8, 14, 22, 0.9)",
+    borderColor: "#ffd166",
+    borderWidth: 1,
+    paddingX: 8,
+    paddingY: 4,
+    offsetY: 12,
+    borderRadius: 4,
+  }}
+/&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="clip">
+            <h2>5. Render cells only inside drawn regions</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  pointPalette={pointPalette}
+  roiRegions={regions}
+  clipPointsToRois
+/&gt;</code></pre>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

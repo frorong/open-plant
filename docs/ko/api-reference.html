@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API Reference | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI API 레퍼런스" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="api-reference">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/api-reference.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>API</h2>
+          <a href="#wsi-viewer">WsiViewerCanvas</a>
+          <a href="#draw-layer">DrawLayer</a>
+          <a href="#tile-viewer">TileViewerCanvas</a>
+          <a href="#wsi-types">WSI 타입</a>
+          <a href="#utils">유틸 함수</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Reference</div>
+            <h1>공개 API 레퍼런스</h1>
+            <p>
+              아래 표는 `src/index.ts`에서 export된 항목 기준입니다.
+              타입/시그니처가 변경되면 이 문서도 함께 업데이트하세요.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="wsi-viewer">
+            <h2>`WsiViewerCanvas` Props</h2>
+            <table>
+              <thead>
+                <tr><th>이름</th><th>타입</th><th>설명</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>source</code></td><td><code>WsiImageSource | null</code></td><td>렌더 대상 이미지 메타데이터.</td></tr>
+                <tr><td><code>authToken</code></td><td><code>string</code></td><td>필요한 요청에 Authorization 헤더 주입.</td></tr>
+                <tr><td><code>viewState</code></td><td><code>Partial&lt;WsiViewState&gt;</code></td><td>외부 제어 줌/오프셋.</td></tr>
+                <tr><td><code>onViewStateChange</code></td><td><code>(next) =&gt; void</code></td><td>팬/줌 변경 콜백.</td></tr>
+                <tr><td><code>onStats</code></td><td><code>(stats) =&gt; void</code></td><td>프레임 렌더 통계.</td></tr>
+                <tr><td><code>fitNonce</code></td><td><code>number</code></td><td>값이 바뀌면 `fitToImage()` 재실행.</td></tr>
+                <tr><td><code>pointData</code></td><td><code>WsiPointData | null</code></td><td>포인트 포지션/팔레트 인덱스 버퍼.</td></tr>
+                <tr><td><code>pointPalette</code></td><td><code>Uint8Array | null</code></td><td>RGBA palette texture(1D).</td></tr>
+                <tr><td><code>roiRegions</code></td><td><code>WsiRegion[]</code></td><td>영속 ROI 목록(라벨 포함).</td></tr>
+                <tr><td><code>roiPolygons</code></td><td><code>DrawCoordinate[][]</code></td><td>간소화 ROI 입력.</td></tr>
+                <tr><td><code>clipPointsToRois</code></td><td><code>boolean</code></td><td>ROI 외부 포인트 제거.</td></tr>
+                <tr><td><code>interactionLock</code></td><td><code>boolean</code></td><td>캔버스 pan/zoom 잠금.</td></tr>
+                <tr><td><code>drawTool</code></td><td><code>"cursor" | "freehand" | "rectangle" | "circular"</code></td><td>드로우 툴 모드.</td></tr>
+                <tr><td><code>regionStrokeStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI stroke 스타일 override.</td></tr>
+                <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>ROI 라벨 스타일 override.</td></tr>
+                <tr><td><code>onDrawComplete</code></td><td><code>(result) =&gt; void</code></td><td>도형 완료 결과 수신.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="draw-layer">
+            <h2>`DrawLayer` / 도형 유틸</h2>
+            <table>
+              <thead>
+                <tr><th>Export</th><th>설명</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>DrawLayer</code></td><td>독립 오버레이 캔버스 컴포넌트.</td></tr>
+                <tr><td><code>closeRing(coords)</code></td><td>첫점/끝점을 닫아 polygon ring 생성.</td></tr>
+                <tr><td><code>createRectangle(start, end)</code></td><td>사각형 폐곡선 좌표 생성.</td></tr>
+                <tr><td><code>createCircle(start, end)</code></td><td>원형 다각형 좌표 생성.</td></tr>
+                <tr><td><code>DrawResult</code></td><td><code>{ tool, coordinates, bbox, areaPx }</code></td></tr>
+                <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
+                <tr><td><code>RegionStrokeStyle</code></td><td>색상/두께/점선/캡/조인 제어.</td></tr>
+                <tr><td><code>RegionLabelStyle</code></td><td>폰트/배경/패딩/오프셋/라운드 제어.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="tile-viewer">
+            <h2>`TileViewerCanvas` Props</h2>
+            <table>
+              <thead>
+                <tr><th>이름</th><th>타입</th><th>설명</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>imageWidth</code></td><td><code>number</code></td><td>원본 너비(px).</td></tr>
+                <tr><td><code>imageHeight</code></td><td><code>number</code></td><td>원본 높이(px).</td></tr>
+                <tr><td><code>tiles</code></td><td><code>TileDefinition[]</code></td><td>M1 타일 정의 리스트.</td></tr>
+                <tr><td><code>viewState</code></td><td><code>Partial&lt;ViewState&gt;</code></td><td>초기/외부 시점 제어.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="wsi-types">
+            <h2>핵심 타입</h2>
+            <pre><code class="language-ts">interface WsiImageSource {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  tileSize: number;
+  maxTierZoom: number;
+  tilePath: string;
+  tileBaseUrl: string;
+  terms: WsiTerm[];
+}
+
+interface WsiPointData {
+  count: number;
+  positions: Float32Array; // [x0,y0,x1,y1,...]
+  paletteIndices: Uint16Array;
+}</code></pre>
+          </section>
+
+          <section class="panel reveal" id="utils">
+            <h2>유틸 함수</h2>
+            <table>
+              <thead>
+                <tr><th>함수</th><th>설명</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>normalizeImageInfo(raw, tileBaseUrl)</code></td><td>백엔드 응답 + 타일 베이스 URL을 `WsiImageSource`로 변환.</td></tr>
+                <tr><td><code>toTileUrl(source, tier, x, y)</code></td><td>IMS 타일 URL 생성.</td></tr>
+                <tr><td><code>buildTermPalette(terms)</code></td><td>termId → palette index 매핑 + RGBA 팔레트 생성.</td></tr>
+                <tr><td><code>filterPointDataByPolygons(data, polygons)</code></td><td>ROI 다각형 기반 포인트 필터링.</td></tr>
+                <tr><td><code>toBearerToken(token)</code></td><td>`Bearer ...` 정규화.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

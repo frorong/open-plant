@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Getting Started | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI 빠른 시작 문서" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="getting-started">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/getting-started.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>빠른 시작</h2>
+          <a href="#setup">설치</a>
+          <a href="#load-info">이미지 메타데이터 로드</a>
+          <a href="#minimal">최소 렌더 예시</a>
+          <a href="#points">포인트 로드/팔레트</a>
+          <a href="#roi">ROI clip 적용</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Quickstart</div>
+            <h1>10분 내 첫 WSI 렌더</h1>
+            <p>
+              `WsiViewerCanvas`를 기준으로 타일, 포인트, ROI를 순서대로 연결합니다.
+              아래 코드는 현재 라이브러리 API(`src/index.ts`)에 맞춰 작성되어 있습니다.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="setup">
+            <h2>1. 설치</h2>
+            <pre><code class="language-bash">npm install
+npm run dev</code></pre>
+            <div class="callout">
+              현재 레포는 모노레포 패키지 publish 이전 단계입니다. 로컬 라이브러리 코드(`src`)를
+              직접 import 하거나 workspace 의존성으로 연결해 사용하세요.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="load-info">
+            <h2>2. 이미지 정보 조회 후 정규화</h2>
+            <pre><code class="language-ts">import { normalizeImageInfo, toBearerToken } from "open-plant";
+
+const IMAGE_ID = "69898975a05a9cd9ec6fe311";
+const token = "&lt;access-token&gt;";
+
+const res = await fetch(
+  `https://your-api.example.com/api/v4/images/${IMAGE_ID}/info`,
+  {
+    headers: { Authorization: toBearerToken(token) },
+  },
+);
+
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+const rawInfo = await res.json();
+const TILE_BASE_URL = "https://your-s3-bucket.example.com/ims";
+const source = normalizeImageInfo(rawInfo, TILE_BASE_URL);
+const pointZstUrl = rawInfo?.mvtPath || "";</code></pre>
+          </section>
+
+          <section class="panel reveal" id="minimal">
+            <h2>3. 최소 뷰어 렌더</h2>
+            <pre><code class="language-tsx">import { useMemo, useState } from "react";
+import { WsiViewerCanvas } from "open-plant";
+
+function Viewer({ source, token }) {
+  const [viewState, setViewState] = useState();
+
+  return (
+    &lt;WsiViewerCanvas
+      source={source}
+      authToken={token}
+      viewState={viewState}
+      onViewStateChange={setViewState}
+      onStats={(s) =&gt; console.log(s)}
+      style={{ width: "100vw", height: "100vh" }}
+    /&gt;
+  );
+}</code></pre>
+          </section>
+
+          <section class="panel reveal" id="points">
+            <h2>4. 포인트 데이터 전달 + term 팔레트 매핑</h2>
+            <p>
+              포인트 로딩/파싱(ZST/MVT 디코딩 등)은 <strong>라이브러리 외부</strong>에서 처리합니다.
+              파싱 완료된 TypedArray를 뷰어에 전달하세요.
+            </p>
+            <pre><code class="language-ts">import { buildTermPalette } from "open-plant";
+
+// positions: Float32Array [x0,y0,x1,y1,...] (직접 구현한 로더)
+// paletteIndices: Uint16Array (term 테이블에서 매핑)
+
+const termPalette = buildTermPalette(source.terms);
+
+const pointData = {
+  count: positions.length / 2,
+  positions,
+  paletteIndices,
+};</code></pre>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  authToken={toBearerToken(token)}
+  pointData={pointData}
+  pointPalette={termPalette.colors}
+/&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="roi">
+            <h2>5. ROI 폴리곤 클리핑</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  pointPalette={termPalette.colors}
+  roiRegions={[
+    {
+      id: "roi-1",
+      label: "Tumor Core",
+      coordinates: [
+        [12000, 14000],
+        [18000, 14000],
+        [18000, 20000],
+        [12000, 20000],
+        [12000, 14000],
+      ],
+    },
+  ]}
+  clipPointsToRois
+/&gt;</code></pre>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

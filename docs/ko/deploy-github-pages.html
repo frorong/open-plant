@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deploy | Open Plant WSI Docs</title>
+    <meta name="description" content="GitHub Pages 배포 가이드" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="deploy-github-pages">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI 그리기</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">배포</a>
+          <a href="../en/deploy-github-pages.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>배포</h2>
+          <a href="#summary">요약</a>
+          <a href="#workflow">Workflow 파일</a>
+          <a href="#repo-settings">GitHub 설정</a>
+          <a href="#local-check">로컬 확인</a>
+          <a href="#troubleshooting">문제 해결</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">GitHub Pages</div>
+            <h1>`docs/` 정적 사이트 자동 배포</h1>
+            <p>
+              `main` 또는 `master` 브랜치 push 시 `docs/`를 artifact로 업로드하고,
+              GitHub Pages에 배포하도록 구성합니다.
+            </p>
+          </section>
+
+          <section class="panel reveal" id="summary">
+            <h2>배포 요약</h2>
+            <div class="flow">
+              <div class="flow-step"><strong>1.</strong> `.github/workflows/docs-pages.yml` 커밋</div>
+              <div class="flow-step"><strong>2.</strong> 리포 Settings → Pages → Source: GitHub Actions</div>
+              <div class="flow-step"><strong>3.</strong> 브랜치 푸시 후 Actions 완료 확인</div>
+              <div class="flow-step"><strong>4.</strong> 배포 URL에서 `docs/index.html` 확인</div>
+            </div>
+          </section>
+
+          <section class="panel reveal" id="workflow">
+            <h2>Workflow</h2>
+            <pre><code class="language-yaml">name: Deploy Docs to GitHub Pages
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4</code></pre>
+          </section>
+
+          <section class="panel reveal" id="repo-settings">
+            <h2>GitHub 저장소 설정</h2>
+            <ol>
+              <li>GitHub 저장소에서 <code>Settings</code> 이동</li>
+              <li><code>Pages</code> 탭에서 <code>Build and deployment</code> 확인</li>
+              <li><code>Source</code>를 <code>GitHub Actions</code>로 선택</li>
+              <li>Actions 탭에서 최근 배포 job 성공 여부 확인</li>
+            </ol>
+          </section>
+
+          <section class="panel reveal" id="local-check">
+            <h2>로컬 미리보기</h2>
+            <pre><code class="language-bash">cd docs
+python3 -m http.server 4173
+# http://localhost:4173</code></pre>
+            <div class="callout">
+              상대 경로 링크 기준으로 작성되어 있으므로 파일 직접 열기(`file://`) 대신
+              로컬 서버에서 확인하세요.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="troubleshooting">
+            <h2>자주 발생하는 이슈</h2>
+            <table>
+              <thead>
+                <tr><th>문제</th><th>원인/해결</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>404 on refresh</td><td>정적 파일 기반 라우팅이므로 SPA rewrite가 필요 없음. 페이지 링크는 `.html` 명시 유지.</td></tr>
+                <tr><td>스타일 미적용</td><td><code>../assets/site.css</code> 상대 경로 오타 확인.</td></tr>
+                <tr><td>페이지가 갱신되지 않음</td><td>브라우저 캐시 또는 이전 배포 artifact 확인 후 강력 새로고침.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

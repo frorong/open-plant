@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Getting Started | Open Plant WSI Docs</title>
+    <meta name="description" content="Open Plant WSI quick start" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="getting-started">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="draw-and-roi.html" data-nav="draw-and-roi">ROI Draw</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="deploy-github-pages.html" data-nav="deploy-github-pages">Deploy</a>
+          <a href="../ko/getting-started.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Quick Start</h2>
+          <a href="#setup">Setup</a>
+          <a href="#load-info">Load Image Info</a>
+          <a href="#minimal">Minimal Render</a>
+          <a href="#points">Load Points</a>
+          <a href="#roi">ROI Clip</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Quickstart</div>
+            <h1>First WSI Render in Minutes</h1>
+            <p>Start from image metadata, normalize source, then wire tiles + points + ROI.</p>
+          </section>
+
+          <section class="panel reveal" id="setup">
+            <h2>1. Setup</h2>
+            <pre><code class="language-bash">npm install
+npm run dev</code></pre>
+          </section>
+
+          <section class="panel reveal" id="load-info">
+            <h2>2. Load and normalize image info</h2>
+            <pre><code class="language-ts">import { normalizeImageInfo, toBearerToken } from "open-plant";
+
+const IMAGE_ID = "69898975a05a9cd9ec6fe311";
+const token = "&lt;access-token&gt;";
+
+const res = await fetch(
+  `https://your-api.example.com/api/v4/images/${IMAGE_ID}/info`,
+  { headers: { Authorization: toBearerToken(token) } },
+);
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+const raw = await res.json();
+const TILE_BASE_URL = "https://your-s3-bucket.example.com/ims";
+const source = normalizeImageInfo(raw, TILE_BASE_URL);
+const pointZstUrl = raw?.mvtPath || "";</code></pre>
+          </section>
+
+          <section class="panel reveal" id="minimal">
+            <h2>3. Minimal viewer mount</h2>
+            <pre><code class="language-tsx">import { useState } from "react";
+import { WsiViewerCanvas } from "open-plant";
+
+function Viewer({ source, token }) {
+  const [viewState, setViewState] = useState();
+
+  return (
+    &lt;WsiViewerCanvas
+      source={source}
+      authToken={token}
+      viewState={viewState}
+      onViewStateChange={setViewState}
+      onStats={(stats) =&gt; console.log(stats)}
+      style={{ width: "100vw", height: "100vh" }}
+    /&gt;
+  );
+}</code></pre>
+          </section>
+
+          <section class="panel reveal" id="points">
+            <h2>4. Provide point data and build palette</h2>
+            <p>
+              Point loading and parsing (e.g. ZST/MVT decoding) is <strong>not</strong> part of the library.
+              Parse points externally, then pass typed arrays to the viewer.
+            </p>
+            <pre><code class="language-ts">import { buildTermPalette } from "open-plant";
+
+// positions: Float32Array [x0,y0,x1,y1,...] (your own loader)
+// paletteIndices: Uint16Array (mapped from your term table)
+
+const termPalette = buildTermPalette(source.terms);
+
+const pointData = {
+  count: positions.length / 2,
+  positions,
+  paletteIndices,
+};</code></pre>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  authToken={toBearerToken(token)}
+  pointData={pointData}
+  pointPalette={termPalette.colors}
+/&gt;</code></pre>
+          </section>
+
+          <section class="panel reveal" id="roi">
+            <h2>5. ROI polygon clipping</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  pointData={pointData}
+  pointPalette={termPalette.colors}
+  roiRegions={[
+    {
+      id: "roi-1",
+      label: "Tumor Core",
+      coordinates: [
+        [12000, 14000],
+        [18000, 14000],
+        [18000, 20000],
+        [12000, 20000],
+        [12000, 14000],
+      ],
+    },
+  ]}
+  clipPointsToRois
+/&gt;</code></pre>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>
