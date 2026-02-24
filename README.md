@@ -17,11 +17,7 @@
 
 <h3 align="center">10,000,000 cells · ~300 MB RAM · 60 fps</h3>
 
-https://github.com/user-attachments/assets/10m-points-demo.mov
-
-<video src="docs/assets/10m-points-demo.mov" width="100%" autoplay loop muted playsinline></video>
-
----
+https://github.com/user-attachments/assets/5a6b5deb-7442-4389-908f-bf2c69348824
 
 ## Why Open Plant
 
