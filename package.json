@@ -6,7 +6,7 @@
   "author": "Open Plant",
   "repository": {
     "type": "git",
-    "url": "https://github.com/frorong/open-plant.git"
+    "url": "git+https://github.com/frorong/open-plant.git"
   },
   "homepage": "https://frorong.github.io/open-plant/",
   "bugs": {
