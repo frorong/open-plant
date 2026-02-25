@@ -99,11 +99,15 @@ function handleWorkerMessage(event: MessageEvent<RoiClipWorkerResponse>): void {
   const count = Math.max(0, Math.floor(msg.count));
   const positions = new Float32Array(msg.positions);
   const paletteIndices = new Uint16Array(msg.paletteIndices);
+  const ids = msg.ids ? new Uint32Array(msg.ids) : null;
   const output: WsiPointData = {
     count,
     positions: positions.subarray(0, count * 2),
     paletteIndices: paletteIndices.subarray(0, count),
   };
+  if (ids) {
+    output.ids = ids.subarray(0, count);
+  }
 
   pending.resolve({
     data: output,
@@ -160,6 +164,7 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
   const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length));
   const positionsCopy = pointData.positions.slice(0, safeCount * 2);
   const termsCopy = pointData.paletteIndices.slice(0, safeCount);
+  const idsCopy = pointData.ids instanceof Uint32Array && pointData.ids.length >= safeCount ? pointData.ids.slice(0, safeCount) : null;
   const id = requestId++;
   const startMs = nowMs();
 
@@ -171,9 +176,14 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
       count: safeCount,
       positions: positionsCopy.buffer,
       paletteIndices: termsCopy.buffer,
+      ids: idsCopy?.buffer,
       polygons: polygons ?? [],
     };
-    worker.postMessage(msg, [positionsCopy.buffer, termsCopy.buffer]);
+    const transfer: Transferable[] = [positionsCopy.buffer, termsCopy.buffer];
+    if (idsCopy) {
+      transfer.push(idsCopy.buffer);
+    }
+    worker.postMessage(msg, transfer);
   });
 }
 

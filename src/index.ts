@@ -2,6 +2,7 @@ export { M1TileRenderer } from "./core/m1-tile-renderer";
 export type { ViewState } from "./core/ortho-camera";
 export type { Bounds, TileDefinition } from "./core/types";
 export type {
+  BrushOptions,
   DrawBounds,
   DrawCoordinate,
   DrawIntent,
@@ -30,7 +31,10 @@ export type { OverviewMapOptions, OverviewMapPosition } from "./react/overview-m
 export { OverviewMap } from "./react/overview-map";
 export { TileViewerCanvas } from "./react/tile-viewer-canvas";
 export type {
+  PointClickEvent,
   PointClipStatsEvent,
+  PointHitEvent,
+  PointHoverEvent,
   PointerWorldMoveEvent,
   RegionClickEvent,
   RegionHoverEvent,
@@ -104,6 +108,7 @@ export {
 export type { WebGpuCapabilities } from "./wsi/webgpu";
 export { getWebGpuCapabilities, prefilterPointsByBoundsWebGpu } from "./wsi/webgpu";
 export type {
+  PointSizeByZoom,
   WsiTileErrorEvent,
   WsiTileRendererOptions,
   WsiTileSchedulerConfig,

@@ -129,6 +129,7 @@ export async function filterPointDataByPolygonsHybrid(
   }
 
   const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length));
+  const pointIds = pointData.ids instanceof Uint32Array && pointData.ids.length >= safeCount ? pointData.ids : null;
   if (safeCount === 0) {
     return {
       data: {
@@ -197,13 +198,17 @@ export async function filterPointDataByPolygonsHybrid(
 
   if (candidateCount === 0) {
     if (bridgeToDraw) {
+      const data: WsiPointData = {
+        count: safeCount,
+        positions: pointData.positions.subarray(0, safeCount * 2),
+        paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
+        drawIndices: new Uint32Array(0),
+      };
+      if (pointIds) {
+        data.ids = pointIds.subarray(0, safeCount);
+      }
       return {
-        data: {
-          count: safeCount,
-          positions: pointData.positions.subarray(0, safeCount * 2),
-          paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
-          drawIndices: new Uint32Array(0),
-        },
+        data,
         meta: {
           mode: "hybrid-webgpu",
           durationMs: nowMs() - start,
@@ -219,6 +224,7 @@ export async function filterPointDataByPolygonsHybrid(
         count: 0,
         positions: new Float32Array(0),
         paletteIndices: new Uint16Array(0),
+        ...(pointIds ? { ids: new Uint32Array(0) } : {}),
       },
       meta: {
         mode: "hybrid-webgpu",
@@ -243,13 +249,18 @@ export async function filterPointDataByPolygonsHybrid(
       visibleCount += 1;
     }
 
+    const data: WsiPointData = {
+      count: safeCount,
+      positions: pointData.positions.subarray(0, safeCount * 2),
+      paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
+      drawIndices: drawIndices.subarray(0, visibleCount),
+    };
+    if (pointIds) {
+      data.ids = pointIds.subarray(0, safeCount);
+    }
+
     return {
-      data: {
-        count: safeCount,
-        positions: pointData.positions.subarray(0, safeCount * 2),
-        paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
-        drawIndices: drawIndices.subarray(0, visibleCount),
-      },
+      data,
       meta: {
         mode: "hybrid-webgpu",
         durationMs: nowMs() - start,
@@ -262,6 +273,7 @@ export async function filterPointDataByPolygonsHybrid(
 
   const nextPositions = new Float32Array(candidateCount * 2);
   const nextTerms = new Uint16Array(candidateCount);
+  const nextIds = pointIds ? new Uint32Array(candidateCount) : null;
   let cursor = 0;
 
   for (let i = 0; i < candidateCount; i += 1) {
@@ -272,15 +284,23 @@ export async function filterPointDataByPolygonsHybrid(
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
     nextTerms[cursor] = pointData.paletteIndices[pointIndex];
+    if (nextIds) {
+      nextIds[cursor] = pointIds![pointIndex];
+    }
     cursor += 1;
   }
 
+  const compactData: WsiPointData = {
+    count: cursor,
+    positions: nextPositions.subarray(0, cursor * 2),
+    paletteIndices: nextTerms.subarray(0, cursor),
+  };
+  if (nextIds) {
+    compactData.ids = nextIds.subarray(0, cursor);
+  }
+
   return {
-    data: {
-      count: cursor,
-      positions: nextPositions.subarray(0, cursor * 2),
-      paletteIndices: nextTerms.subarray(0, cursor),
-    },
+    data: compactData,
     meta: {
       mode: "hybrid-webgpu",
       durationMs: nowMs() - start,

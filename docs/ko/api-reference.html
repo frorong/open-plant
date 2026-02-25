@@ -74,8 +74,9 @@
                 <tr><td><code>fitNonce</code></td><td><code>number</code></td><td>값이 바뀌면 `fitToImage()` 재실행.</td></tr>
                 <tr><td><code>rotationResetNonce</code></td><td><code>number</code></td><td>값이 바뀌면 회전을 0도로 리셋.</td></tr>
                 <tr><td><code>ctrlDragRotate</code></td><td><code>boolean</code></td><td><code>Ctrl/Cmd + drag</code> 회전 입력 허용. 기본값 <code>true</code>.</td></tr>
-                <tr><td><code>pointData</code></td><td><code>WsiPointData | null</code></td><td>포인트 포지션/팔레트 인덱스 버퍼.</td></tr>
+                <tr><td><code>pointData</code></td><td><code>WsiPointData | null</code></td><td>포인트 포지션/팔레트 인덱스 버퍼(<code>ids</code> 선택 필드로 point hit-test 지원).</td></tr>
                 <tr><td><code>pointPalette</code></td><td><code>Uint8Array | null</code></td><td>RGBA palette texture(1D).</td></tr>
+                <tr><td><code>pointSizeByZoom</code></td><td><code>Record&lt;number, number&gt;</code></td><td>continuous zoom 레벨 기준 point 크기(px) stop 객체. stop 사이 값은 선형 보간됩니다.</td></tr>
                 <tr><td><code>roiRegions</code></td><td><code>WsiRegion[]</code></td><td>영속 ROI 목록(라벨 포함).</td></tr>
                 <tr><td><code>roiPolygons</code></td><td><code>DrawCoordinate[][]</code></td><td>간소화 ROI 입력.</td></tr>
                 <tr><td><code>clipPointsToRois</code></td><td><code>boolean</code></td><td>ROI 외부 포인트 제거.</td></tr>
@@ -96,6 +97,9 @@
                 <tr><td><code>customLayers</code></td><td><code>WsiCustomLayer[]</code></td><td>world/screen 좌표 변환기를 받는 커스텀 React 오버레이 레이어 슬롯.</td></tr>
                 <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>ROI 라벨 스타일 override.</td></tr>
                 <tr><td><code>onPointerWorldMove</code></td><td><code>(event) =&gt; void</code></td><td>월드 좌표 마우스 스트림 콜백(좌표 HUD 용도).</td></tr>
+                <tr><td><code>onPointHover</code></td><td><code>(event) =&gt; void</code></td><td>cursor 모드에서 가장 가까운 포인트 hover 이벤트. 히트가 없으면 <code>index/id</code>가 <code>null</code>입니다.</td></tr>
+                <tr><td><code>onPointClick</code></td><td><code>(event) =&gt; void</code></td><td>cursor 모드에서 가장 가까운 포인트 클릭 이벤트(좌/우 클릭 버튼 포함).</td></tr>
+                <tr><td><code>getCellByCoordinatesRef</code></td><td><code>MutableRefObject&lt;(coord) =&gt; PointHitEvent | null&gt;</code></td><td>월드 좌표 기반 포인트 hit-test 함수를 imperative하게 받는 ref.</td></tr>
                 <tr><td><code>onRegionHover</code></td><td><code>(event) =&gt; void</code></td><td>cursor 모드에서 region hover 변경 이벤트.</td></tr>
                 <tr><td><code>onRegionClick</code></td><td><code>(event) =&gt; void</code></td><td>cursor 모드에서 region 클릭 이벤트.</td></tr>
                 <tr><td><code>onActiveRegionChange</code></td><td><code>(regionId) =&gt; void</code></td><td>active region 변경 이벤트. 기본 동작은 active 상태에서 다른 영역/다른 region 클릭 시 해제.</td></tr>
@@ -163,6 +167,7 @@ interface WsiPointData {
   count: number;
   positions: Float32Array; // [x0,y0,x1,y1,...]
   paletteIndices: Uint16Array;
+  ids?: Uint32Array; // hit-test/cell 액션용 선택 ID
   drawIndices?: Uint32Array; // 선택 인덱스 브리지(선택적)
 }
 

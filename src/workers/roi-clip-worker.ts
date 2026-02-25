@@ -102,13 +102,15 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
   const count = Math.max(0, Math.floor(msg.count));
   const positions = new Float32Array(msg.positions);
   const terms = new Uint16Array(msg.paletteIndices);
+  const ids = msg.ids ? new Uint32Array(msg.ids) : null;
 
   const maxCountByPositions = Math.floor(positions.length / 2);
   const safeCount = Math.max(0, Math.min(count, maxCountByPositions, terms.length));
+  const hasIds = ids instanceof Uint32Array && ids.length >= safeCount;
   const prepared = preparePolygons(msg.polygons ?? []);
 
   if (safeCount === 0 || prepared.length === 0) {
-    return {
+    const empty: RoiClipWorkerSuccess = {
       type: "roi-clip-success",
       id: msg.id,
       count: 0,
@@ -116,10 +118,15 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
       paletteIndices: new Uint16Array(0).buffer,
       durationMs: nowMs() - start,
     };
+    if (hasIds) {
+      empty.ids = new Uint32Array(0).buffer;
+    }
+    return empty;
   }
 
   const nextPositions = new Float32Array(safeCount * 2);
   const nextTerms = new Uint16Array(safeCount);
+  const nextIds = hasIds ? new Uint32Array(safeCount) : null;
   let cursor = 0;
 
   for (let i = 0; i < safeCount; i += 1) {
@@ -129,13 +136,17 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
     nextTerms[cursor] = terms[i];
+    if (nextIds) {
+      nextIds[cursor] = ids![i];
+    }
     cursor += 1;
   }
 
   const outPositions = nextPositions.slice(0, cursor * 2);
   const outTerms = nextTerms.slice(0, cursor);
+  const outIds = nextIds ? nextIds.slice(0, cursor) : null;
 
-  return {
+  const success: RoiClipWorkerSuccess = {
     type: "roi-clip-success",
     id: msg.id,
     count: cursor,
@@ -143,6 +154,10 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
     paletteIndices: outTerms.buffer,
     durationMs: nowMs() - start,
   };
+  if (outIds) {
+    success.ids = outIds.buffer;
+  }
+  return success;
 }
 
 function handleIndexRequest(msg: RoiClipWorkerIndexRequest): RoiClipWorkerIndexSuccess {
@@ -194,7 +209,11 @@ workerScope.addEventListener("message", (event: MessageEvent<RoiClipWorkerReques
       return;
     }
     const response = handleDataRequest(data);
-    workerScope.postMessage(response, [response.positions, response.paletteIndices]);
+    const transfer: Transferable[] = [response.positions, response.paletteIndices];
+    if (response.ids) {
+      transfer.push(response.ids);
+    }
+    workerScope.postMessage(response, transfer);
   } catch (error) {
     const fail: RoiClipWorkerResponse = {
       type: "roi-clip-failure",

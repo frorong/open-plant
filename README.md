@@ -75,12 +75,14 @@ draw mode에 진입하면 `setPointerCapture`로 입력을 독점해 팬(드래�
 | **WebGL2 타일 렌더링** | 멀티 티어 타일 피라미드, LRU 캐시(320장), 저해상도 fallback 렌더링 |
 | **회전 인터랙션** | `WsiViewState.rotationDeg`, `Ctrl/Cmd + drag` 회전, `resetRotation` 경로 |
 | **포인트 오버레이** | WebGL2 `gl.POINTS`로 수십, 수백만 개 포인트를 팔레트 텍스처 기반 컬러링. 파싱된 TypedArray만 입력 |
+| **포인트 크기 커스터마이즈** | `pointSizeByZoom` 객체로 zoom별 셀(px) 크기 지정 + 내부 선형 보간 |
 | **모바일 타겟 성능** | iPhone 15급 환경에서 수백만 cell 워크로드를 전제로 pan/zoom 응답성을 유지하도록 설계 |
 | **드로잉 / ROI 도구** | Freehand · Rectangle · Circular + Stamp(사각형/원, mm² 지정) |
 | **고정 픽셀 스탬프** | `stamp-rectangle-4096px` + `stampOptions.rectanglePixelSize` |
 | **ROI 포인트 클리핑** | `clipMode`: `sync` / `worker` / `hybrid-webgpu` (실험) |
 | **ROI 통계 API** | `computeRoiPointGroups()` + `onRoiPointGroups` 콜백 |
 | **ROI 커스텀 오버레이** | `resolveRegionStrokeStyle`, `overlayShapes` |
+| **포인트 Hit-Test** | `onPointHover`, `onPointClick`, `getCellByCoordinatesRef`로 좌표→cell 매핑 |
 | **WebGPU 연산 경로** | WebGPU capability 체크 + ROI bbox prefilter compute(실험) |
 | **오버뷰 미니맵** | 썸네일 + 현재 뷰포트 인디케이터, 클릭/드래그 네비게이션 |
 | **React 바인딩** | `<WsiViewerCanvas>`, `<DrawLayer>`, `<OverviewMap>` 컴포넌트 제공 |
@@ -137,6 +139,12 @@ import { WsiViewerCanvas } from "open-plant";
   authToken={bearerToken}
   pointData={pointPayload}
   pointPalette={termPalette.colors}
+  pointSizeByZoom={{
+    1: 2.8,
+    6: 8.4,
+    10: 17.5,
+    12: 28,
+  }}
   clipPointsToRois
   clipMode="worker"
   onClipStats={(s) => console.log(s.mode, s.durationMs)}

@@ -1,9 +1,10 @@
 import { type CSSProperties, type MutableRefObject, type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
+import { buildBrushStrokePolygon } from "../wsi/brush-stroke";
 import { calcScaleResolution } from "../wsi/utils";
 
 export type StampDrawTool = "stamp-rectangle" | "stamp-circle" | "stamp-rectangle-4096px" | "stamp-rectangle-2mm2" | "stamp-circle-2mm2" | "stamp-circle-hpf-0.2mm2";
 
-export type DrawTool = "cursor" | "freehand" | "rectangle" | "circular" | StampDrawTool;
+export type DrawTool = "cursor" | "freehand" | "rectangle" | "circular" | "brush" | StampDrawTool;
 
 export type DrawCoordinate = [number, number];
 
@@ -95,6 +96,16 @@ export interface StampOptions {
   rectanglePixelSize?: number;
 }
 
+export interface BrushOptions {
+  radius: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  cursorColor?: string;
+  cursorActiveColor?: string;
+  cursorLineWidth?: number;
+  cursorLineDash?: number[];
+}
+
 export interface DrawLayerProps {
   tool: DrawTool;
   imageWidth: number;
@@ -102,6 +113,7 @@ export interface DrawLayerProps {
   imageMpp?: number;
   imageZoom?: number;
   stampOptions?: StampOptions;
+  brushOptions?: BrushOptions;
   projectorRef: RefObject<DrawProjector | null>;
   onDrawComplete?: (result: DrawResult) => void;
   onPatchComplete?: (result: PatchDrawResult) => void;
@@ -129,8 +141,19 @@ interface DrawSession {
   pointerId: number | null;
   start: DrawCoordinate | null;
   current: DrawCoordinate | null;
+  cursor: DrawCoordinate | null;
   points: DrawCoordinate[];
   stampCenter: DrawCoordinate | null;
+}
+
+interface ResolvedBrushOptions {
+  radius: number;
+  fillColor: string;
+  fillOpacity: number;
+  cursorColor: string;
+  cursorActiveColor: string;
+  cursorLineWidth: number;
+  cursorLineDash: number[];
 }
 
 const DRAW_FILL = "rgba(255, 77, 79, 0.16)";
@@ -147,6 +170,14 @@ const DEFAULT_STAMP_RECTANGLE_PIXEL_SIZE = 4096;
 const LEGACY_HPF_CIRCLE_AREA_MM2 = 0.2;
 const WHEEL_ZOOM_IN_FACTOR = 1.12;
 const WHEEL_ZOOM_OUT_FACTOR = 0.89;
+const DEFAULT_BRUSH_RADIUS = 32;
+const DEFAULT_BRUSH_FILL_COLOR = "#000000";
+const DEFAULT_BRUSH_FILL_OPACITY = 0.1;
+const DEFAULT_BRUSH_CURSOR_COLOR = "#FFCF00";
+const DEFAULT_BRUSH_CURSOR_ACTIVE_COLOR = "#FF0000";
+const DEFAULT_BRUSH_CURSOR_LINE_WIDTH = 1.5;
+const DEFAULT_BRUSH_CURSOR_DASH = [2, 2];
+const BRUSH_SCREEN_STEP = 1.5;
 
 const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
   color: "#ff4d4f",
@@ -208,6 +239,31 @@ function resolveStampOptions(options: StampOptions | undefined): Required<StampO
     rectangleAreaMm2: clampPositiveOrFallback(options?.rectangleAreaMm2, DEFAULT_STAMP_RECTANGLE_AREA_MM2),
     circleAreaMm2: clampPositiveOrFallback(options?.circleAreaMm2, DEFAULT_STAMP_CIRCLE_AREA_MM2),
     rectanglePixelSize: clampPositiveOrFallback(options?.rectanglePixelSize, DEFAULT_STAMP_RECTANGLE_PIXEL_SIZE),
+  };
+}
+
+function clampUnitOpacity(value: number | undefined, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return clamp(value, 0, 1);
+}
+
+function sanitizeBrushLineDash(value: number[] | undefined): number[] {
+  if (!Array.isArray(value)) return DEFAULT_BRUSH_CURSOR_DASH;
+  const out = value.filter(item => Number.isFinite(item) && item >= 0);
+  return out.length > 0 ? out : DEFAULT_BRUSH_CURSOR_DASH;
+}
+
+function resolveBrushOptions(options: BrushOptions | undefined): ResolvedBrushOptions {
+  const radius = clampPositiveOrFallback(options?.radius, DEFAULT_BRUSH_RADIUS);
+  const cursorLineWidth = clampPositiveOrFallback(options?.cursorLineWidth, DEFAULT_BRUSH_CURSOR_LINE_WIDTH);
+  return {
+    radius,
+    fillColor: options?.fillColor || DEFAULT_BRUSH_FILL_COLOR,
+    fillOpacity: clampUnitOpacity(options?.fillOpacity, DEFAULT_BRUSH_FILL_OPACITY),
+    cursorColor: options?.cursorColor || DEFAULT_BRUSH_CURSOR_COLOR,
+    cursorActiveColor: options?.cursorActiveColor || DEFAULT_BRUSH_CURSOR_ACTIVE_COLOR,
+    cursorLineWidth,
+    cursorLineDash: sanitizeBrushLineDash(options?.cursorLineDash),
   };
 }
 
@@ -561,6 +617,7 @@ export function DrawLayer({
   imageMpp,
   imageZoom,
   stampOptions,
+  brushOptions,
   projectorRef,
   onDrawComplete,
   onPatchComplete,
@@ -591,6 +648,7 @@ export function DrawLayer({
     pointerId: null,
     start: null,
     current: null,
+    cursor: null,
     points: [],
     stampCenter: null,
   });
@@ -617,6 +675,7 @@ export function DrawLayer({
 
   const resolvedLabelStyle = useMemo(() => resolveLabelStyle(regionLabelStyle), [regionLabelStyle]);
   const resolvedStampOptions = useMemo(() => resolveStampOptions(stampOptions), [stampOptions]);
+  const resolvedBrushOptions = useMemo(() => resolveBrushOptions(brushOptions), [brushOptions]);
 
   const mergedStyle = useMemo<CSSProperties>(
     () => ({
@@ -628,10 +687,10 @@ export function DrawLayer({
       display: "block",
       touchAction: "none",
       pointerEvents: active ? "auto" : "none",
-      cursor: active ? "crosshair" : "default",
+      cursor: active ? (tool === "brush" ? "none" : "crosshair") : "default",
       ...style,
     }),
-    [active, style]
+    [active, tool, style]
   );
 
   const resizeCanvas = useCallback(() => {
@@ -661,6 +720,19 @@ export function DrawLayer({
         out[i] = coord;
       }
       return out;
+    },
+    [projectorRef]
+  );
+
+  const worldRadiusToScreenPixels = useCallback(
+    (center: DrawCoordinate, worldRadius: number): number => {
+      if (!Number.isFinite(worldRadius) || worldRadius <= 0) return 0;
+      const projector = projectorRef.current;
+      if (!projector) return 0;
+      const a = toCoord(projector.worldToScreen(center[0], center[1]));
+      const b = toCoord(projector.worldToScreen(center[0] + worldRadius, center[1]));
+      if (!a || !b) return 0;
+      return Math.hypot(b[0] - a[0], b[1] - a[1]);
     },
     [projectorRef]
   );
@@ -721,6 +793,9 @@ export function DrawLayer({
     if (isStampTool(tool)) {
       return buildStampCoords(tool, session.stampCenter);
     }
+    if (tool === "brush") {
+      return [];
+    }
     if (!session.isDrawing) return [];
 
     if (tool === "freehand") {
@@ -735,6 +810,64 @@ export function DrawLayer({
 
     return [];
   }, [tool, buildStampCoords]);
+
+  const drawBrushStrokePreview = useCallback(
+    (ctx: CanvasRenderingContext2D): void => {
+      const session = sessionRef.current;
+      if (!session.isDrawing || session.points.length === 0) return;
+
+      const screenPoints = worldToScreenPoints(session.points);
+      if (screenPoints.length === 0) return;
+      const anchor = session.points[session.points.length - 1] ?? session.points[0];
+      const radiusPx = worldRadiusToScreenPixels(anchor, resolvedBrushOptions.radius);
+      if (!Number.isFinite(radiusPx) || radiusPx <= 0) return;
+
+      ctx.save();
+      ctx.globalAlpha = resolvedBrushOptions.fillOpacity;
+      ctx.fillStyle = resolvedBrushOptions.fillColor;
+      ctx.strokeStyle = resolvedBrushOptions.fillColor;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = radiusPx * 2;
+      if (screenPoints.length === 1) {
+        ctx.beginPath();
+        ctx.arc(screenPoints[0][0], screenPoints[0][1], radiusPx, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(screenPoints[0][0], screenPoints[0][1]);
+        for (let i = 1; i < screenPoints.length; i += 1) {
+          ctx.lineTo(screenPoints[i][0], screenPoints[i][1]);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    [worldToScreenPoints, worldRadiusToScreenPixels, resolvedBrushOptions]
+  );
+
+  const drawBrushCursor = useCallback(
+    (ctx: CanvasRenderingContext2D): void => {
+      const session = sessionRef.current;
+      const cursor = session.cursor;
+      if (!cursor) return;
+      const screen = toCoord(projectorRef.current?.worldToScreen(cursor[0], cursor[1]) ?? []);
+      if (!screen) return;
+      const radiusPx = worldRadiusToScreenPixels(cursor, resolvedBrushOptions.radius);
+      if (!Number.isFinite(radiusPx) || radiusPx <= 0) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(screen[0], screen[1], radiusPx, 0, Math.PI * 2);
+      ctx.strokeStyle = session.isDrawing ? resolvedBrushOptions.cursorActiveColor : resolvedBrushOptions.cursorColor;
+      ctx.lineWidth = resolvedBrushOptions.cursorLineWidth;
+      ctx.setLineDash(resolvedBrushOptions.cursorLineDash);
+      ctx.stroke();
+      ctx.setLineDash(EMPTY_DASH);
+      ctx.restore();
+    },
+    [projectorRef, worldRadiusToScreenPixels, resolvedBrushOptions]
+  );
 
   const drawOverlay = useCallback(() => {
     resizeCanvas();
@@ -845,20 +978,25 @@ export function DrawLayer({
     }
 
     if (active) {
-      const preview = buildPreviewCoords();
-      if (preview.length > 0) {
-        if (tool === "freehand") {
-          const line = worldToScreenPoints(preview);
-          if (line.length >= 2) {
-            drawPath(ctx, line, resolvedStrokeStyle, false, false);
-          }
-          if (line.length >= 3) {
-            drawPath(ctx, worldToScreenPoints(closeRing(preview)), resolvedStrokeStyle, true, true);
-          }
-        } else {
-          const polygon = worldToScreenPoints(preview);
-          if (polygon.length >= 4) {
-            drawPath(ctx, polygon, resolvedStrokeStyle, true, true);
+      if (tool === "brush") {
+        drawBrushStrokePreview(ctx);
+        drawBrushCursor(ctx);
+      } else {
+        const preview = buildPreviewCoords();
+        if (preview.length > 0) {
+          if (tool === "freehand") {
+            const line = worldToScreenPoints(preview);
+            if (line.length >= 2) {
+              drawPath(ctx, line, resolvedStrokeStyle, false, false);
+            }
+            if (line.length >= 3) {
+              drawPath(ctx, worldToScreenPoints(closeRing(preview)), resolvedStrokeStyle, true, true);
+            }
+          } else {
+            const polygon = worldToScreenPoints(preview);
+            if (polygon.length >= 4) {
+              drawPath(ctx, polygon, resolvedStrokeStyle, true, true);
+            }
           }
         }
       }
@@ -882,6 +1020,8 @@ export function DrawLayer({
     active,
     tool,
     buildPreviewCoords,
+    drawBrushStrokePreview,
+    drawBrushCursor,
     resizeCanvas,
     worldToScreenPoints,
     imageWidth,
@@ -909,7 +1049,7 @@ export function DrawLayer({
     });
   }, [drawOverlay]);
 
-  const resetSession = useCallback(() => {
+  const resetSession = useCallback((preserveCursor = false) => {
     const session = sessionRef.current;
     const canvas = canvasRef.current;
 
@@ -927,6 +1067,9 @@ export function DrawLayer({
     session.current = null;
     session.points = [];
     session.stampCenter = null;
+    if (!preserveCursor) {
+      session.cursor = null;
+    }
   }, []);
 
   const toWorld = useCallback(
@@ -944,7 +1087,7 @@ export function DrawLayer({
   const finishSession = useCallback(() => {
     const session = sessionRef.current;
     if (!session.isDrawing) {
-      resetSession();
+      resetSession(true);
       requestDraw();
       return;
     }
@@ -958,9 +1101,18 @@ export function DrawLayer({
       coordinates = createRectangle(session.start, session.current);
     } else if (tool === "circular") {
       coordinates = createCircle(session.start, session.current);
+    } else if (tool === "brush") {
+      const zoom = Math.max(1e-6, projectorRef.current?.getViewState?.().zoom ?? 1);
+      const minRasterStep = 0.75 / zoom;
+      coordinates = buildBrushStrokePolygon(session.points, {
+        radius: resolvedBrushOptions.radius,
+        clipBounds: [0, 0, imageWidth, imageHeight],
+        minRasterStep,
+        simplifyTolerance: minRasterStep * 0.4,
+      }) as DrawCoordinate[];
     }
 
-    if ((tool === "freehand" || tool === "rectangle" || tool === "circular") && isValidPolygon(coordinates) && onDrawComplete) {
+    if ((tool === "freehand" || tool === "rectangle" || tool === "circular" || tool === "brush") && isValidPolygon(coordinates) && onDrawComplete) {
       onDrawComplete({
         tool,
         intent: "roi",
@@ -970,9 +1122,9 @@ export function DrawLayer({
       });
     }
 
-    resetSession();
+    resetSession(true);
     requestDraw();
-  }, [tool, onDrawComplete, resetSession, requestDraw]);
+  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, imageWidth, imageHeight]);
 
   const handleStampAt = useCallback(
     (stampTool: StampDrawTool, center: DrawCoordinate): void => {
@@ -992,6 +1144,30 @@ export function DrawLayer({
       }
     },
     [buildStampCoords, onDrawComplete, onPatchComplete]
+  );
+
+  const appendBrushPoint = useCallback(
+    (session: DrawSession, world: DrawCoordinate): void => {
+      const projector = projectorRef.current;
+      const zoom = Math.max(1e-6, projector?.getViewState?.().zoom ?? 1);
+      const minWorldStep = BRUSH_SCREEN_STEP / zoom;
+      const minWorldStep2 = minWorldStep * minWorldStep;
+      const prev = session.points[session.points.length - 1];
+      if (!prev) {
+        session.points.push(world);
+        session.current = world;
+        return;
+      }
+      const dx = world[0] - prev[0];
+      const dy = world[1] - prev[1];
+      if (dx * dx + dy * dy >= minWorldStep2) {
+        session.points.push(world);
+      } else {
+        session.points[session.points.length - 1] = world;
+      }
+      session.current = world;
+    },
+    [projectorRef]
   );
 
   const handlePointerDown = useCallback(
@@ -1024,7 +1200,8 @@ export function DrawLayer({
       session.pointerId = event.pointerId;
       session.start = world;
       session.current = world;
-      session.points = tool === "freehand" ? [world] : [];
+      session.cursor = world;
+      session.points = tool === "freehand" || tool === "brush" ? [world] : [];
       requestDraw();
     },
     [active, tool, toWorld, handleStampAt, requestDraw]
@@ -1048,6 +1225,19 @@ export function DrawLayer({
       }
 
       const session = sessionRef.current;
+      if (tool === "brush") {
+        session.cursor = world;
+        if (!session.isDrawing || session.pointerId !== event.pointerId) {
+          requestDraw();
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        appendBrushPoint(session, world);
+        requestDraw();
+        return;
+      }
+
       if (!session.isDrawing || session.pointerId !== event.pointerId) {
         return;
       }
@@ -1076,7 +1266,7 @@ export function DrawLayer({
 
       requestDraw();
     },
-    [active, tool, toWorld, requestDraw, projectorRef]
+    [active, tool, toWorld, requestDraw, projectorRef, appendBrushPoint]
   );
 
   const handlePointerUp = useCallback(
@@ -1086,6 +1276,15 @@ export function DrawLayer({
 
       event.preventDefault();
       event.stopPropagation();
+      const world = toWorld(event);
+      if (world) {
+        session.cursor = world;
+        if (tool === "brush") {
+          appendBrushPoint(session, world);
+        } else {
+          session.current = world;
+        }
+      }
       const canvas = canvasRef.current;
       if (canvas && canvas.hasPointerCapture(event.pointerId)) {
         try {
@@ -1097,15 +1296,23 @@ export function DrawLayer({
 
       finishSession();
     },
-    [finishSession]
+    [finishSession, toWorld, tool, appendBrushPoint]
   );
 
   const handlePointerLeave = useCallback(() => {
-    if (!isStampTool(tool)) return;
     const session = sessionRef.current;
-    if (!session.stampCenter) return;
-    session.stampCenter = null;
-    requestDraw();
+    let changed = false;
+    if (tool === "brush" && !session.isDrawing && session.cursor) {
+      session.cursor = null;
+      changed = true;
+    }
+    if (isStampTool(tool) && session.stampCenter) {
+      session.stampCenter = null;
+      changed = true;
+    }
+    if (changed) {
+      requestDraw();
+    }
   }, [tool, requestDraw]);
 
   useEffect(() => {

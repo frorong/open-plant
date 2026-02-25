@@ -51,6 +51,30 @@ interface OrthoViewport {
 
 type WorldPoint = [number, number];
 const DEFAULT_ROTATION_DRAG_SENSITIVITY = 0.35;
+const MIN_POINT_SIZE_PX = 0.5;
+const MAX_POINT_SIZE_PX = 256;
+
+interface PointSizeStop {
+	zoom: number;
+	size: number;
+}
+
+const DEFAULT_POINT_SIZE_STOPS: readonly PointSizeStop[] = [
+	{ zoom: 1, size: 2.8 },
+	{ zoom: 2, size: 3.4 },
+	{ zoom: 3, size: 4.2 },
+	{ zoom: 4, size: 5.3 },
+	{ zoom: 5, size: 6.8 },
+	{ zoom: 6, size: 8.4 },
+	{ zoom: 7, size: 9.8 },
+	{ zoom: 8, size: 11.2 },
+	{ zoom: 9, size: 14.0 },
+	{ zoom: 10, size: 17.5 },
+	{ zoom: 11, size: 22.0 },
+	{ zoom: 12, size: 28.0 },
+];
+
+export type PointSizeByZoom = Readonly<Record<number, number>>;
 
 export interface WsiTileSchedulerConfig {
 	maxConcurrency?: number;
@@ -63,6 +87,7 @@ export interface WsiTileRendererOptions {
 	onViewStateChange?: (next: WsiViewState) => void;
 	onStats?: (stats: WsiRenderStats) => void;
 	authToken?: string;
+	pointSizeByZoom?: PointSizeByZoom;
 	maxCacheTiles?: number;
 	ctrlDragRotate?: boolean;
 	rotationDragSensitivityDegPerPixel?: number;
@@ -223,6 +248,63 @@ function isSameArrayView(
 	);
 }
 
+function clonePointSizeStops(stops: readonly PointSizeStop[]): PointSizeStop[] {
+	return stops.map(stop => ({ zoom: stop.zoom, size: stop.size }));
+}
+
+function normalizePointSizeStops(pointSizeByZoom: PointSizeByZoom | null | undefined): PointSizeStop[] {
+	if (!pointSizeByZoom) return clonePointSizeStops(DEFAULT_POINT_SIZE_STOPS);
+
+	const parsed = new Map<number, number>();
+	for (const [zoomKey, rawSize] of Object.entries(pointSizeByZoom)) {
+		const zoom = Number(zoomKey);
+		const size = Number(rawSize);
+		if (!Number.isFinite(zoom) || !Number.isFinite(size) || size <= 0) continue;
+		parsed.set(zoom, size);
+	}
+
+	if (parsed.size === 0) {
+		return clonePointSizeStops(DEFAULT_POINT_SIZE_STOPS);
+	}
+
+	return Array.from(parsed.entries())
+		.sort((a, b) => a[0] - b[0])
+		.map(([zoom, size]) => ({ zoom, size }));
+}
+
+function arePointSizeStopsEqual(a: readonly PointSizeStop[], b: readonly PointSizeStop[]): boolean {
+	if (a === b) return true;
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i += 1) {
+		if (a[i].zoom !== b[i].zoom || a[i].size !== b[i].size) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function resolvePointSizeByZoomStops(continuousZoom: number, stops: readonly PointSizeStop[]): number {
+	if (!Number.isFinite(continuousZoom)) return stops[0]?.size ?? MIN_POINT_SIZE_PX;
+	if (stops.length === 0) return MIN_POINT_SIZE_PX;
+	if (stops.length === 1) return stops[0].size;
+	if (continuousZoom <= stops[0].zoom) return stops[0].size;
+
+	for (let i = 1; i < stops.length; i += 1) {
+		const prev = stops[i - 1];
+		const next = stops[i];
+		if (continuousZoom > next.zoom) continue;
+		const span = Math.max(1e-6, next.zoom - prev.zoom);
+		const t = clamp((continuousZoom - prev.zoom) / span, 0, 1);
+		return prev.size + (next.size - prev.size) * t;
+	}
+
+	const last = stops[stops.length - 1];
+	const prev = stops[stops.length - 2];
+	const span = Math.max(1e-6, last.zoom - prev.zoom);
+	const slope = (last.size - prev.size) / span;
+	return last.size + (continuousZoom - last.zoom) * slope;
+}
+
 export class WsiTileRenderer {
 	private readonly canvas: HTMLCanvasElement;
 	private readonly source: WsiImageSource;
@@ -261,6 +343,7 @@ export class WsiTileRenderer {
 	private usePointIndices = false;
 	private pointBuffersDirty = true;
 	private pointPaletteSize = 1;
+	private pointSizeStops: PointSizeStop[] = clonePointSizeStops(DEFAULT_POINT_SIZE_STOPS);
 	private lastPointData: WsiPointData | null = null;
 	private lastPointPalette: Uint8Array | null = null;
 	private cache = new Map<string, CachedTile>();
@@ -294,6 +377,7 @@ export class WsiTileRenderer {
 			Number.isFinite(options.rotationDragSensitivityDegPerPixel)
 				? Math.max(0, options.rotationDragSensitivityDegPerPixel)
 				: DEFAULT_ROTATION_DRAG_SENSITIVITY;
+		this.pointSizeStops = normalizePointSizeStops(options.pointSizeByZoom);
 
 		const gl = canvas.getContext("webgl2", {
 			alpha: false,
@@ -512,6 +596,13 @@ export class WsiTileRenderer {
 		if (next) this.cancelDrag();
 	}
 
+	setPointSizeByZoom(pointSizeByZoom: PointSizeByZoom | null | undefined): void {
+		const nextStops = normalizePointSizeStops(pointSizeByZoom);
+		if (arePointSizeStopsEqual(this.pointSizeStops, nextStops)) return;
+		this.pointSizeStops = nextStops;
+		this.requestRender();
+	}
+
 	cancelDrag(): void {
 		if (this.pointerId !== null && this.canvas.hasPointerCapture(this.pointerId)) {
 			try {
@@ -569,35 +660,8 @@ export class WsiTileRenderer {
 	getPointSizeByZoom(): number {
 		const zoom = Math.max(1e-6, this.camera.getViewState().zoom);
 		const continuousZoom = this.source.maxTierZoom + Math.log2(zoom);
-		const stops: [number, number][] = [
-			[1, 2.6],
-			[2, 3.1],
-			[3, 3.8],
-			[4, 4.8],
-			[5, 6.1],
-			[6, 7.4],
-			[7, 8.4],
-			[8, 9.0],
-			[9, 11.5],
-			[10, 14.5],
-			[11, 18.0],
-			[12, 22.0],
-		];
-		let size = stops[0][1];
-		for (let i = 1; i < stops.length; i += 1) {
-			const [z0, s0] = stops[i - 1];
-			const [z1, s1] = stops[i];
-			if (continuousZoom <= z0) break;
-			const t = clamp((continuousZoom - z0) / Math.max(1e-6, z1 - z0), 0, 1);
-			size = s0 + (s1 - s0) * t;
-		}
-
-		const lastStop = stops[stops.length - 1];
-		if (continuousZoom > lastStop[0]) {
-			size += (continuousZoom - lastStop[0]) * 4.0;
-		}
-
-		return clamp(size, 2.2, 36.0);
+		const size = resolvePointSizeByZoomStops(continuousZoom, this.pointSizeStops);
+		return clamp(size, MIN_POINT_SIZE_PX, MAX_POINT_SIZE_PX);
 	}
 
 	fitToImage(): void {

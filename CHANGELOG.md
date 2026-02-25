@@ -9,6 +9,38 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 - No changes yet.
 
+## [1.2.4] - 2026-02-25
+
+### Added
+- Point hit-test API on `WsiViewerCanvas`: `onPointHover`, `onPointClick`, and `getCellByCoordinatesRef`.
+- Point hit event payload types: `PointHitEvent`, `PointHoverEvent`, `PointClickEvent` (including mouse button for context-menu flows).
+- Optional point id channel on `WsiPointData` via `ids?: Uint32Array`.
+- `pointSizeByZoom` customization for zoom-based point-size stops with linear interpolation.
+- `PointSizeByZoom` and `BrushOptions` public type exports.
+- Brush ROI draw tool (`drawTool: "brush"`) with configurable preview/cursor styling and polygon generation.
+- New brush geometry builder utility: `src/wsi/brush-stroke.ts`.
+
+### Changed
+- Default high-zoom point-size profile is larger (improved readability at max zoom).
+- Point clipping pipelines (`sync`, `worker`, `hybrid-webgpu`) now preserve `ids` through filtered outputs.
+- Worker protocol/client now transfer `ids` buffers alongside point position/palette buffers when provided.
+- Viewer point pick path now uses a spatial grid index and zoom-aware hit radius derived from rendered point size.
+- Example app now demonstrates:
+  - Right-click cell context alert via `onPointClick`.
+  - Hover/click point debug state rendering.
+  - Brush tool controls (`radius`, `opacity`, preview mode).
+  - External point-size tuning via `pointSizeByZoom`.
+
+### Docs
+- Updated `README.md` feature table and usage example for `pointSizeByZoom` and point hit-test APIs.
+- Updated EN/KO API reference docs for:
+  - `pointSizeByZoom`
+  - `onPointHover`, `onPointClick`, `getCellByCoordinatesRef`
+  - `WsiPointData.ids`
+
+### Tests
+- Added unit test coverage for `filterPointDataByPolygons` to verify `ids` are preserved for surviving points.
+
 ## [1.2.2] - 2026-02-25
 
 ### Added

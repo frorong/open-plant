@@ -69,8 +69,9 @@
                 <tr><td><code>fitNonce</code></td><td><code>number</code></td><td>Re-triggers fit-to-image when changed.</td></tr>
                 <tr><td><code>rotationResetNonce</code></td><td><code>number</code></td><td>Calls rotation reset when changed.</td></tr>
                 <tr><td><code>ctrlDragRotate</code></td><td><code>boolean</code></td><td>Enables <code>Ctrl/Cmd + drag</code> rotate interaction. Default: <code>true</code>.</td></tr>
-                <tr><td><code>pointData</code></td><td><code>WsiPointData | null</code></td><td>Point position + palette index buffers.</td></tr>
+                <tr><td><code>pointData</code></td><td><code>WsiPointData | null</code></td><td>Point position + palette index buffers (optional <code>ids</code> supported for point hit-test).</td></tr>
                 <tr><td><code>pointPalette</code></td><td><code>Uint8Array | null</code></td><td>RGBA palette texture data.</td></tr>
+                <tr><td><code>pointSizeByZoom</code></td><td><code>Record&lt;number, number&gt;</code></td><td>Custom point size(px) stops by continuous zoom level. Values between stops are linearly interpolated.</td></tr>
                 <tr><td><code>roiRegions</code></td><td><code>WsiRegion[]</code></td><td>Persisted ROI list with labels.</td></tr>
                 <tr><td><code>roiPolygons</code></td><td><code>DrawCoordinate[][]</code></td><td>Simplified polygon-only ROI input.</td></tr>
                 <tr><td><code>clipPointsToRois</code></td><td><code>boolean</code></td><td>Render only points inside ROI polygons.</td></tr>
@@ -91,6 +92,9 @@
                 <tr><td><code>customLayers</code></td><td><code>WsiCustomLayer[]</code></td><td>Custom React overlay layer slots with world/screen converters and redraw trigger.</td></tr>
                 <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>Persisted region label override.</td></tr>
                 <tr><td><code>onPointerWorldMove</code></td><td><code>(event) =&gt; void</code></td><td>World-coordinate pointer stream callback for custom coordinate HUD.</td></tr>
+                <tr><td><code>onPointHover</code></td><td><code>(event) =&gt; void</code></td><td>Nearest point hover event in cursor mode. Emits <code>index/id</code> or <code>null</code> when no hit.</td></tr>
+                <tr><td><code>onPointClick</code></td><td><code>(event) =&gt; void</code></td><td>Nearest point click event in cursor mode (left/right button info included).</td></tr>
+                <tr><td><code>getCellByCoordinatesRef</code></td><td><code>MutableRefObject&lt;(coord) =&gt; PointHitEvent | null&gt;</code></td><td>Imperative world-coordinate point hit-test resolver.</td></tr>
                 <tr><td><code>onRegionHover</code></td><td><code>(event) =&gt; void</code></td><td>Region hover event in cursor mode.</td></tr>
                 <tr><td><code>onRegionClick</code></td><td><code>(event) =&gt; void</code></td><td>Region click event in cursor mode.</td></tr>
                 <tr><td><code>onActiveRegionChange</code></td><td><code>(regionId) =&gt; void</code></td><td>Active region changed event. Default behavior clears active when clicking empty space or a different region.</td></tr>
@@ -153,6 +157,7 @@ interface WsiPointData {
   count: number;
   positions: Float32Array;
   paletteIndices: Uint16Array;
+  ids?: Uint32Array; // optional point ids for hit-test/cell actions
   drawIndices?: Uint32Array; // optional draw bridge (subset indices)
 }
 

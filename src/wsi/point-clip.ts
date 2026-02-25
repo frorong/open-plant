@@ -106,9 +106,14 @@ export function filterPointDataByPolygons(
 	const count = sanitizePointCount(pointData);
 	const positions = pointData.positions;
 	const terms = pointData.paletteIndices;
+	const pointIds =
+		pointData.ids instanceof Uint32Array && pointData.ids.length >= count
+			? pointData.ids
+			: null;
 
 	const nextPositions = new Float32Array(count * 2);
 	const nextTerms = new Uint16Array(count);
+	const nextIds = pointIds ? new Uint32Array(count) : null;
 	let cursor = 0;
 
 	for (let i = 0; i < count; i += 1) {
@@ -118,14 +123,21 @@ export function filterPointDataByPolygons(
 		nextPositions[cursor * 2] = x;
 		nextPositions[cursor * 2 + 1] = y;
 		nextTerms[cursor] = terms[i];
+		if (nextIds) {
+			nextIds[cursor] = pointIds![i];
+		}
 		cursor += 1;
 	}
 
-	return {
+	const output: WsiPointData = {
 		count: cursor,
 		positions: nextPositions.subarray(0, cursor * 2),
 		paletteIndices: nextTerms.subarray(0, cursor),
 	};
+	if (nextIds) {
+		output.ids = nextIds.subarray(0, cursor);
+	}
+	return output;
 }
 
 export function filterPointIndicesByPolygons(

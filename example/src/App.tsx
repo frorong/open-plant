@@ -1,11 +1,14 @@
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildTermPalette,
+  type BrushOptions,
   calcScaleLength,
   clamp,
   type DrawOverlayShape,
   type DrawResult,
   type DrawTool,
+  type PointClickEvent,
+  type PointHoverEvent,
   filterPointIndicesByPolygons,
   getWebGpuCapabilities,
   isSameViewState,
@@ -206,6 +209,9 @@ export default function App() {
   const [pointStatus, setPointStatus] = useState<PointStatus>(INITIAL_POINT_STATUS);
   const [pointPayload, setPointPayload] = useState<WsiPointData | null>(null);
   const [drawTool, setDrawTool] = useState<DrawTool>("cursor");
+  const [brushRadius, setBrushRadius] = useState(480);
+  const [brushOpacity, setBrushOpacity] = useState(0.1);
+  const [brushEraserPreview, setBrushEraserPreview] = useState(false);
   const [stampRectangleAreaMm2, setStampRectangleAreaMm2] = useState(2);
   const [stampCircleAreaMm2, setStampCircleAreaMm2] = useState(2);
   const [stampRectanglePixelSize, setStampRectanglePixelSize] = useState(4096);
@@ -224,6 +230,12 @@ export default function App() {
   const [activeRegionId, setActiveRegionId] = useState<string | number | null>(null);
   const [clickedRegionId, setClickedRegionId] = useState<string | number | null>(null);
   const [pointerWorld, setPointerWorld] = useState<[number, number] | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<{ index: number | null; id: number | null; pointCoordinate: [number, number] | null }>({
+    index: null,
+    id: null,
+    pointCoordinate: null,
+  });
+  const [lastPointClick, setLastPointClick] = useState<PointClickEvent | null>(null);
   const [labelInput, setLabelInput] = useState("");
 
   const bearerToken = useMemo(() => toBearerToken(tokenInput), [tokenInput]);
@@ -232,6 +244,16 @@ export default function App() {
     if (!source?.terms?.length) return buildTermPalette([]);
     return buildTermPalette(source.terms);
   }, [source]);
+
+  const pointSizeByZoom = useMemo(
+    () => ({
+      1: 2.8,
+      6: 8.8,
+      10: 18.5,
+      12: 30,
+    }),
+    []
+  );
 
   const handleViewStateChange = useCallback((next: WsiViewState) => {
     setViewState(prev => (isSameViewState(prev, next) ? prev : next));
@@ -269,6 +291,12 @@ export default function App() {
     setActiveRegionId(null);
     setClickedRegionId(null);
     setPointerWorld(null);
+    setHoveredPoint({
+      index: null,
+      id: null,
+      pointCoordinate: null,
+    });
+    setLastPointClick(null);
     setPointPayload(null);
     setPointStatus(INITIAL_POINT_STATUS);
   }, []);
@@ -390,11 +418,16 @@ export default function App() {
         for (let i = 0; i < localTermIndex.length; i += 1) {
           paletteIndices[i] = lut[localTermIndex[i]] ?? 0;
         }
+        const ids = new Uint32Array(result.count);
+        for (let i = 0; i < ids.length; i += 1) {
+          ids[i] = i;
+        }
 
         setPointPayload({
           count: result.count,
           positions: result.positions,
           paletteIndices,
+          ids,
         });
 
         setPointStatus({
@@ -534,7 +567,9 @@ export default function App() {
           },
         ]);
       }
-      setDrawTool("cursor");
+      if (payload?.tool !== "brush") {
+        setDrawTool("cursor");
+      }
     },
     [labelInput]
   );
@@ -595,6 +630,27 @@ export default function App() {
     setClickedRegionId(event?.regionId ?? null);
   }, []);
 
+  const handlePointHover = useCallback((event: PointHoverEvent) => {
+    setHoveredPoint({
+      index: event.index ?? null,
+      id: event.id ?? null,
+      pointCoordinate: event.pointCoordinate ? [event.pointCoordinate[0], event.pointCoordinate[1]] : null,
+    });
+  }, []);
+
+  const handlePointClick = useCallback((event: PointClickEvent) => {
+    setLastPointClick(event);
+    if (event.button !== 2) return;
+    window.alert(
+      [
+        "Cell Context",
+        `id: ${event.id ?? "-"}`,
+        `index: ${event.index}`,
+        `world: ${Math.round(event.pointCoordinate[0])}, ${Math.round(event.pointCoordinate[1])}`,
+      ].join("\n")
+    );
+  }, []);
+
   const maxZoom = source ? Math.max(1, Math.min(32, source.maxTierZoom + 4)) : 1;
 
   const handleZoomIn = useCallback(() => {
@@ -621,6 +677,19 @@ export default function App() {
     if (Number.isFinite(next) && next > 0) setStampCircleAreaMm2(next);
   }, []);
 
+  const brushOptions = useMemo<BrushOptions>(
+    () => ({
+      radius: Math.max(1, brushRadius),
+      fillColor: brushEraserPreview ? "#e03131" : "#0b0b0b",
+      fillOpacity: Math.max(0, Math.min(1, brushOpacity)),
+      cursorColor: brushEraserPreview ? "#ffa8a8" : "#FFCF00",
+      cursorActiveColor: brushEraserPreview ? "#ff4d4f" : "#FF0000",
+      cursorLineWidth: 1.5,
+      cursorLineDash: [2, 2],
+    }),
+    [brushRadius, brushOpacity, brushEraserPreview]
+  );
+
   const handleClearRoi = useCallback(() => {
     setRoiRegions([]);
     setPatchRegions([]);
@@ -629,6 +698,12 @@ export default function App() {
     setHoveredRegionId(null);
     setActiveRegionId(null);
     setClickedRegionId(null);
+    setHoveredPoint({
+      index: null,
+      id: null,
+      pointCoordinate: null,
+    });
+    setLastPointClick(null);
   }, []);
 
   const overlayShapes = useMemo<DrawOverlayShape[]>(() => {
@@ -776,6 +851,9 @@ export default function App() {
             <button type="button" className={drawTool === "circular" ? "active" : ""} disabled={!source} onClick={() => setDrawTool("circular")}>
               Circular
             </button>
+            <button type="button" className={drawTool === "brush" ? "active" : ""} disabled={!source} onClick={() => setDrawTool("brush")}>
+              Brush
+            </button>
             <button type="button" className={drawTool === "stamp-rectangle" ? "active" : ""} disabled={!source} onClick={() => setDrawTool("stamp-rectangle")}>
               Stamp □
             </button>
@@ -821,6 +899,39 @@ export default function App() {
               title="Rectangle stamp pixel size"
             />
             <span className="stamp-unit">Rect px</span>
+            <input
+              className="stamp-input"
+              type="number"
+              min={1}
+              step={1}
+              value={brushRadius}
+              onChange={e => {
+                const next = Number(e.target.value);
+                if (Number.isFinite(next) && next > 0) setBrushRadius(Math.round(next));
+              }}
+              aria-label="Brush radius"
+              title="Brush radius (world px)"
+            />
+            <span className="stamp-unit">Brush r(px)</span>
+            <input
+              className="stamp-input"
+              type="number"
+              min={0}
+              max={1}
+              step={0.05}
+              value={brushOpacity}
+              onChange={e => {
+                const next = Number(e.target.value);
+                if (!Number.isFinite(next)) return;
+                setBrushOpacity(Math.max(0, Math.min(1, next)));
+              }}
+              aria-label="Brush opacity"
+              title="Brush preview opacity"
+            />
+            <span className="stamp-unit">Brush α</span>
+            <button type="button" className={brushEraserPreview ? "active" : ""} onClick={() => setBrushEraserPreview(prev => !prev)}>
+              {brushEraserPreview ? "Preview: Eraser" : "Preview: Brush"}
+            </button>
             <button
               type="button"
               className={drawTool === "stamp-circle" && Math.abs(stampCircleAreaMm2 - 0.2) < 1e-9 ? "active" : ""}
@@ -879,6 +990,7 @@ export default function App() {
             ctrlDragRotate={ctrlDragRotate}
             pointData={pointPayload}
             pointPalette={termPalette.colors}
+            pointSizeByZoom={pointSizeByZoom}
             roiRegions={roiRegions}
             patchRegions={patchRegions}
             clipPointsToRois
@@ -891,6 +1003,7 @@ export default function App() {
               circleAreaMm2: stampCircleAreaMm2,
               rectanglePixelSize: stampRectanglePixelSize,
             }}
+            brushOptions={brushOptions}
             regionStrokeStyle={regionStrokeStyle}
             regionStrokeHoverStyle={regionStrokeHoverStyle}
             regionStrokeActiveStyle={regionStrokeActiveStyle}
@@ -908,6 +1021,8 @@ export default function App() {
             }}
             onRegionHover={handleRegionHover}
             onRegionClick={handleRegionClick}
+            onPointHover={handlePointHover}
+            onPointClick={handlePointClick}
             onActiveRegionChange={handleActiveRegionChange}
             onDrawComplete={handleDrawComplete}
             onPatchComplete={handlePatchComplete}
@@ -935,8 +1050,12 @@ export default function App() {
           hover {hoveredRegionId ?? "-"} | active {activeRegionId ?? "-"} | click {clickedRegionId ?? "-"} | pointer{" "}
           {pointerWorld ? `${Math.round(pointerWorld[0])}, ${Math.round(pointerWorld[1])}` : "-"}
           <br />
+          point hover id {hoveredPoint.id ?? "-"} | index {hoveredPoint.index ?? "-"} | point{" "}
+          {hoveredPoint.pointCoordinate ? `${Math.round(hoveredPoint.pointCoordinate[0])}, ${Math.round(hoveredPoint.pointCoordinate[1])}` : "-"} | last click{" "}
+          {lastPointClick ? `${lastPointClick.button === 2 ? "right" : "left"}:${lastPointClick.id ?? "-"}@${lastPointClick.index}` : "-"}
+          <br />
           stamp rect {stampRectangleAreaMm2}mm² | stamp circle {stampCircleAreaMm2}
-          mm² | stamp rect px {stampRectanglePixelSize}
+          mm² | stamp rect px {stampRectanglePixelSize} | brush r {brushRadius}px | brush α {brushOpacity.toFixed(2)} | preview {brushEraserPreview ? "eraser" : "brush"}
           {clipStats ? (
             <>
               <br />
