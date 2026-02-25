@@ -193,6 +193,8 @@ const DEFAULT_BRUSH_CURSOR_DASH = [2, 2];
 const DEFAULT_BRUSH_EDGE_DETAIL = 1;
 const MIN_BRUSH_EDGE_DETAIL = 0.25;
 const MAX_BRUSH_EDGE_DETAIL = 4;
+const MIN_BRUSH_RASTER_STEP = 0.1;
+const BRUSH_RASTER_DIAMETER_SAMPLES = 96;
 const BRUSH_SCREEN_STEP = 1.5;
 
 const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
@@ -1133,9 +1135,11 @@ export function DrawLayer({
         requestDraw();
         return;
       }
-      const zoom = Math.max(1e-6, projectorRef.current?.getViewState?.().zoom ?? 1);
       const edgeDetail = resolvedBrushOptions.edgeDetail;
-      const minRasterStep = 0.75 / (zoom * edgeDetail);
+      const minRasterStep = Math.max(
+        MIN_BRUSH_RASTER_STEP,
+        (resolvedBrushOptions.radius * 2) / (BRUSH_RASTER_DIAMETER_SAMPLES * edgeDetail),
+      );
       coordinates = buildBrushStrokePolygon(session.points, {
         radius: resolvedBrushOptions.radius,
         clipBounds: [0, 0, imageWidth, imageHeight],
@@ -1158,7 +1162,7 @@ export function DrawLayer({
 
     resetSession(true);
     requestDraw();
-  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.clickSelectRoi, imageWidth, imageHeight, projectorRef, onBrushTap]);
+  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.clickSelectRoi, imageWidth, imageHeight, onBrushTap]);
 
   const handleStampAt = useCallback(
     (stampTool: StampDrawTool, center: DrawCoordinate): void => {
