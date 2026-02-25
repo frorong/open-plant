@@ -98,6 +98,11 @@ export interface StampOptions {
 
 export interface BrushOptions {
   radius: number;
+  /**
+   * Brush edge detail factor. Higher values create rounder/finer edges.
+   * Range: 0.25 ~ 4. Default: 1.
+   */
+  edgeDetail?: number;
   fillColor?: string;
   fillOpacity?: number;
   cursorColor?: string;
@@ -148,6 +153,7 @@ interface DrawSession {
 
 interface ResolvedBrushOptions {
   radius: number;
+  edgeDetail: number;
   fillColor: string;
   fillOpacity: number;
   cursorColor: string;
@@ -177,6 +183,9 @@ const DEFAULT_BRUSH_CURSOR_COLOR = "#FFCF00";
 const DEFAULT_BRUSH_CURSOR_ACTIVE_COLOR = "#FF0000";
 const DEFAULT_BRUSH_CURSOR_LINE_WIDTH = 1.5;
 const DEFAULT_BRUSH_CURSOR_DASH = [2, 2];
+const DEFAULT_BRUSH_EDGE_DETAIL = 1;
+const MIN_BRUSH_EDGE_DETAIL = 0.25;
+const MAX_BRUSH_EDGE_DETAIL = 4;
 const BRUSH_SCREEN_STEP = 1.5;
 
 const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
@@ -253,11 +262,18 @@ function sanitizeBrushLineDash(value: number[] | undefined): number[] {
   return out.length > 0 ? out : DEFAULT_BRUSH_CURSOR_DASH;
 }
 
+function resolveBrushEdgeDetail(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_BRUSH_EDGE_DETAIL;
+  return clamp(value, MIN_BRUSH_EDGE_DETAIL, MAX_BRUSH_EDGE_DETAIL);
+}
+
 function resolveBrushOptions(options: BrushOptions | undefined): ResolvedBrushOptions {
   const radius = clampPositiveOrFallback(options?.radius, DEFAULT_BRUSH_RADIUS);
   const cursorLineWidth = clampPositiveOrFallback(options?.cursorLineWidth, DEFAULT_BRUSH_CURSOR_LINE_WIDTH);
+  const edgeDetail = resolveBrushEdgeDetail(options?.edgeDetail);
   return {
     radius,
+    edgeDetail,
     fillColor: options?.fillColor || DEFAULT_BRUSH_FILL_COLOR,
     fillOpacity: clampUnitOpacity(options?.fillOpacity, DEFAULT_BRUSH_FILL_OPACITY),
     cursorColor: options?.cursorColor || DEFAULT_BRUSH_CURSOR_COLOR,
@@ -1103,11 +1119,13 @@ export function DrawLayer({
       coordinates = createCircle(session.start, session.current);
     } else if (tool === "brush") {
       const zoom = Math.max(1e-6, projectorRef.current?.getViewState?.().zoom ?? 1);
-      const minRasterStep = 0.75 / zoom;
+      const edgeDetail = resolvedBrushOptions.edgeDetail;
+      const minRasterStep = 0.75 / (zoom * edgeDetail);
       coordinates = buildBrushStrokePolygon(session.points, {
         radius: resolvedBrushOptions.radius,
         clipBounds: [0, 0, imageWidth, imageHeight],
         minRasterStep,
+        circleSides: Math.max(24, Math.round(64 * edgeDetail)),
         simplifyTolerance: minRasterStep * 0.4,
       }) as DrawCoordinate[];
     }
@@ -1125,7 +1143,7 @@ export function DrawLayer({
 
     resetSession(true);
     requestDraw();
-  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, imageWidth, imageHeight]);
+  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, imageWidth, imageHeight]);
 
   const handleStampAt = useCallback(
     (stampTool: StampDrawTool, center: DrawCoordinate): void => {

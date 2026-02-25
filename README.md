@@ -149,6 +149,10 @@ import { WsiViewerCanvas } from "open-plant";
   clipMode="worker"
   onClipStats={(s) => console.log(s.mode, s.durationMs)}
   drawTool="stamp-rectangle-4096px"
+  brushOptions={{
+    radius: 32,
+    edgeDetail: 1.6, // 값이 클수록 더 둥글고 섬세한 브러시 경계
+  }}
   stampOptions={{
     rectangleAreaMm2: 2,
     circleAreaMm2: 0.2, // HPF 예시
