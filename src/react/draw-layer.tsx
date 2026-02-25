@@ -10,7 +10,7 @@ export type DrawCoordinate = [number, number];
 
 export type DrawBounds = [number, number, number, number];
 
-export type DrawIntent = "roi" | "patch";
+export type DrawIntent = "roi" | "patch" | "brush";
 
 export interface DrawResult {
   tool: Exclude<DrawTool, "cursor">;
@@ -1113,9 +1113,10 @@ export function DrawLayer({
     }
 
     if ((tool === "freehand" || tool === "rectangle" || tool === "circular" || tool === "brush") && isValidPolygon(coordinates) && onDrawComplete) {
+      const intent: DrawIntent = tool === "brush" ? "brush" : "roi";
       onDrawComplete({
         tool,
-        intent: "roi",
+        intent,
         coordinates,
         bbox: computeBounds(coordinates),
         areaPx: polygonArea(coordinates),

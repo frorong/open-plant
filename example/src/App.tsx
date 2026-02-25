@@ -556,6 +556,10 @@ export default function App() {
         setDrawTool("cursor");
         return;
       }
+      if (payload?.intent === "brush" || payload?.tool === "brush") {
+        // Brush is an interaction-only tool: app decides union/subtract/cell edits externally.
+        return;
+      }
       if (payload?.coordinates?.length) {
         const label = labelInput.trim();
         setRoiRegions(prev => [
@@ -567,9 +571,7 @@ export default function App() {
           },
         ]);
       }
-      if (payload?.tool !== "brush") {
-        setDrawTool("cursor");
-      }
+      setDrawTool("cursor");
     },
     [labelInput]
   );
