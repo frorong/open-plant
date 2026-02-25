@@ -65,8 +65,8 @@ Open Plant는 매 프레임 **캐시 전체**(최대 320장)를 viewport와 교�
 
 WebGL 캔버스(z-index: 1) 위에 Canvas 2D(z-index: 2)를 올려 어노테이션을 처리합니다.
 draw mode가 아닐 때는 `pointerEvents: "none"`으로 이벤트가 WebGL에 바로 통과하고,
-draw mode에 진입하면 `setPointerCapture`로 입력을 독점한 뒤 `interactionLock`이 WebGL 쪽 팬/줌 핸들러를 즉시 차단합니다.
-드로잉과 네비게이션이 동시에 발동하는 일이 구조적으로 불가능합니다.
+draw mode에 진입하면 `setPointerCapture`로 입력을 독점해 팬(드래그)은 차단합니다.
+대신 wheel zoom은 오버레이에서 renderer로 전달해 draw/stamp 상태에서도 확대/축소를 유지합니다.
 
 ## Features
 

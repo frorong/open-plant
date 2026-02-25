@@ -86,6 +86,7 @@ export interface DrawProjector {
   screenToWorld(clientX: number, clientY: number): DrawCoordinate | number[];
   worldToScreen(worldX: number, worldY: number): DrawCoordinate | number[];
   getViewState?: () => { zoom: number; rotationDeg?: number };
+  zoomBy?: (factor: number, screenX: number, screenY: number) => void;
 }
 
 export interface StampOptions {
@@ -144,6 +145,8 @@ const DEFAULT_STAMP_RECTANGLE_AREA_MM2 = 2;
 const DEFAULT_STAMP_CIRCLE_AREA_MM2 = 2;
 const DEFAULT_STAMP_RECTANGLE_PIXEL_SIZE = 4096;
 const LEGACY_HPF_CIRCLE_AREA_MM2 = 0.2;
+const WHEEL_ZOOM_IN_FACTOR = 1.12;
+const WHEEL_ZOOM_OUT_FACTOR = 0.89;
 
 const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
   color: "#ff4d4f",
@@ -1182,7 +1185,17 @@ export function DrawLayer({
         if (active) event.preventDefault();
       }}
       onWheel={event => {
-        if (active) event.preventDefault();
+        if (!active) return;
+        const canvas = canvasRef.current;
+        const projector = projectorRef.current;
+        if (!canvas || typeof projector?.zoomBy !== "function") return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = canvas.getBoundingClientRect();
+        const screenX = event.clientX - rect.left;
+        const screenY = event.clientY - rect.top;
+        projector.zoomBy(event.deltaY < 0 ? WHEEL_ZOOM_IN_FACTOR : WHEEL_ZOOM_OUT_FACTOR, screenX, screenY);
+        requestDraw();
       }}
     />
   );
