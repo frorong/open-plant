@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  WebGL2 기반 고성능 WSI(Whole Slide Image) 뷰어 라이브러리
+  WebGL2 기반 고성능 WSI(Whole Slide Image) 뷰어 라이브러리<br/>
+  고사양 PC가 아니어도, 고작, 고~오작 iPhone 15에서 수백만 cell을 부드럽게 렌더링
 </p>
 
 <p align="center">
@@ -17,14 +18,23 @@
 
 ---
 
-<h3 align="center">10,000,000 cells · ~300 MB RAM · 60 fps</h3>
+<h3 align="center">10,000,000 cells · ~300 MB RAM · 60 fps · iPhone 15 ready</h3>
 
 https://github.com/user-attachments/assets/5a6b5deb-7442-4389-908f-bf2c69348824
+
+> 핵심 포지셔닝: Open Plant는 데스크톱 전용 엔진이 아닙니다. iPhone 15급 모바일 환경에서도 수백만 cell pan/zoom 워크로드를 체감 렉 없이 다루는 것을 목표로 설계했습니다.
 
 ## Why Open Plant
 
 범용 시각화 프레임워크 위에 병리 뷰어를 올리면 추상화 비용을 그대로 떠안게 됩니다.
 Open Plant는 WSI 렌더링 **한 가지만** 하도록 설계되었고, 그래서 아래가 가능합니다.
+
+### 모바일 실전 성능 (iPhone 15)
+
+Open Plant는 “고사양 PC에서만 빠른 뷰어”가 아니라, iPhone 15 같은 일반 플래그십 모바일에서도
+수백만 cell을 pan/zoom하면서 작업 가능한 성능을 목표로 최적화되어 있습니다.
+타일 스케줄러 + fallback 렌더링 + TypedArray 포인트 파이프라인 덕분에, 실제 사용 시에도 뷰 전환 안정성을 유지합니다.
+(`실효 성능은 데이터 밀도/타일 서버 응답/네트워크 상태에 따라 달라질 수 있습니다.`)
 
 ### 포인트 1개당 10바이트
 
@@ -65,6 +75,7 @@ draw mode에 진입하면 `setPointerCapture`로 입력을 독점한 뒤 `intera
 | **WebGL2 타일 렌더링** | 멀티 티어 타일 피라미드, LRU 캐시(320장), 저해상도 fallback 렌더링 |
 | **회전 인터랙션** | `WsiViewState.rotationDeg`, `Ctrl/Cmd + drag` 회전, `resetRotation` 경로 |
 | **포인트 오버레이** | WebGL2 `gl.POINTS`로 수십, 수백만 개 포인트를 팔레트 텍스처 기반 컬러링. 파싱된 TypedArray만 입력 |
+| **모바일 타겟 성능** | iPhone 15급 환경에서 수백만 cell 워크로드를 전제로 pan/zoom 응답성을 유지하도록 설계 |
 | **드로잉 / ROI 도구** | Freehand · Rectangle · Circular + Stamp(사각형/원, mm² 지정) |
 | **고정 픽셀 스탬프** | `stamp-rectangle-4096px` + `stampOptions.rectanglePixelSize` |
 | **ROI 포인트 클리핑** | `clipMode`: `sync` / `worker` / `hybrid-webgpu` (실험) |
