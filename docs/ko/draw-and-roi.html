@@ -189,10 +189,15 @@ const handleDrawComplete = (result) =&gt; {
   }}
   overlayShapes={[
     {
-      id: "patch-guide",
-      coordinates: [[1000,1000],[3000,1000],[3000,3000],[1000,3000]],
+      id: "weak-positive-area",
+      coordinates: [
+        [[1000,1000],[3000,1000],[3000,3000],[1000,3000]],
+        [[3400,1200],[4300,1200],[4300,2300],[3400,2300]],
+      ],
       closed: true,
-      strokeStyle: { color: "rgba(255,255,255,0.85)", lineDash: [10, 8] },
+      stroke: { color: "#CB59FF", width: 3, lineDash: [5, 5] },
+      invertedFill: { fillColor: "rgba(0, 0, 0, 0.15)" },
+      visible: true,
     },
   ]}
   onPointerWorldMove={(event) =&gt; {

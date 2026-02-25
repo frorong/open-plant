@@ -637,22 +637,37 @@ export default function App() {
     const top = source.height * 0.08;
     const right = source.width * 0.2;
     const bottom = source.height * 0.2;
+    const left2 = source.width * 0.24;
+    const top2 = source.height * 0.12;
+    const right2 = source.width * 0.34;
+    const bottom2 = source.height * 0.22;
     return [
       {
-        id: "patch-guide",
+        id: "weak-positive-area",
         coordinates: [
-          [left, top],
-          [right, top],
-          [right, bottom],
-          [left, bottom],
+          [
+            [left, top],
+            [right, top],
+            [right, bottom],
+            [left, bottom],
+          ],
+          [
+            [left2, top2],
+            [right2, top2],
+            [right2, bottom2],
+            [left2, bottom2],
+          ],
         ],
         closed: true,
-        fill: false,
-        strokeStyle: {
-          color: "rgba(255, 255, 255, 0.85)",
-          width: 1.5,
-          lineDash: [10, 8],
+        stroke: {
+          color: "#CB59FF",
+          width: 3,
+          lineDash: [5, 5],
         },
+        invertedFill: {
+          fillColor: "rgba(0, 0, 0, 0.15)",
+        },
+        visible: true,
       },
     ];
   }, [source]);

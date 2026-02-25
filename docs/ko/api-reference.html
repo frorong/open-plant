@@ -92,7 +92,7 @@
                 <tr><td><code>regionStrokeHoverStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI hover 시 stroke 스타일 override.</td></tr>
                 <tr><td><code>regionStrokeActiveStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>ROI active 시 stroke 스타일 override (shadow 포함).</td></tr>
                 <tr><td><code>resolveRegionStrokeStyle</code></td><td><code>(context) =&gt; Partial&lt;RegionStrokeStyle&gt;</code></td><td>region/state별 동적 stroke 스타일 resolver.</td></tr>
-                <tr><td><code>overlayShapes</code></td><td><code>DrawOverlayShape[]</code></td><td>패치 점선 등 커스텀 오버레이 도형.</td></tr>
+                <tr><td><code>overlayShapes</code></td><td><code>DrawOverlayShape[]</code></td><td>DrawLayer가 렌더링하는 커스텀 오버레이 도형(폴리곤 stroke + 반전 마스크 지원).</td></tr>
                 <tr><td><code>customLayers</code></td><td><code>WsiCustomLayer[]</code></td><td>world/screen 좌표 변환기를 받는 커스텀 React 오버레이 레이어 슬롯.</td></tr>
                 <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>ROI 라벨 스타일 override.</td></tr>
                 <tr><td><code>onPointerWorldMove</code></td><td><code>(event) =&gt; void</code></td><td>월드 좌표 마우스 스트림 콜백(좌표 HUD 용도).</td></tr>
@@ -119,7 +119,8 @@
                 <tr><td><code>DrawResult</code></td><td><code>{ tool, intent, coordinates, bbox, areaPx }</code> (`intent`는 <code>"roi"</code> 또는 <code>"patch"</code>)</td></tr>
                 <tr><td><code>PatchDrawResult</code></td><td><code>stamp-rectangle-4096px</code> 전용 patch 결과 타입.</td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
-                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, strokeStyle? }</code> 형태의 오버레이 도형 입력.</td></tr>
+                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, stroke?, strokeStyle?, invertedFill?, visible? }</code> 형태의 오버레이 입력. <code>coordinates</code>는 <code>DrawCoordinate[]</code> 또는 <code>DrawCoordinate[][]</code>를 받습니다.</td></tr>
+                <tr><td><code>DrawOverlayInvertedFillStyle</code></td><td><code>{ fillColor: string }</code> 폴리곤 바깥 영역을 채우는 반전 마스크 색상 스타일.</td></tr>
                 <tr><td><code>RegionStyleContext</code></td><td><code>resolveRegionStrokeStyle</code>에 전달되는 상태 payload(<code>default</code>/<code>hover</code>/<code>active</code>).</td></tr>
                 <tr><td><code>StampOptions</code></td><td>면적(mm²) + 고정 픽셀 사각형 옵션.</td></tr>
                 <tr><td><code>RegionStrokeStyle</code></td><td>색상/두께/점선/캡/조인 + shadow(색상/블러/오프셋) 제어.</td></tr>

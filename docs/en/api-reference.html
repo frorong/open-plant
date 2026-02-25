@@ -87,7 +87,7 @@
                 <tr><td><code>regionStrokeHoverStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override while hovering a region.</td></tr>
                 <tr><td><code>regionStrokeActiveStyle</code></td><td><code>Partial&lt;RegionStrokeStyle&gt;</code></td><td>Stroke override for active region (including shadow).</td></tr>
                 <tr><td><code>resolveRegionStrokeStyle</code></td><td><code>(context) =&gt; Partial&lt;RegionStrokeStyle&gt;</code></td><td>Per-region/per-state dynamic stroke resolver.</td></tr>
-                <tr><td><code>overlayShapes</code></td><td><code>DrawOverlayShape[]</code></td><td>Custom overlay shapes (e.g. patch dashed guides) rendered by DrawLayer.</td></tr>
+                <tr><td><code>overlayShapes</code></td><td><code>DrawOverlayShape[]</code></td><td>Custom overlay shapes rendered by DrawLayer (supports polygon stroke and inverted-fill mask).</td></tr>
                 <tr><td><code>customLayers</code></td><td><code>WsiCustomLayer[]</code></td><td>Custom React overlay layer slots with world/screen converters and redraw trigger.</td></tr>
                 <tr><td><code>regionLabelStyle</code></td><td><code>Partial&lt;RegionLabelStyle&gt;</code></td><td>Persisted region label override.</td></tr>
                 <tr><td><code>onPointerWorldMove</code></td><td><code>(event) =&gt; void</code></td><td>World-coordinate pointer stream callback for custom coordinate HUD.</td></tr>
@@ -112,7 +112,8 @@
                 <tr><td><code>DrawResult</code></td><td><code>{ tool, intent, coordinates, bbox, areaPx }</code> where <code>intent</code> is <code>"roi"</code> or <code>"patch"</code>.</td></tr>
                 <tr><td><code>PatchDrawResult</code></td><td>Patch-specialized draw payload for <code>stamp-rectangle-4096px</code>.</td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
-                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, strokeStyle? }</code> custom overlay path input.</td></tr>
+                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, stroke?, strokeStyle?, invertedFill?, visible? }</code> where <code>coordinates</code> accepts <code>DrawCoordinate[]</code> or <code>DrawCoordinate[][]</code>.</td></tr>
+                <tr><td><code>DrawOverlayInvertedFillStyle</code></td><td><code>{ fillColor: string }</code> fill style for inverted mask outside polygons.</td></tr>
                 <tr><td><code>RegionStyleContext</code></td><td>State payload for <code>resolveRegionStrokeStyle</code> (<code>default</code>/<code>hover</code>/<code>active</code>).</td></tr>
                 <tr><td><code>StampOptions</code></td><td>Stamp options for mm² and fixed pixel rectangle size.</td></tr>
                 <tr><td><code>RegionStrokeStyle</code></td><td>Color/width/dash/cap/join + shadow (color/blur/offset) fields.</td></tr>

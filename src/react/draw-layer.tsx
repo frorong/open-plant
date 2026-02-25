@@ -41,10 +41,17 @@ export type RegionStrokeStyleResolver = (context: RegionStyleContext) => Partial
 
 export interface DrawOverlayShape {
   id?: string | number;
-  coordinates: DrawCoordinate[];
+  coordinates: DrawCoordinate[] | DrawCoordinate[][];
   closed?: boolean;
   fill?: boolean;
+  stroke?: Partial<RegionStrokeStyle>;
   strokeStyle?: Partial<RegionStrokeStyle>;
+  invertedFill?: DrawOverlayInvertedFillStyle;
+  visible?: boolean;
+}
+
+export interface DrawOverlayInvertedFillStyle {
+  fillColor: string;
 }
 
 export interface RegionStrokeStyle {
@@ -303,10 +310,9 @@ function isValidPolygon(coords: DrawCoordinate[]): boolean {
   return Array.isArray(coords) && coords.length >= 4 && polygonArea(coords) > MIN_AREA_PX;
 }
 
-function drawPath(ctx: CanvasRenderingContext2D, points: DrawCoordinate[], strokeStyle: RegionStrokeStyle, close = false, fill = false): void {
+function tracePath(ctx: CanvasRenderingContext2D, points: DrawCoordinate[], close = false): void {
   if (points.length === 0) return;
 
-  ctx.beginPath();
   ctx.moveTo(points[0][0], points[0][1]);
   for (let i = 1; i < points.length; i += 1) {
     ctx.lineTo(points[i][0], points[i][1]);
@@ -315,6 +321,13 @@ function drawPath(ctx: CanvasRenderingContext2D, points: DrawCoordinate[], strok
   if (close) {
     ctx.closePath();
   }
+}
+
+function drawPath(ctx: CanvasRenderingContext2D, points: DrawCoordinate[], strokeStyle: RegionStrokeStyle, close = false, fill = false): void {
+  if (points.length === 0) return;
+
+  ctx.beginPath();
+  tracePath(ctx, points, close);
   if (fill && close) {
     ctx.fillStyle = DRAW_FILL;
     ctx.fill();
@@ -376,6 +389,39 @@ function isSameRegionId(a: string | number | null | undefined, b: string | numbe
     return false;
   }
   return String(a) === String(b);
+}
+
+function isMultiRingCoordinates(coordinates: DrawCoordinate[] | DrawCoordinate[][]): coordinates is DrawCoordinate[][] {
+  const first = coordinates[0];
+  if (!Array.isArray(first)) return false;
+  return Array.isArray(first[0]);
+}
+
+function normalizeOverlayRings(coordinates: DrawCoordinate[] | DrawCoordinate[][], close: boolean): DrawCoordinate[][] {
+  const sourceRings = isMultiRingCoordinates(coordinates) ? coordinates : [coordinates];
+  const out: DrawCoordinate[][] = [];
+  for (const ring of sourceRings) {
+    if (!Array.isArray(ring) || ring.length < 2) continue;
+    const normalized = close ? closeRing(ring) : ring.map(([x, y]) => [x, y] as DrawCoordinate);
+    if (normalized.length >= (close ? 4 : 2)) {
+      out.push(normalized);
+    }
+  }
+  return out;
+}
+
+function drawInvertedFillMask(ctx: CanvasRenderingContext2D, outerRing: DrawCoordinate[], holeRings: DrawCoordinate[][], fillColor: string): void {
+  if (outerRing.length < 4 || holeRings.length === 0) return;
+  ctx.save();
+  ctx.beginPath();
+  tracePath(ctx, outerRing, true);
+  for (const ring of holeRings) {
+    if (ring.length < 4) continue;
+    tracePath(ctx, ring, true);
+  }
+  ctx.fillStyle = fillColor;
+  ctx.fill("evenodd");
+  ctx.restore();
 }
 
 function resolveLabelStyle(style: Partial<RegionLabelStyle> | undefined): RegionLabelStyle {
@@ -717,15 +763,41 @@ export function DrawLayer({
     }
 
     if (Array.isArray(overlayShapes) && overlayShapes.length > 0) {
+      const imageOuterRing = worldToScreenPoints(
+        closeRing([
+          [0, 0],
+          [imageWidth, 0],
+          [imageWidth, imageHeight],
+          [0, imageHeight],
+        ])
+      );
       for (let i = 0; i < overlayShapes.length; i += 1) {
         const shape = overlayShapes[i];
-        if (!shape?.coordinates?.length) continue;
-        const closed = shape.closed ?? false;
-        const points = closed ? closeRing(shape.coordinates) : shape.coordinates;
-        const screen = worldToScreenPoints(points);
-        if (screen.length < 2) continue;
-        const strokeStyle = mergeStrokeStyle(resolvedStrokeStyle, shape.strokeStyle);
-        drawPath(ctx, screen, strokeStyle, closed, shape.fill ?? false);
+        if (!shape?.coordinates?.length || shape.visible === false) continue;
+
+        const multiRing = isMultiRingCoordinates(shape.coordinates);
+        const closed = shape.closed ?? multiRing;
+        const renderRings = normalizeOverlayRings(shape.coordinates, closed);
+
+        if (shape.invertedFill?.fillColor && imageOuterRing.length >= 4) {
+          const holeRings: DrawCoordinate[][] = [];
+          const closedRings = normalizeOverlayRings(shape.coordinates, true);
+          for (const ring of closedRings) {
+            const screen = worldToScreenPoints(ring);
+            if (screen.length >= 4) {
+              holeRings.push(screen);
+            }
+          }
+          drawInvertedFillMask(ctx, imageOuterRing, holeRings, shape.invertedFill.fillColor);
+        }
+
+        if (renderRings.length === 0) continue;
+        const strokeStyle = mergeStrokeStyle(resolvedStrokeStyle, shape.stroke ?? shape.strokeStyle);
+        for (const ring of renderRings) {
+          const screen = worldToScreenPoints(ring);
+          if (screen.length < 2) continue;
+          drawPath(ctx, screen, strokeStyle, closed, shape.fill ?? false);
+        }
       }
     }
 
@@ -769,6 +841,8 @@ export function DrawLayer({
     buildPreviewCoords,
     resizeCanvas,
     worldToScreenPoints,
+    imageWidth,
+    imageHeight,
     projectorRef,
     mergedPersistedRegions,
     overlayShapes,
