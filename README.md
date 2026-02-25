@@ -152,6 +152,7 @@ import { WsiViewerCanvas } from "open-plant";
   brushOptions={{
     radius: 32,
     edgeDetail: 1.6, // 값이 클수록 더 둥글고 섬세한 브러시 경계
+    clickSelectRoi: true, // brush에서 "클릭만" 하면 ROI 선택 우선
   }}
   stampOptions={{
     rectangleAreaMm2: 2,
@@ -185,6 +186,8 @@ import { WsiViewerCanvas } from "open-plant";
 `mpp`(microns per pixel, 픽셀당 마이크론)는 `WsiImageSource`에 포함되는 물리 스케일 값이며, 스탬프의 mm² 크기를 실제 픽셀 단위로 환산할 때 사용됩니다.
 
 `rotationDeg`는 뷰포트 회전 각도(도 단위)이며, `Ctrl/Cmd + drag`로 조작하거나 `viewState`로 직접 제어할 수 있습니다.
+
+`brushOptions.clickSelectRoi`를 `true`로 두면 브러시 모드에서 클릭(드래그 없음) 시 ROI hit-test로 선택을 시도하고, ROI 밖 클릭은 기존 브러시 점찍기 동작을 유지합니다.
 
 ### `<DrawLayer>`
 

@@ -911,6 +911,28 @@ export function WsiViewerCanvas({
     [drawTool, effectiveRoiRegions, resolveWorldCoord, onRegionClick, activeRegionId, commitActiveRegion, emitPointClick]
   );
 
+  const handleBrushTap = useCallback(
+    (coord: DrawCoordinate): boolean => {
+      if (drawTool !== "brush") return false;
+      if (brushOptions?.clickSelectRoi !== true) return false;
+      if (!effectiveRoiRegions.length) return false;
+
+      const hit = pickRegionAt(coord, effectiveRoiRegions);
+      if (!hit) return false;
+
+      const nextActive: string | number | null = activeRegionId !== null && String(activeRegionId) === String(hit.regionId) ? null : hit.regionId;
+      commitActiveRegion(nextActive);
+      onRegionClick?.({
+        region: hit.region,
+        regionId: hit.regionId,
+        regionIndex: hit.regionIndex,
+        coordinate: coord,
+      });
+      return true;
+    },
+    [drawTool, brushOptions?.clickSelectRoi, effectiveRoiRegions, activeRegionId, commitActiveRegion, onRegionClick]
+  );
+
   const handleRegionContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!onPointClick) return;
@@ -1064,6 +1086,7 @@ export function WsiViewerCanvas({
           stampOptions={stampOptions}
           brushOptions={brushOptions}
           projectorRef={rendererRef}
+          onBrushTap={handleBrushTap}
           viewStateSignal={viewState}
           persistedRegions={effectiveRoiRegions}
           patchRegions={safePatchRegions}

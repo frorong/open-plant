@@ -103,6 +103,11 @@ export interface BrushOptions {
    * Range: 0.25 ~ 4. Default: 1.
    */
   edgeDetail?: number;
+  /**
+   * When true, a brush "tap" (click without drag) on ROI selects that ROI
+   * instead of creating a brush stroke.
+   */
+  clickSelectRoi?: boolean;
   fillColor?: string;
   fillOpacity?: number;
   cursorColor?: string;
@@ -120,6 +125,7 @@ export interface DrawLayerProps {
   stampOptions?: StampOptions;
   brushOptions?: BrushOptions;
   projectorRef: RefObject<DrawProjector | null>;
+  onBrushTap?: (coordinate: DrawCoordinate) => boolean;
   onDrawComplete?: (result: DrawResult) => void;
   onPatchComplete?: (result: PatchDrawResult) => void;
   enabled?: boolean;
@@ -154,6 +160,7 @@ interface DrawSession {
 interface ResolvedBrushOptions {
   radius: number;
   edgeDetail: number;
+  clickSelectRoi: boolean;
   fillColor: string;
   fillOpacity: number;
   cursorColor: string;
@@ -274,6 +281,7 @@ function resolveBrushOptions(options: BrushOptions | undefined): ResolvedBrushOp
   return {
     radius,
     edgeDetail,
+    clickSelectRoi: options?.clickSelectRoi === true,
     fillColor: options?.fillColor || DEFAULT_BRUSH_FILL_COLOR,
     fillOpacity: clampUnitOpacity(options?.fillOpacity, DEFAULT_BRUSH_FILL_OPACITY),
     cursorColor: options?.cursorColor || DEFAULT_BRUSH_CURSOR_COLOR,
@@ -635,6 +643,7 @@ export function DrawLayer({
   stampOptions,
   brushOptions,
   projectorRef,
+  onBrushTap,
   onDrawComplete,
   onPatchComplete,
   enabled,
@@ -1118,6 +1127,12 @@ export function DrawLayer({
     } else if (tool === "circular") {
       coordinates = createCircle(session.start, session.current);
     } else if (tool === "brush") {
+      const tapPoint = session.points[session.points.length - 1] ?? session.current ?? session.start;
+      if (resolvedBrushOptions.clickSelectRoi && tapPoint && session.points.length <= 1 && onBrushTap?.(tapPoint)) {
+        resetSession(true);
+        requestDraw();
+        return;
+      }
       const zoom = Math.max(1e-6, projectorRef.current?.getViewState?.().zoom ?? 1);
       const edgeDetail = resolvedBrushOptions.edgeDetail;
       const minRasterStep = 0.75 / (zoom * edgeDetail);
@@ -1143,7 +1158,7 @@ export function DrawLayer({
 
     resetSession(true);
     requestDraw();
-  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, imageWidth, imageHeight]);
+  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.clickSelectRoi, imageWidth, imageHeight, projectorRef, onBrushTap]);
 
   const handleStampAt = useCallback(
     (stampTool: StampDrawTool, center: DrawCoordinate): void => {
