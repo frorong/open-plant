@@ -119,7 +119,7 @@
                 <tr><td><code>DrawResult</code></td><td><code>{ tool, intent, coordinates, bbox, areaPx }</code> (`intent`는 <code>"roi"</code> 또는 <code>"patch"</code>)</td></tr>
                 <tr><td><code>PatchDrawResult</code></td><td><code>stamp-rectangle-4096px</code> 전용 patch 결과 타입.</td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
-                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, stroke?, strokeStyle?, invertedFill?, visible? }</code> 형태의 오버레이 입력. <code>coordinates</code>는 <code>DrawCoordinate[]</code> 또는 <code>DrawCoordinate[][]</code>를 받습니다.</td></tr>
+                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, stroke?, strokeStyle?, invertedFill?, visible? }</code> 형태의 오버레이 입력. <code>coordinates</code>는 <code>DrawCoordinate[]</code>, <code>DrawCoordinate[][]</code>, <code>DrawCoordinate[][][]</code>(single ring/multi-ring/multi-polygon)을 받습니다.</td></tr>
                 <tr><td><code>DrawOverlayInvertedFillStyle</code></td><td><code>{ fillColor: string }</code> 폴리곤 바깥 영역을 채우는 반전 마스크 색상 스타일.</td></tr>
                 <tr><td><code>RegionStyleContext</code></td><td><code>resolveRegionStrokeStyle</code>에 전달되는 상태 payload(<code>default</code>/<code>hover</code>/<code>active</code>).</td></tr>
                 <tr><td><code>StampOptions</code></td><td>면적(mm²) + 고정 픽셀 사각형 옵션.</td></tr>

@@ -39,9 +39,11 @@ export interface RegionStyleContext {
 
 export type RegionStrokeStyleResolver = (context: RegionStyleContext) => Partial<RegionStrokeStyle> | null | undefined;
 
+export type DrawOverlayCoordinates = DrawCoordinate[] | DrawCoordinate[][] | DrawCoordinate[][][];
+
 export interface DrawOverlayShape {
   id?: string | number;
-  coordinates: DrawCoordinate[] | DrawCoordinate[][];
+  coordinates: DrawOverlayCoordinates;
   closed?: boolean;
   fill?: boolean;
   stroke?: Partial<RegionStrokeStyle>;
@@ -391,18 +393,41 @@ function isSameRegionId(a: string | number | null | undefined, b: string | numbe
   return String(a) === String(b);
 }
 
-function isMultiRingCoordinates(coordinates: DrawCoordinate[] | DrawCoordinate[][]): coordinates is DrawCoordinate[][] {
+function isNestedRingCoordinates(coordinates: DrawOverlayCoordinates): boolean {
   const first = coordinates[0];
-  if (!Array.isArray(first)) return false;
-  return Array.isArray(first[0]);
+  return Array.isArray(first) && Array.isArray(first[0]);
 }
 
-function normalizeOverlayRings(coordinates: DrawCoordinate[] | DrawCoordinate[][], close: boolean): DrawCoordinate[][] {
-  const sourceRings = isMultiRingCoordinates(coordinates) ? coordinates : [coordinates];
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isCoordinatePair(value: unknown): value is [number, number] {
+  return Array.isArray(value) && value.length >= 2 && isFiniteNumber(value[0]) && isFiniteNumber(value[1]);
+}
+
+function isCoordinateRing(value: unknown): value is DrawCoordinate[] {
+  return Array.isArray(value) && value.length >= 2 && value.every(point => isCoordinatePair(point));
+}
+
+function collectOverlayRings(value: unknown, out: DrawCoordinate[][]): void {
+  if (!Array.isArray(value) || value.length === 0) return;
+  if (isCoordinateRing(value)) {
+    out.push(value.map(([x, y]) => [x, y] as DrawCoordinate));
+    return;
+  }
+  for (const item of value) {
+    collectOverlayRings(item, out);
+  }
+}
+
+function normalizeOverlayRings(coordinates: DrawOverlayCoordinates, close: boolean): DrawCoordinate[][] {
+  const sourceRings: DrawCoordinate[][] = [];
+  collectOverlayRings(coordinates, sourceRings);
   const out: DrawCoordinate[][] = [];
   for (const ring of sourceRings) {
-    if (!Array.isArray(ring) || ring.length < 2) continue;
-    const normalized = close ? closeRing(ring) : ring.map(([x, y]) => [x, y] as DrawCoordinate);
+    if (ring.length < 2) continue;
+    const normalized = close ? closeRing(ring) : ring;
     if (normalized.length >= (close ? 4 : 2)) {
       out.push(normalized);
     }
@@ -556,6 +581,7 @@ export function DrawLayer({
 }: DrawLayerProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawPendingRef = useRef(false);
+  const overlayDebugSnapshotRef = useRef<Map<string, string>>(new Map());
   const lastToolRef = useRef<DrawTool>(tool);
   const sessionRef = useRef<DrawSession>({
     isDrawing: false,
@@ -763,6 +789,7 @@ export function DrawLayer({
     }
 
     if (Array.isArray(overlayShapes) && overlayShapes.length > 0) {
+      const debugOverlay = Boolean((globalThis as { __OPEN_PLANT_DEBUG_OVERLAY__?: boolean }).__OPEN_PLANT_DEBUG_OVERLAY__);
       const imageOuterRing = worldToScreenPoints(
         closeRing([
           [0, 0],
@@ -775,17 +802,30 @@ export function DrawLayer({
         const shape = overlayShapes[i];
         if (!shape?.coordinates?.length || shape.visible === false) continue;
 
-        const multiRing = isMultiRingCoordinates(shape.coordinates);
-        const closed = shape.closed ?? multiRing;
+        const closed = shape.closed ?? isNestedRingCoordinates(shape.coordinates);
         const renderRings = normalizeOverlayRings(shape.coordinates, closed);
 
-        if (shape.invertedFill?.fillColor && imageOuterRing.length >= 4) {
+        if (shape.invertedFill?.fillColor) {
           const holeRings: DrawCoordinate[][] = [];
           const closedRings = normalizeOverlayRings(shape.coordinates, true);
           for (const ring of closedRings) {
             const screen = worldToScreenPoints(ring);
             if (screen.length >= 4) {
               holeRings.push(screen);
+            }
+          }
+          if (debugOverlay) {
+            const debugKey = String(shape.id ?? i);
+            const debugSignature = `${imageOuterRing.length}|${closedRings.length}|${holeRings.length}|${shape.invertedFill.fillColor}`;
+            if (overlayDebugSnapshotRef.current.get(debugKey) !== debugSignature) {
+              overlayDebugSnapshotRef.current.set(debugKey, debugSignature);
+              console.debug("[open-plant] invertedFill", {
+                id: shape.id ?? i,
+                outerRingPoints: imageOuterRing.length,
+                sourceRingCount: closedRings.length,
+                holeRingCount: holeRings.length,
+                fillColor: shape.invertedFill.fillColor,
+              });
             }
           }
           drawInvertedFillMask(ctx, imageOuterRing, holeRings, shape.invertedFill.fillColor);

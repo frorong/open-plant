@@ -5,6 +5,7 @@ export type {
   DrawBounds,
   DrawCoordinate,
   DrawIntent,
+  DrawOverlayCoordinates,
   DrawOverlayInvertedFillStyle,
   DrawOverlayShape,
   DrawProjector,

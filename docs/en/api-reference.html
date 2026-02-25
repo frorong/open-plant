@@ -112,7 +112,7 @@
                 <tr><td><code>DrawResult</code></td><td><code>{ tool, intent, coordinates, bbox, areaPx }</code> where <code>intent</code> is <code>"roi"</code> or <code>"patch"</code>.</td></tr>
                 <tr><td><code>PatchDrawResult</code></td><td>Patch-specialized draw payload for <code>stamp-rectangle-4096px</code>.</td></tr>
                 <tr><td><code>DrawRegion</code></td><td><code>{ id?, coordinates, label? }</code></td></tr>
-                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, stroke?, strokeStyle?, invertedFill?, visible? }</code> where <code>coordinates</code> accepts <code>DrawCoordinate[]</code> or <code>DrawCoordinate[][]</code>.</td></tr>
+                <tr><td><code>DrawOverlayShape</code></td><td><code>{ id?, coordinates, closed?, fill?, stroke?, strokeStyle?, invertedFill?, visible? }</code> where <code>coordinates</code> accepts <code>DrawCoordinate[]</code>, <code>DrawCoordinate[][]</code>, or <code>DrawCoordinate[][][]</code> (single ring, multi-ring, or multi-polygon).</td></tr>
                 <tr><td><code>DrawOverlayInvertedFillStyle</code></td><td><code>{ fillColor: string }</code> fill style for inverted mask outside polygons.</td></tr>
                 <tr><td><code>RegionStyleContext</code></td><td>State payload for <code>resolveRegionStrokeStyle</code> (<code>default</code>/<code>hover</code>/<code>active</code>).</td></tr>
                 <tr><td><code>StampOptions</code></td><td>Stamp options for mm² and fixed pixel rectangle size.</td></tr>
