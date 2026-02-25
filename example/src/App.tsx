@@ -6,9 +6,11 @@ import {
   type DrawOverlayShape,
   type DrawResult,
   type DrawTool,
+  filterPointIndicesByPolygons,
   getWebGpuCapabilities,
   isSameViewState,
   normalizeImageInfo,
+  type PatchDrawResult,
   type PointClipMode,
   type PointClipStatsEvent,
   type RegionClickEvent,
@@ -18,6 +20,7 @@ import {
   type RegionStyleContext,
   toBearerToken,
   type WebGpuCapabilities,
+  type WsiCustomLayer,
   type WsiImageSource,
   type WsiPointData,
   type WsiRegion,
@@ -159,6 +162,24 @@ function createTermAliasResolver(terms: WsiTerm[], termToPaletteIndex: Map<strin
   };
 }
 
+function getRegionTopCenter(coordinates: [number, number][]): [number, number] | null {
+  if (!Array.isArray(coordinates) || coordinates.length === 0) return null;
+  let minY = Infinity;
+  for (const [, y] of coordinates) {
+    if (y < minY) minY = y;
+  }
+  if (!Number.isFinite(minY)) return null;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const [x, y] of coordinates) {
+    if (Math.abs(y - minY) > 0.5) continue;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
+  return [(minX + maxX) * 0.5, minY];
+}
+
 export default function App() {
   const initialLoadDoneRef = useRef(false);
 
@@ -196,6 +217,9 @@ export default function App() {
   const [webGpuCaps, setWebGpuCaps] = useState<WebGpuCapabilities | null>(null);
   const [lastDraw, setLastDraw] = useState<DrawResult | null>(null);
   const [roiRegions, setRoiRegions] = useState<WsiRegion[]>([]);
+  const [patchRegions, setPatchRegions] = useState<WsiRegion[]>([]);
+  const [lastPatch, setLastPatch] = useState<PatchDrawResult | null>(null);
+  const [lastPatchIndices, setLastPatchIndices] = useState<Uint32Array>(new Uint32Array(0));
   const [hoveredRegionId, setHoveredRegionId] = useState<string | number | null>(null);
   const [activeRegionId, setActiveRegionId] = useState<string | number | null>(null);
   const [clickedRegionId, setClickedRegionId] = useState<string | number | null>(null);
@@ -238,6 +262,9 @@ export default function App() {
     setDrawTool("cursor");
     setLastDraw(null);
     setRoiRegions([]);
+    setPatchRegions([]);
+    setLastPatch(null);
+    setLastPatchIndices(new Uint32Array(0));
     setHoveredRegionId(null);
     setActiveRegionId(null);
     setClickedRegionId(null);
@@ -468,9 +495,34 @@ export default function App() {
     []
   );
 
+  const handlePatchComplete = useCallback(
+    (payload: PatchDrawResult) => {
+      setLastPatch(payload);
+      setPatchRegions(prev => [
+        ...prev,
+        {
+          id: `patch-${Date.now()}-${prev.length}`,
+          coordinates: payload.coordinates,
+        },
+      ]);
+
+      if (pointPayload) {
+        setLastPatchIndices(filterPointIndicesByPolygons(pointPayload, [payload.coordinates]));
+      } else {
+        setLastPatchIndices(new Uint32Array(0));
+      }
+      setDrawTool("cursor");
+    },
+    [pointPayload]
+  );
+
   const handleDrawComplete = useCallback(
     (payload: DrawResult) => {
       setLastDraw(payload || null);
+      if (payload?.intent === "patch") {
+        setDrawTool("cursor");
+        return;
+      }
       if (payload?.coordinates?.length) {
         const label = labelInput.trim();
         setRoiRegions(prev => [
@@ -486,6 +538,50 @@ export default function App() {
     },
     [labelInput]
   );
+
+  const handleDownloadPatchJson = useCallback(() => {
+    if (!source || !pointPayload || !lastPatch || lastPatchIndices.length === 0) return;
+
+    const annotations = Array.from(lastPatchIndices).map(index => ({
+      pointIndex: index,
+      x: pointPayload.positions[index * 2],
+      y: pointPayload.positions[index * 2 + 1],
+      paletteIndex: pointPayload.paletteIndices[index],
+    }));
+
+    const payload = {
+      patch: {
+        tool: lastPatch.tool,
+        coordinates: lastPatch.coordinates,
+        bbox: lastPatch.bbox,
+        areaPx: lastPatch.areaPx,
+      },
+      images: [
+        {
+          id: source.id,
+          name: source.name,
+          width: source.width,
+          height: source.height,
+        },
+      ],
+      categories: source.terms.map(term => ({
+        id: term.termId,
+        name: term.termName,
+        color: term.termColor,
+      })),
+      annotations,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `patch-${source.id}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [source, pointPayload, lastPatch, lastPatchIndices]);
 
   const handleRegionHover = useCallback((event: RegionHoverEvent) => {
     setHoveredRegionId(event?.regionId ?? null);
@@ -527,6 +623,9 @@ export default function App() {
 
   const handleClearRoi = useCallback(() => {
     setRoiRegions([]);
+    setPatchRegions([]);
+    setLastPatch(null);
+    setLastPatchIndices(new Uint32Array(0));
     setHoveredRegionId(null);
     setActiveRegionId(null);
     setClickedRegionId(null);
@@ -557,6 +656,60 @@ export default function App() {
       },
     ];
   }, [source]);
+
+  const patchStrokeStyle = useMemo<Partial<RegionStrokeStyle>>(
+    () => ({
+      color: "#8ad8ff",
+      width: 2,
+      lineDash: [10, 8],
+    }),
+    []
+  );
+
+  const customLayers = useMemo<WsiCustomLayer[]>(() => {
+    if (!patchRegions.length) return [];
+    return [
+      {
+        id: "patch-label-layer",
+        zIndex: 4,
+        pointerEvents: "none",
+        render: ({ worldToScreen }) => {
+          return (
+            <>
+              {patchRegions.map((region, index) => {
+                const anchor = getRegionTopCenter(region.coordinates as [number, number][]);
+                if (!anchor) return null;
+                const screen = worldToScreen(anchor[0], anchor[1]);
+                if (!screen) return null;
+                return (
+                  <div
+                    key={region.id ?? index}
+                    style={{
+                      position: "absolute",
+                      transform: "translate(-50%, calc(-100% - 6px))",
+                      left: `${screen[0]}px`,
+                      top: `${screen[1]}px`,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: "rgba(0, 16, 28, 0.9)",
+                      color: "#8ad8ff",
+                      border: "1px solid rgba(138, 216, 255, 0.85)",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    PATCH {index + 1}
+                  </div>
+                );
+              })}
+            </>
+          );
+        },
+      },
+    ];
+  }, [patchRegions]);
 
   return (
     <div className="app">
@@ -665,8 +818,11 @@ export default function App() {
               HPF 0.2mm²
             </button>
             <input className="label-input" type="text" value={labelInput} onChange={e => setLabelInput(e.target.value)} placeholder="Region label (optional)" />
-            <button type="button" disabled={!source || roiRegions.length === 0} onClick={handleClearRoi}>
-              Clear ROI
+            <button type="button" disabled={!source || (roiRegions.length === 0 && patchRegions.length === 0)} onClick={handleClearRoi}>
+              Clear Regions
+            </button>
+            <button type="button" disabled={!source || !lastPatch || lastPatchIndices.length === 0} onClick={handleDownloadPatchJson}>
+              Export Patch JSON
             </button>
             <button type="button" className={clipMode === "worker" ? "active" : ""} onClick={() => setClipMode("worker")}>
               Clip Worker
@@ -709,6 +865,7 @@ export default function App() {
             pointData={pointPayload}
             pointPalette={termPalette.colors}
             roiRegions={roiRegions}
+            patchRegions={patchRegions}
             clipPointsToRois
             clipMode={clipMode}
             onClipStats={setClipStats}
@@ -722,8 +879,10 @@ export default function App() {
             regionStrokeStyle={regionStrokeStyle}
             regionStrokeHoverStyle={regionStrokeHoverStyle}
             regionStrokeActiveStyle={regionStrokeActiveStyle}
+            patchStrokeStyle={patchStrokeStyle}
             resolveRegionStrokeStyle={resolveRegionStrokeStyle}
             overlayShapes={overlayShapes}
+            customLayers={customLayers}
             regionLabelStyle={regionLabelStyle}
             onPointerWorldMove={event => {
               if (event.coordinate) {
@@ -736,6 +895,7 @@ export default function App() {
             onRegionClick={handleRegionClick}
             onActiveRegionChange={handleActiveRegionChange}
             onDrawComplete={handleDrawComplete}
+            onPatchComplete={handlePatchComplete}
             onViewStateChange={handleViewStateChange}
             onStats={setStats}
             showOverviewMap={showOverviewMap}
@@ -755,7 +915,7 @@ export default function App() {
           tier {stats.tier} | visible {stats.visible} | rendered {stats.rendered} | points {stats.points} | fallback {stats.fallback} | cache {stats.cache} | inflight {stats.inflight}
           <br />
           zoom {viewState?.zoom ? viewState.zoom.toFixed(4) : "fit"} | rotation {viewState?.rotationDeg ? viewState.rotationDeg.toFixed(2) : "0.00"}° | offset ({Math.round(viewState?.offsetX || 0)},{" "}
-          {Math.round(viewState?.offsetY || 0)}) | rois {roiRegions.length}
+          {Math.round(viewState?.offsetY || 0)}) | rois {roiRegions.length} | patches {patchRegions.length}
           <br />
           hover {hoveredRegionId ?? "-"} | active {activeRegionId ?? "-"} | click {clickedRegionId ?? "-"} | pointer{" "}
           {pointerWorld ? `${Math.round(pointerWorld[0])}, ${Math.round(pointerWorld[1])}` : "-"}
@@ -773,7 +933,13 @@ export default function App() {
           {lastDraw ? (
             <>
               <br />
-              last draw {lastDraw.tool} | points {lastDraw.coordinates?.length || 0} | area {Math.round(lastDraw.areaPx || 0)}
+              last draw {lastDraw.tool} ({lastDraw.intent}) | points {lastDraw.coordinates?.length || 0} | area {Math.round(lastDraw.areaPx || 0)}
+            </>
+          ) : null}
+          {lastPatch ? (
+            <>
+              <br />
+              last patch points {lastPatchIndices.length.toLocaleString()} | bbox {lastPatch.bbox.map(v => Math.round(v)).join(", ")}
             </>
           ) : null}
         </div>

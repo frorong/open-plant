@@ -51,8 +51,9 @@
             <p>
               When `drawTool` is not `cursor`, `DrawLayer` captures pointer events and returns
               closed polygon coordinates through `onDrawComplete`. Stamp tools place physical-size
-              ROI in one click (2mm² square/circle, 0.2mm² HPF circle) and fixed-pixel rectangle stamp
-              via <code>stamp-rectangle-4096px</code>.
+              ROI in one click (2mm² square/circle, 0.2mm² HPF circle). The fixed-pixel
+              <code>stamp-rectangle-4096px</code> emits patch intent and can be handled with
+              <code>onPatchComplete</code>.
             </p>
           </section>
 
@@ -80,9 +81,15 @@
             <h2>2. Completion payload</h2>
             <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
   console.log(result.tool);        // freehand | rectangle | circular | stamp-...
+  console.log(result.intent);      // "roi" | "patch"
   console.log(result.coordinates); // closed ring
   console.log(result.bbox);        // [minX, minY, maxX, maxY]
   console.log(result.areaPx);      // polygon area
+};
+
+const onPatchComplete = (patch) =&gt; {
+  // patch.tool === "stamp-rectangle-4096px"
+  setPatchRegions((prev) =&gt; [...prev, { id: Date.now(), coordinates: patch.coordinates }]);
 };</code></pre>
             <div class="callout">Press <code>Esc</code> to cancel an active drawing gesture. Stamp tools complete on click.</div>
           </section>
@@ -138,6 +145,8 @@ const handleDrawComplete = (result) =&gt; {
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   roiRegions={regions}
+  patchRegions={patches}
+  patchStrokeStyle={{ color: "#8ad8ff", width: 2, lineDash: [10, 8] }}
   regionStrokeStyle={{
     color: "#ffd166",
     width: 2.5,
@@ -190,6 +199,17 @@ const handleDrawComplete = (result) =&gt; {
   onActiveRegionChange={(regionId) =&gt; {
     // active region id or null
   }}
+  onPatchComplete={(patch) =&gt; {
+    // patch-only completion callback
+  }}
+  customLayers={[
+    {
+      id: "patch-label-layer",
+      render: ({ worldToScreen }) =&gt; {
+        // host-owned overlay with world/screen transform
+      },
+    },
+  ]}
 /&gt;</code></pre>
             <p>
               Default active behavior: if a region is active, clicking empty space or a different

@@ -51,8 +51,9 @@
             <p>
               `drawTool`이 `cursor`가 아닌 동안 `DrawLayer`가 활성화되어
               pan/zoom과 충돌 없이 ROI를 생성합니다. 결과는 닫힌 polygon 좌표로
-              반환됩니다. stamp 툴은 클릭 한 번으로 물리 크기 ROI(2mm² 사각형/원, 0.2mm² HPF 원)와
-              고정 픽셀 사각형(<code>stamp-rectangle-4096px</code>)을 생성합니다.
+              반환됩니다. stamp 툴은 클릭 한 번으로 물리 크기 ROI(2mm² 사각형/원, 0.2mm² HPF 원)를
+              생성합니다. 고정 픽셀 사각형(<code>stamp-rectangle-4096px</code>)은
+              patch intent로 완료되며 <code>onPatchComplete</code>에서 별도 처리할 수 있습니다.
             </p>
           </section>
 
@@ -85,15 +86,22 @@ const [drawTool, setDrawTool] = useState("cursor");
             <h2>2. Draw 완료 결과</h2>
             <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
   console.log(result.tool); // freehand | rectangle | circular | stamp-...
+  console.log(result.intent); // "roi" | "patch"
   console.log(result.coordinates); // closed ring
   console.log(result.bbox); // [minX, minY, maxX, maxY]
   console.log(result.areaPx); // polygon area
+};
+
+const onPatchComplete = (patch) =&gt; {
+  // patch.tool === "stamp-rectangle-4096px"
+  setPatchRegions((prev) =&gt; [...prev, { id: Date.now(), coordinates: patch.coordinates }]);
 };
 
 &lt;WsiViewerCanvas
   source={source}
   drawTool={drawTool}
   onDrawComplete={onDrawComplete}
+  onPatchComplete={onPatchComplete}
 /&gt;</code></pre>
             <div class="callout">
               드로잉 중 ESC를 누르면 현재 세션이 취소됩니다. stamp 툴은 클릭 즉시 완료됩니다.
@@ -142,6 +150,8 @@ const handleDrawComplete = (result) =&gt; {
   source={source}
   drawTool={drawTool}
   roiRegions={regions}
+  patchRegions={patches}
+  patchStrokeStyle={{ color: "#8ad8ff", width: 2, lineDash: [10, 8] }}
   onDrawComplete={handleDrawComplete}
 /&gt;</code></pre>
             <p>
@@ -155,6 +165,8 @@ const handleDrawComplete = (result) =&gt; {
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   roiRegions={regions}
+  patchRegions={patches}
+  patchStrokeStyle={{ color: "#8ad8ff", width: 2, lineDash: [10, 8] }}
   regionStrokeStyle={{
     color: "#ffd166",
     width: 2.5,
@@ -207,6 +219,17 @@ const handleDrawComplete = (result) =&gt; {
   onActiveRegionChange={(regionId) =&gt; {
     // active region id 또는 null
   }}
+  onPatchComplete={(patch) =&gt; {
+    // patch 전용 완료 이벤트
+  }}
+  customLayers={[
+    {
+      id: "patch-label-layer",
+      render: ({ worldToScreen }) =&gt; {
+        // host가 직접 제어하는 React 오버레이
+      },
+    },
+  ]}
 /&gt;</code></pre>
             <p>
               기본 active 동작: active 상태에서 다른 영역(빈 공간)이나 다른 region을 클릭하면

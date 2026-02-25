@@ -11,6 +11,17 @@ interface PreparedPolygon {
 	maxY: number;
 }
 
+function sanitizePointCount(pointData: WsiPointData): number {
+	return Math.max(
+		0,
+		Math.min(
+			Math.floor(pointData.count ?? 0),
+			Math.floor((pointData.positions?.length ?? 0) / 2),
+			pointData.paletteIndices?.length ?? 0,
+		),
+	);
+}
+
 function closeRing(coords: RoiPolygon): RoiPolygon {
 	if (!Array.isArray(coords) || coords.length < 3) return [];
 	const out = coords.map(([x, y]) => [x, y] as RoiCoordinate);
@@ -92,7 +103,7 @@ export function filterPointDataByPolygons(
 		};
 	}
 
-	const count = pointData.count;
+	const count = sanitizePointCount(pointData);
 	const positions = pointData.positions;
 	const terms = pointData.paletteIndices;
 
@@ -115,4 +126,37 @@ export function filterPointDataByPolygons(
 		positions: nextPositions.subarray(0, cursor * 2),
 		paletteIndices: nextTerms.subarray(0, cursor),
 	};
+}
+
+export function filterPointIndicesByPolygons(
+	pointData: WsiPointData | null | undefined,
+	polygons: RoiPolygon[] | null | undefined,
+): Uint32Array {
+	if (!pointData || !pointData.count || !pointData.positions || !pointData.paletteIndices) {
+		return new Uint32Array(0);
+	}
+
+	const prepared = preparePolygons(polygons ?? []);
+	if (prepared.length === 0) {
+		return new Uint32Array(0);
+	}
+
+	const count = sanitizePointCount(pointData);
+	if (count === 0) {
+		return new Uint32Array(0);
+	}
+
+	const positions = pointData.positions;
+	const out = new Uint32Array(count);
+	let cursor = 0;
+
+	for (let i = 0; i < count; i += 1) {
+		const x = positions[i * 2];
+		const y = positions[i * 2 + 1];
+		if (!isInsideAnyPolygon(x, y, prepared)) continue;
+		out[cursor] = i;
+		cursor += 1;
+	}
+
+	return out.subarray(0, cursor);
 }

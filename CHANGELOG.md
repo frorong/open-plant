@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [1.2.2] - 2026-02-25
+
 ### Added
 - Camera rotation support in `WsiViewState` via `rotationDeg`.
 - `Ctrl/Cmd + drag` rotation input path with configurable renderer option.
@@ -22,6 +26,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Hybrid WebGPU draw bridge payload support via `WsiPointData.drawIndices`.
 - Hybrid clip option `bridgeToDraw` and clip stat flag `bridgedToDraw`.
 - Unit test coverage for ROI term stats with draw-index bridge input.
+- Patch-intent draw path for `stamp-rectangle-4096px` with dedicated `onPatchComplete` callback.
+- Patch overlay channel on viewer (`patchRegions`, `patchStrokeStyle`) separated from ROI hover/active interaction.
+- Custom React overlay layer slots via `customLayers` for host-owned rendering pipelines.
+- Point-index clipping primitives for export workflows: `filterPointIndicesByPolygons` and worker variant.
 
 ### Changed
 - `WsiTileRenderer` projection, bounds, and zoom anchoring now account for rotation.
@@ -33,7 +41,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Publish gate now enforces `npm run release:gate` via `prepublishOnly`.
 
 ### Docs
-- Updated EN/KO API and guides for rotation, pointer world callbacks, overlay shapes, 4096px stamp, and ROI term stats.
+- Updated EN/KO API and guides for rotation, pointer world callbacks, overlay shapes, 4096px patch intent flow, custom layers, and ROI term stats.
 - Updated `todo.md` gap table with current support status and code-path references.
 - Added EN/KO migration guides with API stability/deprecation policy and release-gate contract.
 - Added EN/KO contributing pages and linked them across docs navigation.

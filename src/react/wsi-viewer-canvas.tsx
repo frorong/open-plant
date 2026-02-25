@@ -1,11 +1,11 @@
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { filterPointDataByPolygons, type RoiPolygon } from "../wsi/point-clip";
 import { filterPointDataByPolygonsHybrid } from "../wsi/point-clip-hybrid";
 import { filterPointDataByPolygonsInWorker, type PointClipMode } from "../wsi/point-clip-worker-client";
 import { computeRoiPointGroups, type RoiPointGroupStats } from "../wsi/roi-term-stats";
 import type { WsiImageSource, WsiPointData, WsiRegion, WsiRenderStats, WsiViewState } from "../wsi/types";
 import { type WsiTileErrorEvent, WsiTileRenderer } from "../wsi/wsi-tile-renderer";
-import type { DrawCoordinate, DrawOverlayShape, DrawResult, DrawTool, RegionLabelStyle, RegionStrokeStyle, RegionStrokeStyleResolver, StampOptions } from "./draw-layer";
+import type { DrawCoordinate, DrawOverlayShape, DrawResult, DrawTool, PatchDrawResult, RegionLabelStyle, RegionStrokeStyle, RegionStrokeStyleResolver, StampOptions } from "./draw-layer";
 import { DrawLayer } from "./draw-layer";
 import { OverviewMap, type OverviewMapOptions } from "./overview-map";
 
@@ -47,6 +47,25 @@ export interface PointerWorldMoveEvent {
   clientX: number;
   clientY: number;
   insideImage: boolean;
+}
+
+export interface WsiCustomLayerContext {
+  source: WsiImageSource;
+  viewState: WsiViewState;
+  drawTool: DrawTool;
+  interactionLock: boolean;
+  worldToScreen: (worldX: number, worldY: number) => DrawCoordinate | null;
+  screenToWorld: (clientX: number, clientY: number) => DrawCoordinate | null;
+  requestRedraw: () => void;
+}
+
+export interface WsiCustomLayer {
+  id?: string | number;
+  zIndex?: number;
+  pointerEvents?: CSSProperties["pointerEvents"];
+  className?: string;
+  style?: CSSProperties;
+  render: (context: WsiCustomLayerContext) => ReactNode;
 }
 
 function resolveRegionId(region: WsiRegion, index: number): string | number {
@@ -119,14 +138,18 @@ export interface WsiViewerCanvasProps {
   regionStrokeStyle?: Partial<RegionStrokeStyle>;
   regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
   regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
+  patchStrokeStyle?: Partial<RegionStrokeStyle>;
   resolveRegionStrokeStyle?: RegionStrokeStyleResolver;
   overlayShapes?: DrawOverlayShape[];
+  customLayers?: WsiCustomLayer[];
+  patchRegions?: WsiRegion[];
   regionLabelStyle?: Partial<RegionLabelStyle>;
   onPointerWorldMove?: (event: PointerWorldMoveEvent) => void;
   onRegionHover?: (event: RegionHoverEvent) => void;
   onRegionClick?: (event: RegionClickEvent) => void;
   onActiveRegionChange?: (regionId: string | number | null) => void;
   onDrawComplete?: (result: DrawResult) => void;
+  onPatchComplete?: (result: PatchDrawResult) => void;
   showOverviewMap?: boolean;
   overviewMapOptions?: Partial<OverviewMapOptions>;
   className?: string;
@@ -162,14 +185,18 @@ export function WsiViewerCanvas({
   regionStrokeStyle,
   regionStrokeHoverStyle,
   regionStrokeActiveStyle,
+  patchStrokeStyle,
   resolveRegionStrokeStyle,
   overlayShapes,
+  customLayers,
+  patchRegions,
   regionLabelStyle,
   onPointerWorldMove,
   onRegionHover,
   onRegionClick,
   onActiveRegionChange,
   onDrawComplete,
+  onPatchComplete,
   showOverviewMap = false,
   overviewMapOptions,
   className,
@@ -185,11 +212,14 @@ export function WsiViewerCanvas({
   const [isOverviewOpen, setIsOverviewOpen] = useState(true);
   const [hoveredRegionId, setHoveredRegionId] = useState<string | number | null>(null);
   const [activeRegionId, setActiveRegionId] = useState<string | number | null>(null);
+  const [customLayerViewState, setCustomLayerViewState] = useState<WsiViewState | null>(null);
   const [debugStats, setDebugStats] = useState<WsiRenderStats | null>(null);
   const hoveredRegionIdRef = useRef<string | number | null>(null);
   const clipRunIdRef = useRef(0);
   const safeRoiRegions = roiRegions ?? EMPTY_ROI_REGIONS;
+  const safePatchRegions = patchRegions ?? EMPTY_ROI_REGIONS;
   const safeRoiPolygons = roiPolygons ?? EMPTY_ROI_POLYGONS;
+  const shouldTrackCustomLayerViewState = (customLayers?.length ?? 0) > 0;
 
   const mergedStyle = useMemo<CSSProperties>(() => ({ position: "relative", width: "100%", height: "100%", ...style }), [style]);
   const mergedDebugOverlayStyle = useMemo<CSSProperties>(
@@ -265,12 +295,9 @@ export function WsiViewerCanvas({
       };
     }
 
-    const applyResult = (
-      data: WsiPointData | null,
-      stats: Omit<PointClipStatsEvent, "inputCount" | "outputCount" | "polygonCount">
-    ) => {
+    const applyResult = (data: WsiPointData | null, stats: Omit<PointClipStatsEvent, "inputCount" | "outputCount" | "polygonCount">) => {
       if (cancelled || runId !== clipRunIdRef.current) return;
-      const outputCount = data?.drawIndices ? data.drawIndices.length : data?.count ?? 0;
+      const outputCount = data?.drawIndices ? data.drawIndices.length : (data?.count ?? 0);
       setRenderPointData(data);
       onClipStats?.({
         mode: stats.mode,
@@ -296,11 +323,7 @@ export function WsiViewerCanvas({
       }
 
       if (clipMode === "hybrid-webgpu") {
-        const result = await filterPointDataByPolygonsHybrid(
-          pointData,
-          clipPolygons as RoiPolygon[],
-          { bridgeToDraw: true }
-        );
+        const result = await filterPointDataByPolygonsHybrid(pointData, clipPolygons as RoiPolygon[], { bridgeToDraw: true });
         applyResult(result.data, {
           mode: result.meta.mode,
           durationMs: result.meta.durationMs,
@@ -414,14 +437,20 @@ export function WsiViewerCanvas({
     }
   }, [effectiveRoiRegions, activeRegionId, onRegionHover, commitActiveRegion]);
 
-  const emitViewStateChange = useCallback((next: WsiViewState): void => {
-    const callback = onViewStateChangeRef.current;
-    if (callback) {
-      callback(next);
-    }
-    drawInvalidateRef.current?.();
-    overviewInvalidateRef.current?.();
-  }, []);
+  const emitViewStateChange = useCallback(
+    (next: WsiViewState): void => {
+      if (shouldTrackCustomLayerViewState) {
+        setCustomLayerViewState(next);
+      }
+      const callback = onViewStateChangeRef.current;
+      if (callback) {
+        callback(next);
+      }
+      drawInvalidateRef.current?.();
+      overviewInvalidateRef.current?.();
+    },
+    [shouldTrackCustomLayerViewState]
+  );
 
   useEffect(() => {
     if (!showOverviewMap) {
@@ -454,6 +483,42 @@ export function WsiViewerCanvas({
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     return [x, y];
   }, []);
+
+  const resolveScreenCoord = useCallback((worldX: number, worldY: number): DrawCoordinate | null => {
+    const renderer = rendererRef.current;
+    if (!renderer) return null;
+    const raw = renderer.worldToScreen(worldX, worldY);
+    if (!Array.isArray(raw) || raw.length < 2) return null;
+    const x = Number(raw[0]);
+    const y = Number(raw[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return [x, y];
+  }, []);
+
+  const requestCustomLayerRedraw = useCallback(() => {
+    rendererRef.current?.requestRender();
+    drawInvalidateRef.current?.();
+    overviewInvalidateRef.current?.();
+  }, []);
+
+  const effectiveCustomLayerViewState = useMemo<WsiViewState | null>(() => {
+    return customLayerViewState ?? rendererRef.current?.getViewState() ?? null;
+  }, [customLayerViewState]);
+
+  const customLayerContext = useMemo<WsiCustomLayerContext | null>(() => {
+    if (!source) return null;
+    const viewStateForLayer = effectiveCustomLayerViewState;
+    if (!viewStateForLayer) return null;
+    return {
+      source,
+      viewState: viewStateForLayer,
+      drawTool,
+      interactionLock,
+      worldToScreen: resolveScreenCoord,
+      screenToWorld: resolveWorldCoord,
+      requestRedraw: requestCustomLayerRedraw,
+    };
+  }, [source, effectiveCustomLayerViewState, drawTool, interactionLock, resolveScreenCoord, resolveWorldCoord, requestCustomLayerRedraw]);
 
   const handleRegionPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -572,12 +637,15 @@ export function WsiViewerCanvas({
       renderer.setViewState(viewState);
     }
     renderer.setInteractionLock(interactionLock);
+    if (shouldTrackCustomLayerViewState) {
+      setCustomLayerViewState(renderer.getViewState());
+    }
 
     return () => {
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [source, handleRendererStats, onTileError, onContextLost, onContextRestored, authToken, ctrlDragRotate, emitViewStateChange]);
+  }, [source, handleRendererStats, onTileError, onContextLost, onContextRestored, authToken, ctrlDragRotate, emitViewStateChange, shouldTrackCustomLayerViewState]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -651,6 +719,23 @@ export function WsiViewerCanvas({
           cursor: drawTool === "cursor" && hoveredRegionId !== null ? "pointer" : interactionLock ? "crosshair" : "grab",
         }}
       />
+      {source && customLayerContext && Array.isArray(customLayers) && customLayers.length > 0
+        ? customLayers.map((layer, index) => (
+            <div
+              key={layer.id ?? index}
+              className={layer.className}
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: layer.zIndex ?? 3,
+                pointerEvents: layer.pointerEvents ?? "none",
+                ...layer.style,
+              }}
+            >
+              {layer.render(customLayerContext)}
+            </div>
+          ))
+        : null}
       {source ? (
         <DrawLayer
           tool={drawTool}
@@ -663,9 +748,11 @@ export function WsiViewerCanvas({
           projectorRef={rendererRef}
           viewStateSignal={viewState}
           persistedRegions={effectiveRoiRegions}
+          patchRegions={safePatchRegions}
           regionStrokeStyle={regionStrokeStyle}
           regionStrokeHoverStyle={regionStrokeHoverStyle}
           regionStrokeActiveStyle={regionStrokeActiveStyle}
+          patchStrokeStyle={patchStrokeStyle}
           resolveRegionStrokeStyle={resolveRegionStrokeStyle}
           overlayShapes={overlayShapes}
           hoveredRegionId={hoveredRegionId}
@@ -673,6 +760,7 @@ export function WsiViewerCanvas({
           regionLabelStyle={regionLabelStyle}
           invalidateRef={drawInvalidateRef}
           onDrawComplete={onDrawComplete}
+          onPatchComplete={onPatchComplete}
         />
       ) : null}
       {debugOverlay ? (

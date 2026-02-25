@@ -1,5 +1,12 @@
 import type { RoiCoordinate, RoiPolygon } from "../wsi/point-clip";
-import type { RoiClipWorkerRequest, RoiClipWorkerResponse, RoiClipWorkerSuccess } from "../wsi/point-clip-worker-protocol";
+import type {
+  RoiClipWorkerDataRequest,
+  RoiClipWorkerIndexRequest,
+  RoiClipWorkerIndexSuccess,
+  RoiClipWorkerRequest,
+  RoiClipWorkerResponse,
+  RoiClipWorkerSuccess,
+} from "../wsi/point-clip-worker-protocol";
 
 interface PreparedPolygon {
   ring: RoiPolygon;
@@ -90,7 +97,7 @@ interface WorkerScope {
 
 const workerScope = self as unknown as WorkerScope;
 
-function handleRequest(msg: RoiClipWorkerRequest): RoiClipWorkerSuccess {
+function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess {
   const start = nowMs();
   const count = Math.max(0, Math.floor(msg.count));
   const positions = new Float32Array(msg.positions);
@@ -138,12 +145,55 @@ function handleRequest(msg: RoiClipWorkerRequest): RoiClipWorkerSuccess {
   };
 }
 
+function handleIndexRequest(msg: RoiClipWorkerIndexRequest): RoiClipWorkerIndexSuccess {
+  const start = nowMs();
+  const count = Math.max(0, Math.floor(msg.count));
+  const positions = new Float32Array(msg.positions);
+  const maxCountByPositions = Math.floor(positions.length / 2);
+  const safeCount = Math.max(0, Math.min(count, maxCountByPositions));
+  const prepared = preparePolygons(msg.polygons ?? []);
+
+  if (safeCount === 0 || prepared.length === 0) {
+    return {
+      type: "roi-clip-index-success",
+      id: msg.id,
+      count: 0,
+      indices: new Uint32Array(0).buffer,
+      durationMs: nowMs() - start,
+    };
+  }
+
+  const out = new Uint32Array(safeCount);
+  let cursor = 0;
+  for (let i = 0; i < safeCount; i += 1) {
+    const x = positions[i * 2];
+    const y = positions[i * 2 + 1];
+    if (!isInsideAnyPolygon(x, y, prepared)) continue;
+    out[cursor] = i;
+    cursor += 1;
+  }
+
+  const outIndices = out.slice(0, cursor);
+  return {
+    type: "roi-clip-index-success",
+    id: msg.id,
+    count: cursor,
+    indices: outIndices.buffer,
+    durationMs: nowMs() - start,
+  };
+}
+
 workerScope.addEventListener("message", (event: MessageEvent<RoiClipWorkerRequest>) => {
   const data = event.data;
-  if (!data || data.type !== "roi-clip-request") return;
+  if (!data || (data.type !== "roi-clip-request" && data.type !== "roi-clip-index-request")) return;
 
   try {
-    const response = handleRequest(data);
+    if (data.type === "roi-clip-index-request") {
+      const response = handleIndexRequest(data);
+      workerScope.postMessage(response, [response.indices]);
+      return;
+    }
+    const response = handleDataRequest(data);
     workerScope.postMessage(response, [response.positions, response.paletteIndices]);
   } catch (error) {
     const fail: RoiClipWorkerResponse = {

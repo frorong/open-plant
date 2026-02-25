@@ -2,17 +2,19 @@ export { M1TileRenderer } from "./core/m1-tile-renderer";
 export type { ViewState } from "./core/ortho-camera";
 export type { Bounds, TileDefinition } from "./core/types";
 export type {
-  DrawOverlayShape,
   DrawBounds,
   DrawCoordinate,
+  DrawIntent,
+  DrawOverlayShape,
   DrawProjector,
   DrawRegion,
   DrawResult,
   DrawTool,
-  RegionStyleContext,
-  RegionStrokeStyleResolver,
+  PatchDrawResult,
   RegionLabelStyle,
   RegionStrokeStyle,
+  RegionStrokeStyleResolver,
+  RegionStyleContext,
   StampDrawTool,
   StampOptions,
 } from "./react/draw-layer";
@@ -30,18 +32,40 @@ export type {
   PointerWorldMoveEvent,
   RegionClickEvent,
   RegionHoverEvent,
+  WsiCustomLayer,
+  WsiCustomLayerContext,
   WsiViewerCanvasProps,
 } from "./react/wsi-viewer-canvas";
 export { WsiViewerCanvas } from "./react/wsi-viewer-canvas";
 export { DEFAULT_POINT_COLOR } from "./wsi/constants";
 export { normalizeImageInfo, toTileUrl } from "./wsi/image-info";
+export type { RoiCoordinate, RoiPolygon } from "./wsi/point-clip";
+export { filterPointDataByPolygons, filterPointIndicesByPolygons } from "./wsi/point-clip";
 export type {
   HybridPointClipOptions,
   HybridPointClipResult,
 } from "./wsi/point-clip-hybrid";
 export { filterPointDataByPolygonsHybrid } from "./wsi/point-clip-hybrid";
-export type { RoiCoordinate, RoiPolygon } from "./wsi/point-clip";
-export { filterPointDataByPolygons } from "./wsi/point-clip";
+export type {
+  PointClipIndexResult,
+  PointClipMode,
+  PointClipResult,
+  PointClipResultMeta,
+} from "./wsi/point-clip-worker-client";
+export {
+  filterPointDataByPolygonsInWorker,
+  filterPointIndicesByPolygonsInWorker,
+  terminateRoiClipWorker,
+} from "./wsi/point-clip-worker-client";
+export type {
+  RoiClipWorkerDataRequest,
+  RoiClipWorkerFailure,
+  RoiClipWorkerIndexRequest,
+  RoiClipWorkerIndexSuccess,
+  RoiClipWorkerRequest,
+  RoiClipWorkerResponse,
+  RoiClipWorkerSuccess,
+} from "./wsi/point-clip-worker-protocol";
 export type {
   RoiPointGroup,
   RoiPointGroupOptions,
@@ -50,20 +74,12 @@ export type {
 } from "./wsi/roi-term-stats";
 export { computeRoiPointGroups } from "./wsi/roi-term-stats";
 export type {
-  PointClipMode,
-  PointClipResult,
-  PointClipResultMeta,
-} from "./wsi/point-clip-worker-client";
-export {
-  filterPointDataByPolygonsInWorker,
-  terminateRoiClipWorker,
-} from "./wsi/point-clip-worker-client";
-export type {
-  RoiClipWorkerFailure,
-  RoiClipWorkerRequest,
-  RoiClipWorkerResponse,
-  RoiClipWorkerSuccess,
-} from "./wsi/point-clip-worker-protocol";
+  ScheduledTile,
+  TileBounds,
+  TileSchedulerOptions,
+  TileSchedulerSnapshot,
+} from "./wsi/tile-scheduler";
+export { TileScheduler } from "./wsi/tile-scheduler";
 export type {
   TermPalette,
   WsiCoordinate,
@@ -85,13 +101,6 @@ export {
 } from "./wsi/utils";
 export type { WebGpuCapabilities } from "./wsi/webgpu";
 export { getWebGpuCapabilities, prefilterPointsByBoundsWebGpu } from "./wsi/webgpu";
-export type {
-  ScheduledTile,
-  TileBounds,
-  TileSchedulerOptions,
-  TileSchedulerSnapshot,
-} from "./wsi/tile-scheduler";
-export { TileScheduler } from "./wsi/tile-scheduler";
 export type {
   WsiTileErrorEvent,
   WsiTileRendererOptions,

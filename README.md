@@ -129,15 +129,31 @@ import { WsiViewerCanvas } from "open-plant";
   clipPointsToRois
   clipMode="worker"
   onClipStats={(s) => console.log(s.mode, s.durationMs)}
-  drawTool="stamp-circle"
+  drawTool="stamp-rectangle-4096px"
   stampOptions={{
     rectangleAreaMm2: 2,
     circleAreaMm2: 0.2, // HPF 예시
     rectanglePixelSize: 4096,
   }}
+  patchRegions={patchRegions}
+  patchStrokeStyle={{ color: "#8ad8ff", lineDash: [10, 8], width: 2 }}
+  customLayers={[
+    {
+      id: "patch-labels",
+      render: ({ worldToScreen }) => {
+        /* host overlay */
+      },
+    },
+  ]}
   onPointerWorldMove={(e) => console.log(e.coordinate)}
   onRoiPointGroups={(stats) => console.log(stats.groups)}
-  onDrawComplete={handleDraw}
+  onDrawComplete={(result) => {
+    if (result.intent === "roi") handleRoi(result);
+  }}
+  onPatchComplete={(patch) => {
+    // stamp-rectangle-4096px 전용
+    handlePatch(patch);
+  }}
   onViewStateChange={handleViewChange}
   onStats={setStats}
 />
@@ -164,6 +180,8 @@ Freehand, Rectangle, Circular + Stamp(사각형/원) 드로잉 오버레이.
 | `normalizeImageInfo(raw, tileBaseUrl)` | API 응답 + 타일 베이스 URL을 `WsiImageSource`로 변환 |
 | `filterPointDataByPolygons()` | ROI 폴리곤으로 포인트 필터링 |
 | `filterPointDataByPolygonsInWorker()` | 워커 스레드 ROI 필터링 |
+| `filterPointIndicesByPolygons()` | 폴리곤 내부 원본 포인트 인덱스 추출(패치 JSON export용) |
+| `filterPointIndicesByPolygonsInWorker()` | 포인트 인덱스 추출 워커 버전 |
 | `filterPointDataByPolygonsHybrid()` | WebGPU bbox prefilter + polygon 정밀 판정(실험) |
 | `getWebGpuCapabilities()` | WebGPU 지원/어댑터 정보 조회 |
 | `buildTermPalette()` | Term 기반 컬러 팔레트 생성 |

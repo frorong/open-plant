@@ -1,4 +1,4 @@
-import { filterPointDataByPolygons, type RoiPolygon } from "./point-clip";
+import { filterPointDataByPolygons, filterPointIndicesByPolygons, type RoiPolygon } from "./point-clip";
 import type { RoiClipWorkerRequest, RoiClipWorkerResponse } from "./point-clip-worker-protocol";
 import type { WsiPointData } from "./types";
 
@@ -14,11 +14,26 @@ export interface PointClipResult {
   meta: PointClipResultMeta;
 }
 
-interface PendingWorkerRequest {
+export interface PointClipIndexResult {
+  indices: Uint32Array;
+  meta: PointClipResultMeta;
+}
+
+interface PendingDataWorkerRequest {
+  kind: "data";
   resolve: (result: PointClipResult) => void;
   reject: (reason?: unknown) => void;
   startMs: number;
 }
+
+interface PendingIndexWorkerRequest {
+  kind: "index";
+  resolve: (result: PointClipIndexResult) => void;
+  reject: (reason?: unknown) => void;
+  startMs: number;
+}
+
+type PendingWorkerRequest = PendingDataWorkerRequest | PendingIndexWorkerRequest;
 
 let workerInstance: Worker | null = null;
 let workerSupported = true;
@@ -56,6 +71,28 @@ function handleWorkerMessage(event: MessageEvent<RoiClipWorkerResponse>): void {
 
   if (msg.type === "roi-clip-failure") {
     pending.reject(new Error(msg.error || "worker clip failed"));
+    return;
+  }
+
+  if (msg.type === "roi-clip-index-success") {
+    if (pending.kind !== "index") {
+      pending.reject(new Error("worker response mismatch: expected point data result"));
+      return;
+    }
+    const count = Math.max(0, Math.floor(msg.count));
+    const indices = new Uint32Array(msg.indices).subarray(0, count);
+    pending.resolve({
+      indices,
+      meta: {
+        mode: "worker",
+        durationMs: Number.isFinite(msg.durationMs) ? msg.durationMs : nowMs() - pending.startMs,
+      },
+    });
+    return;
+  }
+
+  if (pending.kind !== "data") {
+    pending.reject(new Error("worker response mismatch: expected index result"));
     return;
   }
 
@@ -127,7 +164,7 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
   const startMs = nowMs();
 
   return new Promise<PointClipResult>((resolve, reject) => {
-    pendingById.set(id, { resolve, reject, startMs });
+    pendingById.set(id, { kind: "data", resolve, reject, startMs });
     const msg: RoiClipWorkerRequest = {
       type: "roi-clip-request",
       id,
@@ -137,5 +174,40 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
       polygons: polygons ?? [],
     };
     worker.postMessage(msg, [positionsCopy.buffer, termsCopy.buffer]);
+  });
+}
+
+export async function filterPointIndicesByPolygonsInWorker(pointData: WsiPointData | null | undefined, polygons: RoiPolygon[] | null | undefined): Promise<PointClipIndexResult> {
+  if (!pointData || !pointData.count || !pointData.positions || !pointData.paletteIndices) {
+    return {
+      indices: new Uint32Array(0),
+      meta: { mode: "worker", durationMs: 0 },
+    };
+  }
+
+  const worker = createWorker();
+  if (!worker) {
+    const start = nowMs();
+    return {
+      indices: filterPointIndicesByPolygons(pointData, polygons),
+      meta: { mode: "sync", durationMs: nowMs() - start },
+    };
+  }
+
+  const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length));
+  const positionsCopy = pointData.positions.slice(0, safeCount * 2);
+  const id = requestId++;
+  const startMs = nowMs();
+
+  return new Promise<PointClipIndexResult>((resolve, reject) => {
+    pendingById.set(id, { kind: "index", resolve, reject, startMs });
+    const msg: RoiClipWorkerRequest = {
+      type: "roi-clip-index-request",
+      id,
+      count: safeCount,
+      positions: positionsCopy.buffer,
+      polygons: polygons ?? [],
+    };
+    worker.postMessage(msg, [positionsCopy.buffer]);
   });
 }
