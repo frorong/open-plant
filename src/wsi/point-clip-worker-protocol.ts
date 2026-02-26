@@ -6,6 +6,7 @@ export interface RoiClipWorkerDataRequest {
   count: number;
   positions: ArrayBuffer;
   paletteIndices: ArrayBuffer;
+  fillModes?: ArrayBuffer;
   ids?: ArrayBuffer;
   polygons: RoiPolygon[];
 }
@@ -24,6 +25,7 @@ export interface RoiClipWorkerSuccess {
   count: number;
   positions: ArrayBuffer;
   paletteIndices: ArrayBuffer;
+  fillModes?: ArrayBuffer;
   ids?: ArrayBuffer;
   durationMs: number;
 }

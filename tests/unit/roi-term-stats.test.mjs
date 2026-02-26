@@ -98,3 +98,25 @@ test("computeRoiPointGroups: excludes points inside polygon holes", () => {
   assert.equal(stats.groups.length, 1);
   assert.equal(stats.groups[0].totalCount, 2);
 });
+
+test("computeRoiPointGroups: clamps count by fillModes length", () => {
+  const stats = computeRoiPointGroups(
+    {
+      count: 5,
+      positions: new Float32Array([
+        1, 1, // inside
+        2, 2, // inside
+        3, 3, // inside
+        9, 9, // outside
+        10, 10, // outside
+      ]),
+      paletteIndices: new Uint16Array([1, 1, 1, 2, 2]),
+      fillModes: new Uint8Array([0, 1, 0]), // only first 3 points are valid
+    },
+    REGIONS
+  );
+
+  assert.equal(stats.inputPointCount, 3);
+  assert.equal(stats.pointsInsideAnyRegion, 3);
+  assert.equal(stats.unmatchedPointCount, 0);
+});

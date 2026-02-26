@@ -99,12 +99,16 @@ function handleWorkerMessage(event: MessageEvent<RoiClipWorkerResponse>): void {
   const count = Math.max(0, Math.floor(msg.count));
   const positions = new Float32Array(msg.positions);
   const paletteIndices = new Uint16Array(msg.paletteIndices);
+  const fillModes = msg.fillModes ? new Uint8Array(msg.fillModes) : null;
   const ids = msg.ids ? new Uint32Array(msg.ids) : null;
   const output: WsiPointData = {
     count,
     positions: positions.subarray(0, count * 2),
     paletteIndices: paletteIndices.subarray(0, count),
   };
+  if (fillModes) {
+    output.fillModes = fillModes.subarray(0, count);
+  }
   if (ids) {
     output.ids = ids.subarray(0, count);
   }
@@ -161,9 +165,11 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
     };
   }
 
-  const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length));
+  const fillModesLength = pointData.fillModes instanceof Uint8Array ? pointData.fillModes.length : Number.MAX_SAFE_INTEGER;
+  const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length, fillModesLength));
   const positionsCopy = pointData.positions.slice(0, safeCount * 2);
   const termsCopy = pointData.paletteIndices.slice(0, safeCount);
+  const fillModesCopy = pointData.fillModes instanceof Uint8Array && pointData.fillModes.length >= safeCount ? pointData.fillModes.slice(0, safeCount) : null;
   const idsCopy = pointData.ids instanceof Uint32Array && pointData.ids.length >= safeCount ? pointData.ids.slice(0, safeCount) : null;
   const id = requestId++;
   const startMs = nowMs();
@@ -176,10 +182,14 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
       count: safeCount,
       positions: positionsCopy.buffer,
       paletteIndices: termsCopy.buffer,
+      fillModes: fillModesCopy?.buffer,
       ids: idsCopy?.buffer,
       polygons: polygons ?? [],
     };
     const transfer: Transferable[] = [positionsCopy.buffer, termsCopy.buffer];
+    if (fillModesCopy) {
+      transfer.push(fillModesCopy.buffer);
+    }
     if (idsCopy) {
       transfer.push(idsCopy.buffer);
     }
@@ -204,7 +214,8 @@ export async function filterPointIndicesByPolygonsInWorker(pointData: WsiPointDa
     };
   }
 
-  const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length));
+  const fillModesLength = pointData.fillModes instanceof Uint8Array ? pointData.fillModes.length : Number.MAX_SAFE_INTEGER;
+  const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length, fillModesLength));
   const positionsCopy = pointData.positions.slice(0, safeCount * 2);
   const id = requestId++;
   const startMs = nowMs();

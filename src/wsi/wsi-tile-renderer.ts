@@ -36,6 +36,7 @@ interface PointProgram {
 	vao: WebGLVertexArrayObject;
 	posBuffer: WebGLBuffer;
 	termBuffer: WebGLBuffer;
+	fillModeBuffer: WebGLBuffer;
 	indexBuffer: WebGLBuffer;
 	paletteTexture: WebGLTexture;
 	uCamera: WebGLUniformLocation;
@@ -357,6 +358,7 @@ export class WsiTileRenderer {
 	private pointStrokeScale = 1.0;
 	private lastPointData: WsiPointData | null = null;
 	private lastPointPalette: Uint8Array | null = null;
+	private zeroFillModes = new Uint8Array(0);
 	private cache = new Map<string, CachedTile>();
 
 	private readonly boundPointerDown: (event: PointerEvent) => void;
@@ -500,27 +502,38 @@ export class WsiTileRenderer {
 			return;
 		}
 
+		const pointFillModes =
+			points.fillModes instanceof Uint8Array ? points.fillModes : null;
+		const hasFillModes = pointFillModes !== null;
 		const safeCount = Math.max(
 			0,
 			Math.min(
 				points.count,
 				Math.floor(points.positions.length / 2),
 				points.paletteIndices.length,
+				hasFillModes ? pointFillModes.length : Number.MAX_SAFE_INTEGER,
 			),
 		);
 		const nextPositions = points.positions.subarray(0, safeCount * 2);
 		const nextPaletteIndices = points.paletteIndices.subarray(0, safeCount);
+		const nextFillModes = hasFillModes
+			? pointFillModes.subarray(0, safeCount)
+			: undefined;
 		const hasDrawIndices = points.drawIndices instanceof Uint32Array;
 		const nextDrawIndices = hasDrawIndices
 			? this.sanitizeDrawIndices(points.drawIndices as Uint32Array, safeCount)
 			: null;
 		const prev = this.lastPointData;
+		const prevHasFillModes = prev?.fillModes instanceof Uint8Array;
 		let geometryChanged =
 			this.pointBuffersDirty ||
 			!prev ||
 			prev.count !== safeCount ||
 			!isSameArrayView(prev.positions, nextPositions) ||
-			!isSameArrayView(prev.paletteIndices, nextPaletteIndices);
+			!isSameArrayView(prev.paletteIndices, nextPaletteIndices) ||
+			prevHasFillModes !== hasFillModes ||
+			(hasFillModes &&
+				(!prev?.fillModes || !isSameArrayView(prev.fillModes, nextFillModes)));
 		let drawIndicesChanged =
 			this.pointBuffersDirty ||
 			(hasDrawIndices &&
@@ -532,6 +545,7 @@ export class WsiTileRenderer {
 			count: safeCount,
 			positions: nextPositions,
 			paletteIndices: nextPaletteIndices,
+			fillModes: nextFillModes,
 			drawIndices: hasDrawIndices ? nextDrawIndices ?? undefined : undefined,
 		};
 		if (this.contextLost || this.gl.isContextLost()) return;
@@ -545,6 +559,13 @@ export class WsiTileRenderer {
 			gl.bufferData(
 				gl.ARRAY_BUFFER,
 				this.lastPointData.paletteIndices,
+				gl.STATIC_DRAW,
+			);
+
+			gl.bindBuffer(gl.ARRAY_BUFFER, this.pointProgram.fillModeBuffer);
+			gl.bufferData(
+				gl.ARRAY_BUFFER,
+				this.lastPointData.fillModes ?? this.getZeroFillModes(safeCount),
 				gl.STATIC_DRAW,
 			);
 			gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -599,6 +620,14 @@ export class WsiTileRenderer {
 			cursor += 1;
 		}
 		return filtered;
+	}
+
+	private getZeroFillModes(count: number): Uint8Array {
+		if (count <= 0) return new Uint8Array(0);
+		if (this.zeroFillModes.length < count) {
+			this.zeroFillModes = new Uint8Array(count);
+		}
+		return this.zeroFillModes.subarray(0, count);
 	}
 
 	setInteractionLock(locked: boolean): void {
@@ -1209,6 +1238,7 @@ export class WsiTileRenderer {
 
 			this.gl.deleteBuffer(this.pointProgram.posBuffer);
 			this.gl.deleteBuffer(this.pointProgram.termBuffer);
+			this.gl.deleteBuffer(this.pointProgram.fillModeBuffer);
 			this.gl.deleteBuffer(this.pointProgram.indexBuffer);
 			this.gl.deleteTexture(this.pointProgram.paletteTexture);
 			this.gl.deleteVertexArray(this.pointProgram.vao);
@@ -1288,19 +1318,23 @@ export class WsiTileRenderer {
     precision highp float;
     in vec2 aPosition;
     in uint aTerm;
+    in uint aFillMode;
     uniform mat3 uCamera;
     uniform float uPointSize;
     flat out uint vTerm;
+    flat out uint vFillMode;
     void main() {
       vec3 clip = uCamera * vec3(aPosition, 1.0);
       gl_Position = vec4(clip.xy, 0.0, 1.0);
       gl_PointSize = uPointSize;
       vTerm = aTerm;
+      vFillMode = aFillMode;
     }`;
 
 		const pointFragment = `#version 300 es
     precision highp float;
     flat in uint vTerm;
+    flat in uint vFillMode;
     uniform sampler2D uPalette;
     uniform float uPaletteSize;
     uniform float uPointSize;
@@ -1316,14 +1350,18 @@ export class WsiTileRenderer {
       vec4 color = texture(uPalette, uv);
       if (color.a <= 0.0) discard;
 
-      float s = uPointStrokeScale;
-      float ringWidth = clamp(3.0 * s / max(1.0, uPointSize), 0.12 * s, 0.62 * s);
-      float innerRadius = 1.0 - ringWidth;
       float aa = 1.5 / max(1.0, uPointSize);
-
       float outerMask = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, r);
-      float innerMask = smoothstep(innerRadius - aa, innerRadius + aa, r);
-      float alpha = outerMask * innerMask * color.a;
+      float alpha = 0.0;
+      if (vFillMode != 0u) {
+        alpha = outerMask * color.a;
+      } else {
+        float s = uPointStrokeScale;
+        float ringWidth = clamp(3.0 * s / max(1.0, uPointSize), 0.12 * s, 0.62 * s);
+        float innerRadius = 1.0 - ringWidth;
+        float innerMask = smoothstep(innerRadius - aa, innerRadius + aa, r);
+        alpha = outerMask * innerMask * color.a;
+      }
       if (alpha <= 0.001) discard;
 
       outColor = vec4(color.rgb * alpha, alpha);
@@ -1339,9 +1377,10 @@ export class WsiTileRenderer {
 		const vao = gl.createVertexArray();
 		const posBuffer = gl.createBuffer();
 		const termBuffer = gl.createBuffer();
+		const fillModeBuffer = gl.createBuffer();
 		const indexBuffer = gl.createBuffer();
 		const paletteTexture = gl.createTexture();
-		if (!vao || !posBuffer || !termBuffer || !indexBuffer || !paletteTexture) {
+		if (!vao || !posBuffer || !termBuffer || !fillModeBuffer || !indexBuffer || !paletteTexture) {
 			throw new Error("point buffer allocation failed");
 		}
 
@@ -1364,6 +1403,15 @@ export class WsiTileRenderer {
 		}
 		gl.enableVertexAttribArray(termLoc);
 		gl.vertexAttribIPointer(termLoc, 1, gl.UNSIGNED_SHORT, 0, 0);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, fillModeBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
+		const fillModeLoc = gl.getAttribLocation(program, "aFillMode");
+		if (fillModeLoc < 0) {
+			throw new Error("point fill mode attribute not found");
+		}
+		gl.enableVertexAttribArray(fillModeLoc);
+		gl.vertexAttribIPointer(fillModeLoc, 1, gl.UNSIGNED_BYTE, 0, 0);
 
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
 		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
@@ -1395,6 +1443,7 @@ export class WsiTileRenderer {
 			vao,
 			posBuffer,
 			termBuffer,
+			fillModeBuffer,
 			indexBuffer,
 			paletteTexture,
 			uCamera,

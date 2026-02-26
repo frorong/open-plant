@@ -39,10 +39,12 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
   const count = Math.max(0, Math.floor(msg.count));
   const positions = new Float32Array(msg.positions);
   const terms = new Uint16Array(msg.paletteIndices);
+  const fillModes = msg.fillModes ? new Uint8Array(msg.fillModes) : null;
   const ids = msg.ids ? new Uint32Array(msg.ids) : null;
 
   const maxCountByPositions = Math.floor(positions.length / 2);
-  const safeCount = Math.max(0, Math.min(count, maxCountByPositions, terms.length));
+  const safeCount = Math.max(0, Math.min(count, maxCountByPositions, terms.length, fillModes ? fillModes.length : Number.MAX_SAFE_INTEGER));
+  const hasFillModes = fillModes instanceof Uint8Array && fillModes.length >= safeCount;
   const hasIds = ids instanceof Uint32Array && ids.length >= safeCount;
   const prepared = prepareRoiPolygons(msg.polygons ?? []);
 
@@ -55,6 +57,9 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
       paletteIndices: new Uint16Array(0).buffer,
       durationMs: nowMs() - start,
     };
+    if (hasFillModes) {
+      empty.fillModes = new Uint8Array(0).buffer;
+    }
     if (hasIds) {
       empty.ids = new Uint32Array(0).buffer;
     }
@@ -63,6 +68,7 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
 
   const nextPositions = new Float32Array(safeCount * 2);
   const nextTerms = new Uint16Array(safeCount);
+  const nextFillModes = hasFillModes ? new Uint8Array(safeCount) : null;
   const nextIds = hasIds ? new Uint32Array(safeCount) : null;
   let cursor = 0;
 
@@ -73,6 +79,9 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
     nextTerms[cursor] = terms[i];
+    if (nextFillModes) {
+      nextFillModes[cursor] = fillModes![i];
+    }
     if (nextIds) {
       nextIds[cursor] = ids![i];
     }
@@ -81,6 +90,7 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
 
   const outPositions = nextPositions.slice(0, cursor * 2);
   const outTerms = nextTerms.slice(0, cursor);
+  const outFillModes = nextFillModes ? nextFillModes.slice(0, cursor) : null;
   const outIds = nextIds ? nextIds.slice(0, cursor) : null;
 
   const success: RoiClipWorkerSuccess = {
@@ -91,6 +101,9 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
     paletteIndices: outTerms.buffer,
     durationMs: nowMs() - start,
   };
+  if (outFillModes) {
+    success.fillModes = outFillModes.buffer;
+  }
   if (outIds) {
     success.ids = outIds.buffer;
   }
@@ -147,6 +160,9 @@ workerScope.addEventListener("message", (event: MessageEvent<RoiClipWorkerReques
     }
     const response = handleDataRequest(data);
     const transfer: Transferable[] = [response.positions, response.paletteIndices];
+    if (response.fillModes) {
+      transfer.push(response.fillModes);
+    }
     if (response.ids) {
       transfer.push(response.ids);
     }

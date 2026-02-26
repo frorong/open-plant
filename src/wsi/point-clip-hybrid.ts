@@ -50,12 +50,19 @@ export async function filterPointDataByPolygonsHybrid(
 
   const prepared = prepareRoiPolygons(polygons ?? []);
   if (prepared.length === 0) {
+    const data: WsiPointData = {
+      count: 0,
+      positions: new Float32Array(0),
+      paletteIndices: new Uint16Array(0),
+    };
+    if (pointData.fillModes instanceof Uint8Array) {
+      data.fillModes = new Uint8Array(0);
+    }
+    if (pointData.ids instanceof Uint32Array) {
+      data.ids = new Uint32Array(0);
+    }
     return {
-      data: {
-        count: 0,
-        positions: new Float32Array(0),
-        paletteIndices: new Uint16Array(0),
-      },
+      data,
       meta: {
         mode: "hybrid-webgpu",
         durationMs: nowMs() - start,
@@ -66,15 +73,25 @@ export async function filterPointDataByPolygonsHybrid(
     };
   }
 
-  const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length));
+  const fillModesLength =
+    pointData.fillModes instanceof Uint8Array ? pointData.fillModes.length : Number.MAX_SAFE_INTEGER;
+  const safeCount = Math.max(0, Math.min(pointData.count, Math.floor(pointData.positions.length / 2), pointData.paletteIndices.length, fillModesLength));
+  const pointFillModes = pointData.fillModes instanceof Uint8Array && pointData.fillModes.length >= safeCount ? pointData.fillModes : null;
   const pointIds = pointData.ids instanceof Uint32Array && pointData.ids.length >= safeCount ? pointData.ids : null;
   if (safeCount === 0) {
+    const data: WsiPointData = {
+      count: 0,
+      positions: new Float32Array(0),
+      paletteIndices: new Uint16Array(0),
+    };
+    if (pointFillModes) {
+      data.fillModes = new Uint8Array(0);
+    }
+    if (pointIds) {
+      data.ids = new Uint32Array(0);
+    }
     return {
-      data: {
-        count: 0,
-        positions: new Float32Array(0),
-        paletteIndices: new Uint16Array(0),
-      },
+      data,
       meta: {
         mode: "hybrid-webgpu",
         durationMs: nowMs() - start,
@@ -142,6 +159,9 @@ export async function filterPointDataByPolygonsHybrid(
         paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
         drawIndices: new Uint32Array(0),
       };
+      if (pointFillModes) {
+        data.fillModes = pointFillModes.subarray(0, safeCount);
+      }
       if (pointIds) {
         data.ids = pointIds.subarray(0, safeCount);
       }
@@ -157,13 +177,19 @@ export async function filterPointDataByPolygonsHybrid(
       };
     }
 
+    const data: WsiPointData = {
+      count: 0,
+      positions: new Float32Array(0),
+      paletteIndices: new Uint16Array(0),
+    };
+    if (pointFillModes) {
+      data.fillModes = new Uint8Array(0);
+    }
+    if (pointIds) {
+      data.ids = new Uint32Array(0);
+    }
     return {
-      data: {
-        count: 0,
-        positions: new Float32Array(0),
-        paletteIndices: new Uint16Array(0),
-        ...(pointIds ? { ids: new Uint32Array(0) } : {}),
-      },
+      data,
       meta: {
         mode: "hybrid-webgpu",
         durationMs: nowMs() - start,
@@ -193,6 +219,9 @@ export async function filterPointDataByPolygonsHybrid(
       paletteIndices: pointData.paletteIndices.subarray(0, safeCount),
       drawIndices: drawIndices.subarray(0, visibleCount),
     };
+    if (pointFillModes) {
+      data.fillModes = pointFillModes.subarray(0, safeCount);
+    }
     if (pointIds) {
       data.ids = pointIds.subarray(0, safeCount);
     }
@@ -211,6 +240,7 @@ export async function filterPointDataByPolygonsHybrid(
 
   const nextPositions = new Float32Array(candidateCount * 2);
   const nextTerms = new Uint16Array(candidateCount);
+  const nextFillModes = pointFillModes ? new Uint8Array(candidateCount) : null;
   const nextIds = pointIds ? new Uint32Array(candidateCount) : null;
   let cursor = 0;
 
@@ -222,6 +252,9 @@ export async function filterPointDataByPolygonsHybrid(
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
     nextTerms[cursor] = pointData.paletteIndices[pointIndex];
+    if (nextFillModes) {
+      nextFillModes[cursor] = pointFillModes![pointIndex];
+    }
     if (nextIds) {
       nextIds[cursor] = pointIds![pointIndex];
     }
@@ -233,6 +266,9 @@ export async function filterPointDataByPolygonsHybrid(
     positions: nextPositions.subarray(0, cursor * 2),
     paletteIndices: nextTerms.subarray(0, cursor),
   };
+  if (nextFillModes) {
+    compactData.fillModes = nextFillModes.subarray(0, cursor);
+  }
   if (nextIds) {
     compactData.ids = nextIds.subarray(0, cursor);
   }

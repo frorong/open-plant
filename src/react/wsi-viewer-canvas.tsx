@@ -113,7 +113,8 @@ interface PreparedRegionHit {
 }
 
 function sanitizePointCount(pointData: WsiPointData): number {
-  return Math.max(0, Math.min(Math.floor(pointData.count ?? 0), Math.floor((pointData.positions?.length ?? 0) / 2), pointData.paletteIndices?.length ?? 0));
+  const fillModesLength = pointData.fillModes instanceof Uint8Array ? pointData.fillModes.length : Number.MAX_SAFE_INTEGER;
+  return Math.max(0, Math.min(Math.floor(pointData.count ?? 0), Math.floor((pointData.positions?.length ?? 0) / 2), pointData.paletteIndices?.length ?? 0, fillModesLength));
 }
 
 function sanitizeDrawIndices(drawIndices: Uint32Array | undefined, maxExclusive: number): Uint32Array | null {

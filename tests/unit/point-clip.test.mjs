@@ -94,6 +94,36 @@ test("filterPointDataByPolygons: preserves ids for surviving points", () => {
   assert.deepEqual(toArray(output.ids), [101, 103]);
 });
 
+test("filterPointDataByPolygons: preserves fillModes for surviving points", () => {
+  const pointData = {
+    count: 4,
+    positions: new Float32Array([
+      1, 1, // in
+      9, 9, // out
+      2, 2, // in
+      7, 7, // out
+    ]),
+    paletteIndices: new Uint16Array([1, 2, 3, 4]),
+    fillModes: new Uint8Array([0, 1, 1, 0]),
+  };
+
+  const polygons = [
+    [
+      [0, 0],
+      [3, 0],
+      [3, 3],
+      [0, 3],
+    ],
+  ];
+
+  const output = filterPointDataByPolygons(pointData, polygons);
+  assert.ok(output);
+  assert.equal(output.count, 2);
+  assert.deepEqual(toArray(output.positions), [1, 1, 2, 2]);
+  assert.deepEqual(toArray(output.paletteIndices), [1, 3]);
+  assert.deepEqual(toArray(output.fillModes), [0, 1]);
+});
+
 test("filterPointIndicesByPolygons: returns original indices for points inside polygons", () => {
   const pointData = {
     count: 6,

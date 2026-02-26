@@ -10,12 +10,17 @@ export type { RoiCoordinate };
 export type RoiPolygon = RoiGeometry;
 
 function sanitizePointCount(pointData: WsiPointData): number {
+	const fillModesLength =
+		pointData.fillModes instanceof Uint8Array
+			? pointData.fillModes.length
+			: Number.MAX_SAFE_INTEGER;
 	return Math.max(
 		0,
 		Math.min(
 			Math.floor(pointData.count ?? 0),
 			Math.floor((pointData.positions?.length ?? 0) / 2),
 			pointData.paletteIndices?.length ?? 0,
+			fillModesLength,
 		),
 	);
 }
@@ -30,16 +35,27 @@ export function filterPointDataByPolygons(
 
 	const prepared = prepareRoiPolygons(polygons ?? []);
 	if (prepared.length === 0) {
-		return {
+		const empty: WsiPointData = {
 			count: 0,
 			positions: new Float32Array(0),
 			paletteIndices: new Uint16Array(0),
 		};
+		if (pointData.fillModes instanceof Uint8Array) {
+			empty.fillModes = new Uint8Array(0);
+		}
+		if (pointData.ids instanceof Uint32Array) {
+			empty.ids = new Uint32Array(0);
+		}
+		return empty;
 	}
 
 	const count = sanitizePointCount(pointData);
 	const positions = pointData.positions;
 	const terms = pointData.paletteIndices;
+	const fillModes =
+		pointData.fillModes instanceof Uint8Array && pointData.fillModes.length >= count
+			? pointData.fillModes
+			: null;
 	const pointIds =
 		pointData.ids instanceof Uint32Array && pointData.ids.length >= count
 			? pointData.ids
@@ -47,6 +63,7 @@ export function filterPointDataByPolygons(
 
 	const nextPositions = new Float32Array(count * 2);
 	const nextTerms = new Uint16Array(count);
+	const nextFillModes = fillModes ? new Uint8Array(count) : null;
 	const nextIds = pointIds ? new Uint32Array(count) : null;
 	let cursor = 0;
 
@@ -57,6 +74,9 @@ export function filterPointDataByPolygons(
 		nextPositions[cursor * 2] = x;
 		nextPositions[cursor * 2 + 1] = y;
 		nextTerms[cursor] = terms[i];
+		if (nextFillModes) {
+			nextFillModes[cursor] = fillModes![i];
+		}
 		if (nextIds) {
 			nextIds[cursor] = pointIds![i];
 		}
@@ -68,6 +88,9 @@ export function filterPointDataByPolygons(
 		positions: nextPositions.subarray(0, cursor * 2),
 		paletteIndices: nextTerms.subarray(0, cursor),
 	};
+	if (nextFillModes) {
+		output.fillModes = nextFillModes.subarray(0, cursor);
+	}
 	if (nextIds) {
 		output.ids = nextIds.subarray(0, cursor);
 	}

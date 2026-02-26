@@ -47,6 +47,7 @@ export interface WsiPointData {
 	count: number;
 	positions: Float32Array;
 	paletteIndices: Uint16Array;
+	fillModes?: Uint8Array;
 	ids?: Uint32Array;
 	drawIndices?: Uint32Array;
 }
