@@ -38,6 +38,7 @@
           <a href="#setup">Setup</a>
           <a href="#load-info">Load Image Info</a>
           <a href="#minimal">Minimal Render</a>
+          <a href="#camera-color">Camera + Color</a>
           <a href="#points">Load Points</a>
           <a href="#roi">ROI Clip</a>
           <a href="#roi-stats">ROI Term Stats</a>
@@ -84,6 +85,7 @@ import { WsiViewerCanvas } from "open-plant";
 function Viewer({ source, token }) {
   const [viewState, setViewState] = useState();
   const [rotationResetNonce, setRotationResetNonce] = useState(0);
+  const [selectedRoiId, setSelectedRoiId] = useState(null);
 
   return (
     &lt;WsiViewerCanvas
@@ -93,6 +95,8 @@ function Viewer({ source, token }) {
       onViewStateChange={setViewState}
       ctrlDragRotate
       rotationResetNonce={rotationResetNonce}
+      activeRegionId={selectedRoiId}
+      onActiveRegionChange={setSelectedRoiId}
       onPointerWorldMove={(event) =&gt; {
         // event.coordinate -> [x, y] | null
       }}
@@ -103,8 +107,27 @@ function Viewer({ source, token }) {
 }</code></pre>
           </section>
 
+          <section class="panel reveal" id="camera-color">
+            <h2>4. Camera bounds/transition + tile color</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  imageColorSettings={{
+    brightness: 0,
+    contrast: 0,
+    saturation: 0,
+  }}
+  minZoom={0.25}
+  maxZoom={1}
+  viewTransition={{ duration: 300 }}
+  autoLiftRegionLabelAtMaxZoom
+/&gt;</code></pre>
+            <p>
+              Color settings are applied to the tile shader only. Point/cell markers, ROI, and draw overlay keep original colors.
+            </p>
+          </section>
+
           <section class="panel reveal" id="points">
-            <h2>4. Provide point data and build palette</h2>
+            <h2>5. Provide point data and build palette</h2>
             <p>
               Point loading and parsing (e.g. ZST/MVT decoding) is <strong>not</strong> part of the library.
               Parse points externally, then pass typed arrays to the viewer.
@@ -120,6 +143,7 @@ const pointData = {
   count: positions.length / 2,
   positions,
   paletteIndices,
+  fillModes, // optional Uint8Array (0: ring, 1: solid)
 };</code></pre>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
@@ -130,7 +154,7 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="roi">
-            <h2>5. ROI polygon clipping</h2>
+            <h2>6. ROI polygon clipping</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}
@@ -153,7 +177,7 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>6. ROI term stats callback</h2>
+            <h2>7. ROI term stats callback</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}
@@ -166,7 +190,7 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="clip-accel">
-            <h2>7. ROI acceleration mode (worker / hybrid-webgpu)</h2>
+            <h2>8. ROI acceleration mode (worker / hybrid-webgpu)</h2>
             <pre><code class="language-ts">import { getWebGpuCapabilities } from "open-plant";
 
 const caps = await getWebGpuCapabilities();

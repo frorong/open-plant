@@ -31,3 +31,18 @@ python3 -m http.server 4173
 - 워크플로우: `.github/workflows/release-gate.yml`
 - 로컬 검증: `npm run release:gate` (`typecheck` + `test:ws9` + `build:lib`)
 - publish 훅: `prepublishOnly`에서 release gate 강제 실행
+
+## Documentation Sync Checklist
+
+- `src/index.ts` export 추가/변경 시:
+  - `README.md`
+  - `docs/en/api-reference.html`
+  - `docs/ko/api-reference.html`
+- 상호작용 동작 변경(ROI hit-test, draw intent, brush/cursor UX 등) 시:
+  - `docs/en/draw-and-roi.html`
+  - `docs/ko/draw-and-roi.html`
+  - 필요 시 `docs/en/architecture.html`, `docs/ko/architecture.html`
+- 뷰어 기본 설정/빠른 시작 흐름 변경 시:
+  - `docs/en/getting-started.html`
+  - `docs/ko/getting-started.html`
+- EN/KO 페이지는 기능 단위로 동등한 정보가 유지되어야 합니다.

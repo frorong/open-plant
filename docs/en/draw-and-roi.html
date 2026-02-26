@@ -37,6 +37,7 @@
           <h2>ROI Draw</h2>
           <a href="#toolbar">Toolbar model</a>
           <a href="#complete">Draw completion</a>
+          <a href="#brush-ux">Brush UX</a>
           <a href="#stamp-size">Stamp sizing</a>
           <a href="#persist">Persisted regions</a>
           <a href="#style">Custom styles</a>
@@ -50,7 +51,8 @@
             <h1>Draw + Stamp ROI Tools</h1>
             <p>
               When `drawTool` is not `cursor`, `DrawLayer` captures pointer events and returns
-              closed polygon coordinates through `onDrawComplete`. Stamp tools place physical-size
+              closed polygon coordinates through `onDrawComplete`. Brush also emits completion
+              payload (<code>intent: "brush"</code>). Stamp tools place physical-size
               ROI in one click (2mm² square/circle, 0.2mm² HPF circle). The fixed-pixel
               <code>stamp-rectangle-4096px</code> emits patch intent and can be handled with
               <code>onPatchComplete</code>.
@@ -80,8 +82,8 @@
           <section class="panel reveal" id="complete">
             <h2>2. Completion payload</h2>
             <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
-  console.log(result.tool);        // freehand | rectangle | circular | stamp-...
-  console.log(result.intent);      // "roi" | "patch"
+  console.log(result.tool);        // freehand | rectangle | circular | brush | stamp-...
+  console.log(result.intent);      // "roi" | "patch" | "brush"
   console.log(result.coordinates); // closed ring
   console.log(result.bbox);        // [minX, minY, maxX, maxY]
   console.log(result.areaPx);      // polygon area
@@ -94,8 +96,32 @@ const onPatchComplete = (patch) =&gt; {
             <div class="callout">Press <code>Esc</code> to cancel an active drawing gesture. Stamp tools complete on click.</div>
           </section>
 
+          <section class="panel reveal" id="brush-ux">
+            <h2>3. Brush UX (screen-fixed radius + tap-to-select)</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  drawTool="brush"
+  brushOptions={{
+    radius: 24,           // HTML/CSS px (screen-fixed)
+    edgeDetail: 1.5,
+    edgeSmoothing: 2,
+    clickSelectRoi: true, // tap on ROI in brush mode selects ROI first
+  }}
+  onDrawComplete={(result) =&gt; {
+    // brush stroke completion -> result.intent === "brush"
+  }}
+  onRegionClick={(event) =&gt; {
+    // emitted when clickSelectRoi=true and tap hits ROI contour/label
+  }}
+/&gt;</code></pre>
+            <p>
+              With <code>clickSelectRoi=true</code>, a brush tap on ROI selects/toggles active ROI first.
+              A tap outside ROI behaves as a normal brush stroke.
+            </p>
+          </section>
+
           <section class="panel reveal" id="stamp-size">
-            <h2>3. Stamp size props (outside control)</h2>
+            <h2>4. Stamp size props (outside control)</h2>
             <pre><code class="language-tsx">const [rectAreaMm2, setRectAreaMm2] = useState(2);
 const [circleAreaMm2, setCircleAreaMm2] = useState(2);
 const [rectPixelSize, setRectPixelSize] = useState(4096);
@@ -116,7 +142,7 @@ const [rectPixelSize, setRectPixelSize] = useState(4096);
           </section>
 
           <section class="panel reveal" id="persist">
-            <h2>4. Persist regions and labels</h2>
+            <h2>5. Persist regions and labels</h2>
             <pre><code class="language-tsx">const [regions, setRegions] = useState([]);
 
 const handleDrawComplete = (result) =&gt; {
@@ -141,10 +167,13 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="style">
-            <h2>5. External label and stroke styling</h2>
+            <h2>6. External interaction + style control</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   roiRegions={regions}
+  activeRegionId={selectedRoiId} // controlled mode
+  onActiveRegionChange={setSelectedRoiId}
+  drawFillColor="transparent"
   patchRegions={patches}
   patchStrokeStyle={{ color: "#8ad8ff", width: 2, lineDash: [10, 8] }}
   regionStrokeStyle={{
@@ -166,6 +195,15 @@ const handleDrawComplete = (result) =&gt; {
   resolveRegionStrokeStyle={(ctx) =&gt; {
     if (ctx.state === "hover") return { color: "#ff2f2f", width: 3 };
     if (ctx.state === "active") return { color: "#ff2f2f", width: 3.2, shadowBlur: 12 };
+  }}
+  resolveRegionLabelStyle={({ zoom }) =&gt; ({
+    offsetY: zoom &gt; 4 ? -20 : -10,
+  })}
+  autoLiftRegionLabelAtMaxZoom
+  drawAreaTooltip={{
+    enabled: true,
+    format: (areaMm2) =&gt; `${areaMm2.toFixed(3)} mm²`,
+    cursorOffset: { x: 16, y: -24 },
   }}
   overlayShapes={[
     {
@@ -201,9 +239,6 @@ const handleDrawComplete = (result) =&gt; {
   onRegionClick={(event) =&gt; {
     // event.regionId, event.region, event.coordinate
   }}
-  onActiveRegionChange={(regionId) =&gt; {
-    // active region id or null
-  }}
   onPatchComplete={(patch) =&gt; {
     // patch-only completion callback
   }}
@@ -217,13 +252,13 @@ const handleDrawComplete = (result) =&gt; {
   ]}
 /&gt;</code></pre>
             <p>
-              Default active behavior: if a region is active, clicking empty space or a different
-              region clears the active state.
+              Region hit-test in cursor mode targets contour + label only (region interior fill is excluded).
+              If <code>activeRegionId</code> is omitted, the viewer falls back to uncontrolled active state.
             </p>
           </section>
 
           <section class="panel reveal" id="clip">
-            <h2>6. Render cells only inside drawn regions</h2>
+            <h2>7. Render cells only inside drawn regions</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}
@@ -243,7 +278,7 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>7. ROI term-count stats API</h2>
+            <h2>8. ROI term-count stats API</h2>
             <pre><code class="language-tsx">import { computeRoiPointGroups } from "open-plant";
 
 const stats = computeRoiPointGroups(pointData, regions, {

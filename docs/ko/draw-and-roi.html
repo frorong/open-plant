@@ -37,6 +37,7 @@
           <h2>ROI 그리기</h2>
           <a href="#toolbar">툴바 상태 모델</a>
           <a href="#draw-complete">결과 수신</a>
+          <a href="#brush-ux">Brush UX</a>
           <a href="#stamp-size">Stamp 크기</a>
           <a href="#persist">영역 유지/라벨</a>
           <a href="#style">스타일 커스터마이징</a>
@@ -51,7 +52,8 @@
             <p>
               `drawTool`이 `cursor`가 아닌 동안 `DrawLayer`가 활성화되어
               pan/zoom과 충돌 없이 ROI를 생성합니다. 결과는 닫힌 polygon 좌표로
-              반환됩니다. stamp 툴은 클릭 한 번으로 물리 크기 ROI(2mm² 사각형/원, 0.2mm² HPF 원)를
+              반환됩니다. brush도 완료 시점에 <code>intent: "brush"</code> payload를 반환합니다.
+              stamp 툴은 클릭 한 번으로 물리 크기 ROI(2mm² 사각형/원, 0.2mm² HPF 원)를
               생성합니다. 고정 픽셀 사각형(<code>stamp-rectangle-4096px</code>)은
               patch intent로 완료되며 <code>onPatchComplete</code>에서 별도 처리할 수 있습니다.
             </p>
@@ -85,8 +87,8 @@ const [drawTool, setDrawTool] = useState("cursor");
           <section class="panel reveal" id="draw-complete">
             <h2>2. Draw 완료 결과</h2>
             <pre><code class="language-tsx">const onDrawComplete = (result) =&gt; {
-  console.log(result.tool); // freehand | rectangle | circular | stamp-...
-  console.log(result.intent); // "roi" | "patch"
+  console.log(result.tool); // freehand | rectangle | circular | brush | stamp-...
+  console.log(result.intent); // "roi" | "patch" | "brush"
   console.log(result.coordinates); // closed ring
   console.log(result.bbox); // [minX, minY, maxX, maxY]
   console.log(result.areaPx); // polygon area
@@ -108,8 +110,32 @@ const onPatchComplete = (patch) =&gt; {
             </div>
           </section>
 
+          <section class="panel reveal" id="brush-ux">
+            <h2>3. Brush UX (화면 고정 반경 + 탭 선택)</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  drawTool="brush"
+  brushOptions={{
+    radius: 24,           // HTML/CSS px 기준 (화면에서 줌 불변)
+    edgeDetail: 1.5,
+    edgeSmoothing: 2,
+    clickSelectRoi: true, // brush 모드 탭 시 ROI를 먼저 선택
+  }}
+  onDrawComplete={(result) =&gt; {
+    // brush 완료 -> result.intent === "brush"
+  }}
+  onRegionClick={(event) =&gt; {
+    // clickSelectRoi=true + ROI contour/label 탭 시 이벤트
+  }}
+/&gt;</code></pre>
+            <p>
+              <code>clickSelectRoi=true</code>이면 brush 탭에서 ROI 선택/토글을 우선 수행합니다.
+              ROI 외부 탭은 일반 brush stroke로 처리됩니다.
+            </p>
+          </section>
+
           <section class="panel reveal" id="stamp-size">
-            <h2>3. Stamp 크기 prop 제어</h2>
+            <h2>4. Stamp 크기 prop 제어</h2>
             <pre><code class="language-tsx">const [rectAreaMm2, setRectAreaMm2] = useState(2);
 const [circleAreaMm2, setCircleAreaMm2] = useState(2);
 const [rectPixelSize, setRectPixelSize] = useState(4096);
@@ -130,7 +156,7 @@ const [rectPixelSize, setRectPixelSize] = useState(4096);
           </section>
 
           <section class="panel reveal" id="persist">
-            <h2>4. ROI 영속화와 라벨 표시</h2>
+            <h2>5. ROI 영속화와 라벨 표시</h2>
             <pre><code class="language-tsx">const [regions, setRegions] = useState([]);
 const [labelInput, setLabelInput] = useState("ROI");
 
@@ -161,10 +187,13 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="style">
-            <h2>5. 라벨/스트로크 스타일 외부 주입</h2>
+            <h2>6. 인터랙션/스타일 외부 제어</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   roiRegions={regions}
+  activeRegionId={selectedRoiId} // controlled 모드
+  onActiveRegionChange={setSelectedRoiId}
+  drawFillColor="transparent"
   patchRegions={patches}
   patchStrokeStyle={{ color: "#8ad8ff", width: 2, lineDash: [10, 8] }}
   regionStrokeStyle={{
@@ -186,6 +215,15 @@ const handleDrawComplete = (result) =&gt; {
   resolveRegionStrokeStyle={(ctx) =&gt; {
     if (ctx.state === "hover") return { color: "#ff2f2f", width: 3 };
     if (ctx.state === "active") return { color: "#ff2f2f", width: 3.2, shadowBlur: 12 };
+  }}
+  resolveRegionLabelStyle={({ zoom }) =&gt; ({
+    offsetY: zoom &gt; 4 ? -20 : -10,
+  })}
+  autoLiftRegionLabelAtMaxZoom
+  drawAreaTooltip={{
+    enabled: true,
+    format: (areaMm2) =&gt; `${areaMm2.toFixed(3)} mm²`,
+    cursorOffset: { x: 16, y: -24 },
   }}
   overlayShapes={[
     {
@@ -221,9 +259,6 @@ const handleDrawComplete = (result) =&gt; {
   onRegionClick={(event) =&gt; {
     // event.regionId, event.region, event.coordinate
   }}
-  onActiveRegionChange={(regionId) =&gt; {
-    // active region id 또는 null
-  }}
   onPatchComplete={(patch) =&gt; {
     // patch 전용 완료 이벤트
   }}
@@ -237,13 +272,13 @@ const handleDrawComplete = (result) =&gt; {
   ]}
 /&gt;</code></pre>
             <p>
-              기본 active 동작: active 상태에서 다른 영역(빈 공간)이나 다른 region을 클릭하면
-              active가 해제됩니다.
+              cursor 모드 region hit-test는 contour + 라벨 영역만 대상으로 하며 내부 fill은 제외됩니다.
+              <code>activeRegionId</code>를 생략하면 기존처럼 uncontrolled active 상태로 동작합니다.
             </p>
           </section>
 
           <section class="panel reveal" id="clip">
-            <h2>6. Draw 영역에만 셀 렌더</h2>
+            <h2>7. Draw 영역에만 셀 렌더</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}
@@ -266,7 +301,7 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>7. ROI term count 통계 API</h2>
+            <h2>8. ROI term count 통계 API</h2>
             <pre><code class="language-tsx">import { computeRoiPointGroups } from "open-plant";
 
 const stats = computeRoiPointGroups(pointData, regions, {

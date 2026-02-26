@@ -71,6 +71,7 @@
               <div class="flow-step"><strong>Tier selection:</strong> <code>tier = floor(maxTierZoom + log2(zoom))</code>.</div>
               <div class="flow-step"><strong>Visible set:</strong> intersect viewport bounds with tile grid at the selected tier.</div>
               <div class="flow-step"><strong>Fallback first:</strong> draw cached overlapping tiles before new-tier tiles are ready.</div>
+              <div class="flow-step"><strong>Tile-only color correction:</strong> brightness/contrast/saturation uniforms are applied in tile fragment shader only.</div>
               <div class="flow-step"><strong>Async fetch/upload:</strong> fetch bitmap, upload texture, schedule new frame.</div>
               <div class="flow-step"><strong>LRU trim:</strong> evict least-used textures when cache exceeds budget.</div>
             </div>
@@ -91,9 +92,9 @@
             <h2>Point pipeline</h2>
             <div class="flow">
               <div class="flow-step"><strong>External parsing:</strong> point loading/decoding (e.g. zstd+MVT) is the caller's responsibility.</div>
-              <div class="flow-step"><strong>Input contract:</strong> the library accepts <code>Float32Array</code> positions + <code>Uint16Array</code> palette indices.</div>
+              <div class="flow-step"><strong>Input contract:</strong> accepts <code>Float32Array</code> positions + <code>Uint16Array</code> palette indices, plus optional <code>fillModes</code>/<code>drawIndices</code>.</div>
               <div class="flow-step"><strong>GPU upload:</strong> positions and palette index buffers.</div>
-              <div class="flow-step"><strong>Shader render:</strong> ring-shaped point fragments with palette texture lookup.</div>
+              <div class="flow-step"><strong>Shader render:</strong> palette-based point fragments in ring/solid mode via <code>fillModes</code>.</div>
               <div class="flow-step"><strong>ROI filter:</strong> optional polygon clip before upload/render via <code>clipMode</code>.</div>
               <div class="flow-step"><strong>ROI stats:</strong> optional per-ROI term aggregation via <code>computeRoiPointGroups</code> / <code>onRoiPointGroups</code>.</div>
             </div>
@@ -126,8 +127,9 @@
             <div class="flow">
               <div class="flow-step"><strong>Camera input:</strong> pan + wheel zoom + <code>Ctrl/Cmd + drag</code> rotate (<code>rotationDeg</code>).</div>
               <div class="flow-step"><strong>Pointer capture:</strong> draw layer captures active pointer in draw mode.</div>
-              <div class="flow-step"><strong>Preview:</strong> freehand trajectory or rectangle/circle preview polygon.</div>
-              <div class="flow-step"><strong>Finalize:</strong> close ring and emit <code>DrawResult</code>.</div>
+              <div class="flow-step"><strong>Preview:</strong> freehand/rectangle/circle preview polygon or brush cursor+stroke.</div>
+              <div class="flow-step"><strong>Finalize:</strong> close ring and emit <code>DrawResult</code> (<code>intent: "roi" | "patch" | "brush"</code>).</div>
+              <div class="flow-step"><strong>Region interaction:</strong> cursor-mode region hit test is contour + label only (interior fill excluded).</div>
               <div class="flow-step"><strong>Persist:</strong> region outlines and labels remain visible across camera changes.</div>
             </div>
           </section>

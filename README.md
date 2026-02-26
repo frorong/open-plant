@@ -73,12 +73,19 @@ draw mode에 진입하면 `setPointerCapture`로 입력을 독점해 팬(드래�
 | | |
 |---|---|
 | **WebGL2 타일 렌더링** | 멀티 티어 타일 피라미드, LRU 캐시(320장), 저해상도 fallback 렌더링 |
+| **타일 전용 색상 보정** | `imageColorSettings`로 brightness/contrast/saturation 실시간 반영 (cell/ROI/draw overlay는 영향 없음) |
 | **회전 인터랙션** | `WsiViewState.rotationDeg`, `Ctrl/Cmd + drag` 회전, `resetRotation` 경로 |
+| **줌 범위 제어 + 전환 애니메이션** | `minZoom`/`maxZoom` clamp + `viewTransition`(duration/easing) |
 | **포인트 오버레이** | WebGL2 `gl.POINTS`로 수십, 수백만 개 포인트를 팔레트 텍스처 기반 컬러링. 파싱된 TypedArray만 입력 |
 | **포인트 크기 커스터마이즈** | `pointSizeByZoom` 객체로 zoom별 셀(px) 크기 지정 + 내부 선형 보간 |
+| **포인트 렌더 모드 제어** | `pointData.fillModes`로 ring/solid 렌더링 제어 |
 | **모바일 타겟 성능** | iPhone 15급 환경에서 수백만 cell 워크로드를 전제로 pan/zoom 응답성을 유지하도록 설계 |
-| **드로잉 / ROI 도구** | Freehand · Rectangle · Circular + Stamp(사각형/원, mm² 지정) |
+| **드로잉 / ROI 도구** | Freehand · Rectangle · Circular · Brush + Stamp(사각형/원, mm² 지정) |
 | **고정 픽셀 스탬프** | `stamp-rectangle-4096px` + `stampOptions.rectanglePixelSize` |
+| **브러시 UX 제어** | `brushOptions` (`radius`, `edgeDetail`, `edgeSmoothing`, `clickSelectRoi` 등) |
+| **ROI 인터랙션 제어** | `activeRegionId` controlled/uncontrolled + contour/label 기반 hit-test |
+| **ROI 라벨 동적 제어** | `resolveRegionLabelStyle` + `autoLiftRegionLabelAtMaxZoom` |
+| **실시간 면적 툴팁** | `drawAreaTooltip`으로 draw 중 mm² 표시 |
 | **ROI 포인트 클리핑** | `clipMode`: `sync` / `worker` / `hybrid-webgpu` (실험) |
 | **ROI 통계 API** | `computeRoiPointGroups()` + `onRoiPointGroups` 콜백 |
 | **ROI 커스텀 오버레이** | `resolveRegionStrokeStyle`, `overlayShapes` |
@@ -126,7 +133,7 @@ src/
 
 ### `<WsiViewerCanvas>`
 
-전체 기능을 갖춘 WSI 뷰어 컴포넌트.
+전체 기능을 갖춘 WSI 뷰어 컴포넌트. 실사용 시 대부분의 기능은 이 컴포넌트 하나로 제어합니다.
 
 ```jsx
 import { WsiViewerCanvas } from "open-plant";
@@ -137,8 +144,8 @@ import { WsiViewerCanvas } from "open-plant";
   imageColorSettings={{ brightness: 0, contrast: 0, saturation: 0 }}
   ctrlDragRotate
   rotationResetNonce={rotationResetNonce}
-  minZoom={0.25}
-  maxZoom={4}
+  minZoom={0.25} // 미지정 시 fitZoom * 0.5
+  maxZoom={1} // 미지정 시 fitZoom * 8
   viewTransition={{ duration: 300 }}
   authToken={bearerToken}
   pointData={pointPayload}
@@ -152,7 +159,7 @@ import { WsiViewerCanvas } from "open-plant";
   clipPointsToRois
   clipMode="worker"
   onClipStats={(s) => console.log(s.mode, s.durationMs)}
-  drawTool="stamp-rectangle-4096px"
+  drawTool={drawTool}
   drawFillColor="transparent"
   activeRegionId={selectedRoiId} // controlled: 외부에서 active ROI 제어
   onActiveRegionChange={setSelectedRoiId} // 내부 클릭/탭 선택 변경 알림
@@ -190,6 +197,7 @@ import { WsiViewerCanvas } from "open-plant";
   onRoiPointGroups={(stats) => console.log(stats.groups)}
   onDrawComplete={(result) => {
     if (result.intent === "roi") handleRoi(result);
+    if (result.intent === "brush") handleBrush(result);
   }}
   onPatchComplete={(patch) => {
     // stamp-rectangle-4096px 전용
@@ -200,23 +208,117 @@ import { WsiViewerCanvas } from "open-plant";
 />
 ```
 
-`mpp`(microns per pixel, 픽셀당 마이크론)는 `WsiImageSource`에 포함되는 물리 스케일 값이며, 스탬프의 mm² 크기를 실제 픽셀 단위로 환산할 때 사용됩니다.
+#### 동작 규약 (중요)
 
-`rotationDeg`는 뷰포트 회전 각도(도 단위)이며, `Ctrl/Cmd + drag`로 조작하거나 `viewState`로 직접 제어할 수 있습니다.
+- `mpp`(microns per pixel)는 스탬프 mm² 환산에 사용됩니다. 미지정 시 물리 크기는 근사치입니다.
+- `imageColorSettings`는 타일 레이어에만 적용됩니다. 포인트/ROI/드로잉은 영향받지 않습니다.
+- ROI hit-test는 **contour + nametag 영역** 기준입니다. ROI 내부 fill은 클릭/hover 영역에서 제외됩니다.
+- `activeRegionId`를 주면 controlled mode, 생략하면 uncontrolled mode로 동작합니다.
+- `minZoom`/`maxZoom`은 휠/더블클릭/`setViewState`/`fitToImage` 전 경로에 동일 clamp가 적용됩니다.
+- `viewTransition`은 `setViewState`/`fitToImage`/`zoomBy` 전환에 적용되며 `duration` 최대값은 `2000ms`입니다.
+- `drawFillColor` 기본값은 `transparent`입니다.
+- `brushOptions.radius`는 HTML/CSS px 기준이며, 줌이 바뀌어도 on-screen 크기는 고정됩니다.
+- `brushOptions.clickSelectRoi=true`이면 브러시 탭(드래그 없음) 시 ROI를 먼저 선택하고, ROI 외부 탭은 일반 브러시 결과를 반환합니다.
+- `autoLiftRegionLabelAtMaxZoom=true`이면 `maxZoom` 도달 시 라벨이 위로 `20px` 애니메이션 이동하고, 이탈 시 원위치로 내려옵니다.
+- `drawAreaTooltip.enabled=true`이면 freehand/rectangle/circular 그리기 중 커서 근처에 실시간 면적(mm²)을 표시합니다.
+- `roiRegions[].coordinates`는 ring / polygon(with holes) / multipolygon을 모두 지원합니다.
 
-`brushOptions.clickSelectRoi`를 `true`로 두면 브러시 모드에서 클릭(드래그 없음) 시 ROI hit-test로 선택을 시도하고, ROI 밖 클릭은 기존 브러시 점찍기 동작을 유지합니다.
-`brushOptions.edgeDetail`/`edgeSmoothing`으로 브러시 경계의 해상도와 스무딩 정도를 조절할 수 있습니다.
-`brushOptions.radius`는 world 좌표가 아니라 HTML/CSS px 단위이며, 줌 변화와 무관하게 on-screen 크기가 고정됩니다.
-`drawFillColor`는 freehand/rectangle/circular draw preview 내부 채움 색을 제어합니다. 미지정 시 기본값은 `transparent`입니다.
-`activeRegionId`를 전달하면 controlled mode로 동작하며 내부 state 대신 prop 값을 active ROI로 사용합니다. `activeRegionId`를 생략하면 기존처럼 uncontrolled mode(내부 state)로 동작합니다.
-`minZoom`/`maxZoom`으로 뷰어 zoom 범위를 지정할 수 있으며, 휠 줌/더블클릭 줌/`setViewState`/`fitToImage` 모두 동일하게 clamp됩니다.
-`viewTransition`을 지정하면 `viewState` 반영, `fitToImage`, `zoomBy` 전환에 애니메이션이 적용됩니다.
-`resolveRegionLabelStyle`로 zoom/region context 기반 nametag 스타일(예: `offsetY`)을 동적으로 계산할 수 있습니다.
-`autoLiftRegionLabelAtMaxZoom`을 `true`로 주면 `maxZoom`에 도달하는 순간 nametag가 위로 `20px` 부드럽게 올라가고, `maxZoom`에서 벗어나면 다시 부드럽게 내려옵니다.
-`drawAreaTooltip`을 켜면 freehand/rectangle/circular 드로잉 중 커서 근처에 실시간 면적(mm²) tooltip을 표시합니다.
-`imageColorSettings`는 이미지 타일에만 적용되며, cell marker/ROI/draw overlay에는 영향을 주지 않습니다.
-`pointData.fillModes`(선택, `Uint8Array`)를 주면 포인트별 렌더 모드를 제어할 수 있습니다. `0`은 ring(stroked), `1`은 solid(fill)이며 `0`이 아닌 값은 solid로 처리됩니다.
-`roiRegions[].coordinates`는 단일 링뿐 아니라 hole이 포함된 Polygon(`[[outer],[hole1], ...]`)과 MultiPolygon(`[[[...]], [[...]], ...]`)도 지원합니다.
+#### WsiViewerCanvas Props By Concern
+
+**View / Camera**
+
+| Prop | Type | Notes |
+|---|---|---|
+| `source` | `WsiImageSource \| null` | 필수 입력 메타데이터 |
+| `viewState` | `Partial<WsiViewState> \| null` | 외부 제어 시점 |
+| `onViewStateChange` | `(next) => void` | 내부 변경 통지 |
+| `fitNonce` | `number` | 변경 시 fit 재실행 |
+| `rotationResetNonce` | `number` | 변경 시 회전 0도 |
+| `ctrlDragRotate` | `boolean` | 기본 `true` |
+| `minZoom` / `maxZoom` | `number` | 미지정 시 `fitZoom*0.5` / `fitZoom*8` |
+| `viewTransition` | `{ duration?: number; easing?: (t)=>number }` | 기본 즉시 반영(duration 0) |
+| `authToken` | `string` | 타일/포인트 요청 인증 |
+| `overviewMapConfig` | `OverviewMapConfig` | 미니맵 표시/옵션 |
+
+**Tile / Point / Clip**
+
+| Prop | Type | Notes |
+|---|---|---|
+| `imageColorSettings` | `WsiImageColorSettings \| null` | brightness/contrast/saturation 입력 범위 `[-100, 100]` |
+| `pointData` | `WsiPointData \| null` | `positions`, `paletteIndices` 필수 |
+| `pointPalette` | `Uint8Array \| null` | RGBA 팔레트 텍스처 |
+| `pointSizeByZoom` | `Record<number, number>` | continuous zoom stop |
+| `pointStrokeScale` | `number` | point ring 두께 스케일 |
+| `clipPointsToRois` | `boolean` | ROI 외부 포인트 필터 |
+| `clipMode` | `"sync" \| "worker" \| "hybrid-webgpu"` | 기본 `"worker"` |
+| `onClipStats` | `(event) => void` | clip 실행 통계 |
+| `onRoiPointGroups` | `(stats) => void` | ROI term 통계 |
+| `roiPaletteIndexToTermId` | `ReadonlyMap<number,string> \| readonly string[]` | ROI term 매핑 |
+
+**ROI / Draw / Overlay**
+
+| Prop | Type | Notes |
+|---|---|---|
+| `roiRegions` / `roiPolygons` | `WsiRegion[]` / `DrawRegionCoordinates[]` | 영속 ROI 입력 |
+| `patchRegions` | `WsiRegion[]` | patch 전용 표시 채널 |
+| `interactionLock` | `boolean` | pan/zoom 잠금 |
+| `drawTool` | `DrawTool` | 기본 `"cursor"` |
+| `stampOptions` | `StampOptions` | mm² / 고정 px stamp 크기 |
+| `brushOptions` | `BrushOptions` | 브러시 궤적/커서/탭 선택 |
+| `drawFillColor` | `string` | draw preview fill, 기본 `transparent` |
+| `regionStrokeStyle` / `regionStrokeHoverStyle` / `regionStrokeActiveStyle` | `Partial<RegionStrokeStyle>` | ROI 외곽선 스타일 |
+| `patchStrokeStyle` | `Partial<RegionStrokeStyle>` | patch 선 스타일 |
+| `resolveRegionStrokeStyle` | `RegionStrokeStyleResolver` | 상태별 동적 stroke |
+| `regionLabelStyle` | `Partial<RegionLabelStyle>` | 기본 배지 스타일 override |
+| `resolveRegionLabelStyle` | `RegionLabelStyleResolver` | 줌/region별 동적 라벨 스타일 |
+| `autoLiftRegionLabelAtMaxZoom` | `boolean` | max zoom 도달 시 라벨 auto-lift |
+| `drawAreaTooltip` | `DrawAreaTooltipOptions` | draw 중 실시간 mm² tooltip |
+| `overlayShapes` | `DrawOverlayShape[]` | 커스텀 도형/반전 마스크 |
+| `customLayers` | `WsiCustomLayer[]` | host React 오버레이 슬롯 |
+| `activeRegionId` | `string \| number \| null` | controlled active ROI |
+
+**Events / Refs**
+
+| Prop | Type | Notes |
+|---|---|---|
+| `onStats` | `(stats: WsiRenderStats) => void` | 프레임 통계 |
+| `onTileError` | `(event: WsiTileErrorEvent) => void` | 타일 로드 실패 |
+| `onContextLost` / `onContextRestored` | `() => void` | WebGL 컨텍스트 이벤트 |
+| `onPointerWorldMove` | `(event) => void` | world 좌표 포인터 스트림 |
+| `onPointHover` / `onPointClick` | `(event) => void` | 포인트 hit 이벤트 |
+| `getCellByCoordinatesRef` | `MutableRefObject<(coord)=>PointHitEvent \| null>` | imperative 좌표 hit-test |
+| `onRegionHover` / `onRegionClick` | `(event) => void` | region hit 이벤트 |
+| `onActiveRegionChange` | `(regionId) => void` | active 변경 통지 |
+| `onDrawComplete` | `(result: DrawResult) => void` | `intent: "roi" \| "patch" \| "brush"` |
+| `onPatchComplete` | `(result: PatchDrawResult) => void` | `stamp-rectangle-4096px` 전용 |
+| `className` / `style` | `string` / `CSSProperties` | 컨테이너 스타일 |
+
+### `<DrawLayer>`
+
+독립 오버레이 드로잉 컴포넌트입니다. `WsiViewerCanvas` 내부에서 자동 사용되지만, 필요하면 별도로 직접 사용할 수 있습니다.
+
+- 지원 툴: `freehand`, `rectangle`, `circular`, `brush`, `stamp-*`
+- 브러시는 화면 픽셀 기준 반경 + `edgeDetail`/`edgeSmoothing` 옵션을 사용합니다.
+- `Esc`로 현재 드로잉 세션을 취소할 수 있습니다.
+
+### `<OverviewMap>`
+
+현재 뷰포트를 표시하는 인터랙티브 미니맵입니다. `overviewMapConfig.show`를 `true`로 설정하면 `WsiViewerCanvas`에 함께 렌더링됩니다.
+
+## API
+
+| Export | 설명 |
+|---|---|
+| `WsiViewerCanvas`, `DrawLayer`, `OverviewMap`, `TileViewerCanvas` | React 컴포넌트 |
+| `WsiTileRenderer`, `M1TileRenderer`, `TileScheduler` | 렌더러/스케줄러 클래스 |
+| `normalizeImageInfo`, `toTileUrl` | 이미지 메타데이터/타일 URL 유틸 |
+| `buildTermPalette`, `calcScaleResolution`, `calcScaleLength`, `toBearerToken` | 공통 유틸 |
+| `filterPointDataByPolygons`, `filterPointDataByPolygonsInWorker`, `filterPointDataByPolygonsHybrid` | ROI 포인트 클리핑 |
+| `filterPointIndicesByPolygons`, `filterPointIndicesByPolygonsInWorker`, `terminateRoiClipWorker` | 인덱스 기반 클리핑/워커 관리 |
+| `computeRoiPointGroups` | ROI term 통계 |
+| `getWebGpuCapabilities`, `prefilterPointsByBoundsWebGpu` | WebGPU capability/연산(실험) |
+| `closeRing`, `createRectangle`, `createCircle` | 도형 유틸 |
+| 타입 export (`WsiViewerCanvasProps`, `WsiImageSource`, `WsiPointData`, `WsiViewTransitionOptions` 등) | TypeScript 통합용 공개 타입 |
 
 ### `<DrawLayer>`
 

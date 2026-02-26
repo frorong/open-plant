@@ -71,6 +71,7 @@
               <div class="flow-step"><strong>tier 선택:</strong> `rawTier = maxTierZoom + log2(zoom)`.</div>
               <div class="flow-step"><strong>visible tile 계산:</strong> viewport와 tile grid 교차 범위를 계산.</div>
               <div class="flow-step"><strong>캐시 우선 렌더:</strong> 기존 캐시 타일(특히 이전 tier) 먼저 draw.</div>
+              <div class="flow-step"><strong>타일 전용 색상 보정:</strong> brightness/contrast/saturation uniform은 tile fragment shader에만 적용됩니다.</div>
               <div class="flow-step"><strong>신규 타일 비동기 요청:</strong> 요청 완료 시 texture 업로드 후 다음 frame에서 반영.</div>
               <div class="flow-step"><strong>LRU trim:</strong> `maxCacheTiles` 초과 시 오래된 texture 정리.</div>
             </div>
@@ -94,9 +95,9 @@
             <h2>포인트 파이프라인</h2>
             <div class="flow">
               <div class="flow-step"><strong>외부 파싱:</strong> 포인트 로딩/디코딩(zstd+MVT 등)은 호출자 책임.</div>
-              <div class="flow-step"><strong>입력 계약:</strong> 라이브러리는 `Float32Array` positions + `Uint16Array` paletteIndices만 수신.</div>
+              <div class="flow-step"><strong>입력 계약:</strong> <code>Float32Array</code> positions + <code>Uint16Array</code> paletteIndices를 기본으로 받고, 선택적으로 <code>fillModes</code>/<code>drawIndices</code>를 수신합니다.</div>
               <div class="flow-step"><strong>업로드:</strong> positions/paletteIndices를 GPU 버퍼로 전송.</div>
-              <div class="flow-step"><strong>셰이더 렌더:</strong> 포인트는 ring 형태 fragment shader로 표현.</div>
+              <div class="flow-step"><strong>셰이더 렌더:</strong> <code>fillModes</code> 기반 ring/solid 모드로 palette 색상을 렌더합니다.</div>
               <div class="flow-step"><strong>ROI clip:</strong> 필요 시 <code>clipMode</code>에 따라 polygon 내부 포인트만 필터링.</div>
               <div class="flow-step"><strong>ROI 통계:</strong> <code>computeRoiPointGroups</code> / <code>onRoiPointGroups</code>로 ROI별 term 집계.</div>
             </div>
@@ -129,8 +130,9 @@
             <div class="flow">
               <div class="flow-step"><strong>카메라 입력:</strong> pan + wheel zoom + <code>Ctrl/Cmd + drag</code> 회전(<code>rotationDeg</code>).</div>
               <div class="flow-step"><strong>Pointer capture:</strong> draw 활성 시 입력을 DrawLayer가 독점.</div>
-              <div class="flow-step"><strong>미리보기:</strong> freehand는 궤적 line, rectangle/circular는 polygon preview.</div>
-              <div class="flow-step"><strong>완료:</strong> tool별 좌표를 닫힌 ring으로 변환 후 `onDrawComplete` emit.</div>
+              <div class="flow-step"><strong>미리보기:</strong> freehand/rectangle/circular preview 또는 brush cursor+stroke.</div>
+              <div class="flow-step"><strong>완료:</strong> tool별 좌표를 닫힌 ring으로 변환 후 `onDrawComplete` emit(<code>intent: "roi" | "patch" | "brush"</code>).</div>
+              <div class="flow-step"><strong>Region 상호작용:</strong> cursor 모드 hit-test 대상은 contour + 라벨 영역이며 내부 fill은 제외됩니다.</div>
               <div class="flow-step"><strong>영속 표시:</strong> `persistedRegions`로 outline와 label을 계속 렌더.</div>
             </div>
           </section>

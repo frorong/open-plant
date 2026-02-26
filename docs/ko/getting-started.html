@@ -38,6 +38,7 @@
           <a href="#setup">설치</a>
           <a href="#load-info">이미지 메타데이터 로드</a>
           <a href="#minimal">최소 렌더 예시</a>
+          <a href="#camera-color">카메라 + 색상 보정</a>
           <a href="#points">포인트 로드/팔레트</a>
           <a href="#roi">ROI clip 적용</a>
           <a href="#roi-stats">ROI term 통계</a>
@@ -88,12 +89,13 @@ const pointZstUrl = rawInfo?.mvtPath || "";</code></pre>
 
           <section class="panel reveal" id="minimal">
             <h2>3. 최소 뷰어 렌더</h2>
-            <pre><code class="language-tsx">import { useMemo, useState } from "react";
+            <pre><code class="language-tsx">import { useState } from "react";
 import { WsiViewerCanvas } from "open-plant";
 
 function Viewer({ source, token }) {
   const [viewState, setViewState] = useState();
   const [rotationResetNonce, setRotationResetNonce] = useState(0);
+  const [selectedRoiId, setSelectedRoiId] = useState(null);
 
   return (
     &lt;WsiViewerCanvas
@@ -103,6 +105,8 @@ function Viewer({ source, token }) {
       onViewStateChange={setViewState}
       ctrlDragRotate
       rotationResetNonce={rotationResetNonce}
+      activeRegionId={selectedRoiId}
+      onActiveRegionChange={setSelectedRoiId}
       onPointerWorldMove={(event) =&gt; {
         // event.coordinate -> [x, y] | null
       }}
@@ -113,8 +117,27 @@ function Viewer({ source, token }) {
 }</code></pre>
           </section>
 
+          <section class="panel reveal" id="camera-color">
+            <h2>4. 카메라 제한/전환 + 타일 색상 보정</h2>
+            <pre><code class="language-tsx">&lt;WsiViewerCanvas
+  source={source}
+  imageColorSettings={{
+    brightness: 0,
+    contrast: 0,
+    saturation: 0,
+  }}
+  minZoom={0.25}
+  maxZoom={1}
+  viewTransition={{ duration: 300 }}
+  autoLiftRegionLabelAtMaxZoom
+/&gt;</code></pre>
+            <p>
+              색상 보정은 타일 셰이더에만 적용됩니다. point/cell marker, ROI, draw overlay 색상은 변경되지 않습니다.
+            </p>
+          </section>
+
           <section class="panel reveal" id="points">
-            <h2>4. 포인트 데이터 전달 + term 팔레트 매핑</h2>
+            <h2>5. 포인트 데이터 전달 + term 팔레트 매핑</h2>
             <p>
               포인트 로딩/파싱(ZST/MVT 디코딩 등)은 <strong>라이브러리 외부</strong>에서 처리합니다.
               파싱 완료된 TypedArray를 뷰어에 전달하세요.
@@ -130,6 +153,7 @@ const pointData = {
   count: positions.length / 2,
   positions,
   paletteIndices,
+  fillModes, // optional Uint8Array (0: ring, 1: solid)
 };</code></pre>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
@@ -140,7 +164,7 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="roi">
-            <h2>5. ROI 폴리곤 클리핑</h2>
+            <h2>6. ROI 폴리곤 클리핑</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}
@@ -163,7 +187,7 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>6. ROI term 통계 콜백</h2>
+            <h2>7. ROI term 통계 콜백</h2>
             <pre><code class="language-tsx">&lt;WsiViewerCanvas
   source={source}
   pointData={pointData}
@@ -176,7 +200,7 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="clip-accel">
-            <h2>7. ROI 가속 모드(worker / hybrid-webgpu)</h2>
+            <h2>8. ROI 가속 모드(worker / hybrid-webgpu)</h2>
             <pre><code class="language-ts">import { getWebGpuCapabilities } from "open-plant";
 
 const caps = await getWebGpuCapabilities();
