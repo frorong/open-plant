@@ -132,3 +132,81 @@ test("filterPointIndicesByPolygons: returns original indices for points inside p
   const indices = filterPointIndicesByPolygons(pointData, polygons);
   assert.deepEqual(toArray(indices), [0, 2, 3, 5]);
 });
+
+test("filterPointDataByPolygons: supports polygon holes", () => {
+  const pointData = {
+    count: 5,
+    positions: new Float32Array([
+      1, 1, // in outer
+      5, 5, // in hole (should be excluded)
+      9, 9, // in outer
+      12, 12, // outside
+      3, 8, // in outer
+    ]),
+    paletteIndices: new Uint16Array([1, 2, 3, 4, 5]),
+  };
+
+  const polygons = [
+    [
+      [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+      ],
+      [
+        [3, 3],
+        [7, 3],
+        [7, 7],
+        [3, 7],
+      ],
+    ],
+  ];
+
+  const output = filterPointDataByPolygons(pointData, polygons);
+  assert.ok(output);
+  assert.equal(output.count, 3);
+  assert.deepEqual(toArray(output.positions), [1, 1, 9, 9, 3, 8]);
+  assert.deepEqual(toArray(output.paletteIndices), [1, 3, 5]);
+});
+
+test("filterPointDataByPolygons: supports multipolygon geometry", () => {
+  const pointData = {
+    count: 5,
+    positions: new Float32Array([
+      1, 1, // poly A
+      11, 11, // poly B
+      6, 6, // outside
+      12, 12, // poly B
+      2, 2, // poly A
+    ]),
+    paletteIndices: new Uint16Array([10, 20, 30, 40, 50]),
+  };
+
+  const polygons = [
+    [
+      [
+        [
+          [0, 0],
+          [4, 0],
+          [4, 4],
+          [0, 4],
+        ],
+      ],
+      [
+        [
+          [10, 10],
+          [14, 10],
+          [14, 14],
+          [10, 14],
+        ],
+      ],
+    ],
+  ];
+
+  const output = filterPointDataByPolygons(pointData, polygons);
+  assert.ok(output);
+  assert.equal(output.count, 4);
+  assert.deepEqual(toArray(output.positions), [1, 1, 11, 11, 12, 12, 2, 2]);
+  assert.deepEqual(toArray(output.paletteIndices), [10, 20, 40, 50]);
+});

@@ -1,14 +1,10 @@
 import { filterPointDataByPolygons, type RoiPolygon } from "./point-clip";
+import {
+  pointInAnyPreparedPolygon,
+  prepareRoiPolygons,
+} from "./roi-geometry";
 import type { WsiPointData } from "./types";
 import { prefilterPointsByBoundsWebGpu } from "./webgpu";
-
-interface PreparedPolygon {
-  ring: RoiPolygon;
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
 
 export interface HybridPointClipOptions {
   bridgeToDraw?: boolean;
@@ -32,64 +28,6 @@ function nowMs(): number {
   return Date.now();
 }
 
-function closeRing(coords: RoiPolygon): RoiPolygon {
-  if (!Array.isArray(coords) || coords.length < 3) return [];
-  const out = coords.map(([x, y]) => [x, y] as [number, number]);
-  const first = out[0];
-  const last = out[out.length - 1];
-  if (!first || !last) return [];
-  if (first[0] !== last[0] || first[1] !== last[1]) {
-    out.push([first[0], first[1]]);
-  }
-  return out;
-}
-
-function preparePolygons(polygons: RoiPolygon[]): PreparedPolygon[] {
-  const prepared: PreparedPolygon[] = [];
-  for (const poly of polygons ?? []) {
-    const ring = closeRing(poly);
-    if (ring.length < 4) continue;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const [x, y] of ring) {
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY)) continue;
-    prepared.push({ ring, minX, minY, maxX, maxY });
-  }
-  return prepared;
-}
-
-function isInsideRing(x: number, y: number, ring: RoiPolygon): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-    const xi = ring[i][0];
-    const yi = ring[i][1];
-    const xj = ring[j][0];
-    const yj = ring[j][1];
-    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi || Number.EPSILON) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
-function isInsideAnyPolygon(x: number, y: number, polygons: PreparedPolygon[]): boolean {
-  for (const poly of polygons) {
-    if (x < poly.minX || x > poly.maxX || y < poly.minY || y > poly.maxY) {
-      continue;
-    }
-    if (isInsideRing(x, y, poly.ring)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export async function filterPointDataByPolygonsHybrid(
   pointData: WsiPointData | null | undefined,
   polygons: RoiPolygon[] | null | undefined,
@@ -110,7 +48,7 @@ export async function filterPointDataByPolygonsHybrid(
     };
   }
 
-  const prepared = preparePolygons(polygons ?? []);
+  const prepared = prepareRoiPolygons(polygons ?? []);
   if (prepared.length === 0) {
     return {
       data: {
@@ -150,11 +88,11 @@ export async function filterPointDataByPolygonsHybrid(
   const bboxFlat = new Float32Array(prepared.length * 4);
   for (let i = 0; i < prepared.length; i += 1) {
     const base = i * 4;
-    const poly = prepared[i];
-    bboxFlat[base] = poly.minX;
-    bboxFlat[base + 1] = poly.minY;
-    bboxFlat[base + 2] = poly.maxX;
-    bboxFlat[base + 3] = poly.maxY;
+    const polygon = prepared[i];
+    bboxFlat[base] = polygon.minX;
+    bboxFlat[base + 1] = polygon.minY;
+    bboxFlat[base + 2] = polygon.maxX;
+    bboxFlat[base + 3] = polygon.maxY;
   }
 
   let candidateMask: Uint32Array | null = null;
@@ -244,7 +182,7 @@ export async function filterPointDataByPolygonsHybrid(
       const pointIndex = candidateIndices[i] ?? 0;
       const x = pointData.positions[pointIndex * 2];
       const y = pointData.positions[pointIndex * 2 + 1];
-      if (!isInsideAnyPolygon(x, y, prepared)) continue;
+      if (!pointInAnyPreparedPolygon(x, y, prepared)) continue;
       drawIndices[visibleCount] = pointIndex;
       visibleCount += 1;
     }
@@ -280,7 +218,7 @@ export async function filterPointDataByPolygonsHybrid(
     const pointIndex = candidateIndices[i] ?? 0;
     const x = pointData.positions[pointIndex * 2];
     const y = pointData.positions[pointIndex * 2 + 1];
-    if (!isInsideAnyPolygon(x, y, prepared)) continue;
+    if (!pointInAnyPreparedPolygon(x, y, prepared)) continue;
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
     nextTerms[cursor] = pointData.paletteIndices[pointIndex];

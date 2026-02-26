@@ -1,5 +1,6 @@
 import { type CSSProperties, type MutableRefObject, type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { buildBrushStrokePolygon } from "../wsi/brush-stroke";
+import { normalizeRoiGeometry, type RoiGeometry } from "../wsi/roi-geometry";
 import { calcScaleResolution } from "../wsi/utils";
 
 export type StampDrawTool = "stamp-rectangle" | "stamp-circle" | "stamp-rectangle-4096px" | "stamp-rectangle-2mm2" | "stamp-circle-2mm2" | "stamp-circle-hpf-0.2mm2";
@@ -9,6 +10,7 @@ export type DrawTool = "cursor" | "freehand" | "rectangle" | "circular" | "brush
 export type DrawCoordinate = [number, number];
 
 export type DrawBounds = [number, number, number, number];
+export type DrawRegionCoordinates = DrawCoordinate[] | DrawCoordinate[][] | DrawCoordinate[][][];
 
 export type DrawIntent = "roi" | "patch" | "brush";
 
@@ -27,7 +29,7 @@ export type PatchDrawResult = DrawResult & {
 
 export interface DrawRegion {
   id?: string | number;
-  coordinates: DrawCoordinate[];
+  coordinates: DrawRegionCoordinates;
   label?: string;
 }
 
@@ -104,6 +106,11 @@ export interface BrushOptions {
    */
   edgeDetail?: number;
   /**
+   * Post-smoothing passes for brush outline to reduce stair-stepping.
+   * Range: 0 ~ 4. Default: 1.
+   */
+  edgeSmoothing?: number;
+  /**
    * When true, a brush "tap" (click without drag) on ROI selects that ROI
    * instead of creating a brush stroke.
    */
@@ -132,7 +139,7 @@ export interface DrawLayerProps {
   viewStateSignal?: unknown;
   persistedRegions?: DrawRegion[];
   patchRegions?: DrawRegion[];
-  persistedPolygons?: DrawCoordinate[][];
+  persistedPolygons?: DrawRegionCoordinates[];
   regionStrokeStyle?: Partial<RegionStrokeStyle>;
   regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
   regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
@@ -157,9 +164,22 @@ interface DrawSession {
   stampCenter: DrawCoordinate | null;
 }
 
+interface NormalizedDrawRegionPolygon {
+  outer: DrawCoordinate[];
+  holes: DrawCoordinate[][];
+}
+
+interface PreparedRenderedRegion {
+  region: DrawRegion;
+  regionIndex: number;
+  regionKey: string | number;
+  polygons: NormalizedDrawRegionPolygon[];
+}
+
 interface ResolvedBrushOptions {
   radius: number;
   edgeDetail: number;
+  edgeSmoothing: number;
   clickSelectRoi: boolean;
   fillColor: string;
   fillOpacity: number;
@@ -193,8 +213,11 @@ const DEFAULT_BRUSH_CURSOR_DASH = [2, 2];
 const DEFAULT_BRUSH_EDGE_DETAIL = 1;
 const MIN_BRUSH_EDGE_DETAIL = 0.25;
 const MAX_BRUSH_EDGE_DETAIL = 4;
-const MIN_BRUSH_RASTER_STEP = 0.1;
-const BRUSH_RASTER_DIAMETER_SAMPLES = 96;
+const DEFAULT_BRUSH_EDGE_SMOOTHING = 1;
+const MIN_BRUSH_EDGE_SMOOTHING = 0;
+const MAX_BRUSH_EDGE_SMOOTHING = 4;
+const MIN_BRUSH_RASTER_STEP = 0.05;
+const BRUSH_RASTER_DIAMETER_SAMPLES = 256;
 const BRUSH_SCREEN_STEP = 1.5;
 
 const DEFAULT_REGION_STROKE_STYLE: RegionStrokeStyle = {
@@ -276,13 +299,20 @@ function resolveBrushEdgeDetail(value: number | undefined): number {
   return clamp(value, MIN_BRUSH_EDGE_DETAIL, MAX_BRUSH_EDGE_DETAIL);
 }
 
+function resolveBrushEdgeSmoothing(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_BRUSH_EDGE_SMOOTHING;
+  return Math.round(clamp(value, MIN_BRUSH_EDGE_SMOOTHING, MAX_BRUSH_EDGE_SMOOTHING));
+}
+
 function resolveBrushOptions(options: BrushOptions | undefined): ResolvedBrushOptions {
   const radius = clampPositiveOrFallback(options?.radius, DEFAULT_BRUSH_RADIUS);
   const cursorLineWidth = clampPositiveOrFallback(options?.cursorLineWidth, DEFAULT_BRUSH_CURSOR_LINE_WIDTH);
   const edgeDetail = resolveBrushEdgeDetail(options?.edgeDetail);
+  const edgeSmoothing = resolveBrushEdgeSmoothing(options?.edgeSmoothing);
   return {
     radius,
     edgeDetail,
+    edgeSmoothing,
     clickSelectRoi: options?.clickSelectRoi === true,
     fillColor: options?.fillColor || DEFAULT_BRUSH_FILL_COLOR,
     fillOpacity: clampUnitOpacity(options?.fillOpacity, DEFAULT_BRUSH_FILL_OPACITY),
@@ -592,6 +622,41 @@ function getTopAnchor(coords: DrawCoordinate[]): DrawCoordinate | null {
   return [(minX + maxX) * 0.5, minY];
 }
 
+function getTopAnchorFromPolygons(polygons: NormalizedDrawRegionPolygon[]): DrawCoordinate | null {
+  let best: DrawCoordinate | null = null;
+  for (const polygon of polygons) {
+    const anchor = getTopAnchor(polygon.outer);
+    if (!anchor) continue;
+    if (!best || anchor[1] < best[1] || (anchor[1] === best[1] && anchor[0] < best[0])) {
+      best = anchor;
+    }
+  }
+  return best;
+}
+
+function normalizeDrawRegionPolygons(coordinates: DrawRegionCoordinates): NormalizedDrawRegionPolygon[] {
+  const multipolygon = normalizeRoiGeometry(coordinates as RoiGeometry);
+  if (multipolygon.length === 0) return [];
+
+  const out: NormalizedDrawRegionPolygon[] = [];
+  for (const polygon of multipolygon) {
+    const outer = polygon[0];
+    if (!outer || outer.length < 4) continue;
+    const normalizedOuter = outer.map(([x, y]) => [x, y] as DrawCoordinate);
+    const holes: DrawCoordinate[][] = [];
+    for (let i = 1; i < polygon.length; i += 1) {
+      const hole = polygon[i];
+      if (!hole || hole.length < 4) continue;
+      holes.push(hole.map(([x, y]) => [x, y] as DrawCoordinate));
+    }
+    out.push({
+      outer: normalizedOuter,
+      holes,
+    });
+  }
+  return out;
+}
+
 function drawRegionLabel(ctx: CanvasRenderingContext2D, text: string, anchor: DrawCoordinate, canvasWidth: number, canvasHeight: number, labelStyle: RegionLabelStyle): void {
   const label = text.trim();
   if (!label) return;
@@ -694,6 +759,36 @@ export function DrawLayer({
     }));
   }, [persistedRegions, persistedPolygons]);
   const mergedPatchRegions = useMemo<DrawRegion[]>(() => patchRegions ?? EMPTY_REGIONS, [patchRegions]);
+  const preparedPersistedRegions = useMemo<PreparedRenderedRegion[]>(() => {
+    const out: PreparedRenderedRegion[] = [];
+    for (let i = 0; i < mergedPersistedRegions.length; i += 1) {
+      const region = mergedPersistedRegions[i];
+      const polygons = normalizeDrawRegionPolygons(region.coordinates);
+      if (polygons.length === 0) continue;
+      out.push({
+        region,
+        regionIndex: i,
+        regionKey: region.id ?? i,
+        polygons,
+      });
+    }
+    return out;
+  }, [mergedPersistedRegions]);
+  const preparedPatchRegions = useMemo<PreparedRenderedRegion[]>(() => {
+    const out: PreparedRenderedRegion[] = [];
+    for (let i = 0; i < mergedPatchRegions.length; i += 1) {
+      const region = mergedPatchRegions[i];
+      const polygons = normalizeDrawRegionPolygons(region.coordinates);
+      if (polygons.length === 0) continue;
+      out.push({
+        region,
+        regionIndex: i,
+        regionKey: region.id ?? i,
+        polygons,
+      });
+    }
+    return out;
+  }, [mergedPatchRegions]);
 
   const resolvedStrokeStyle = useMemo(() => resolveStrokeStyle(regionStrokeStyle), [regionStrokeStyle]);
   const resolvedHoverStrokeStyle = useMemo(() => mergeStrokeStyle(resolvedStrokeStyle, regionStrokeHoverStyle), [resolvedStrokeStyle, regionStrokeHoverStyle]);
@@ -913,41 +1008,51 @@ export function DrawLayer({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Persisted ROI outlines always remain visible.
-    if (mergedPersistedRegions.length > 0) {
-      for (let i = 0; i < mergedPersistedRegions.length; i += 1) {
-        const region = mergedPersistedRegions[i];
-        const ring = region?.coordinates;
-        if (!ring || ring.length < 3) continue;
-        const closed = closeRing(ring);
-        const screen = worldToScreenPoints(closed);
-        if (screen.length >= 4) {
-          const regionKey = region.id ?? i;
-          const state: RegionStyleContext["state"] = isSameRegionId(activeRegionId, regionKey) ? "active" : isSameRegionId(hoveredRegionId, regionKey) ? "hover" : "default";
-          let strokeStyle = state === "active" ? resolvedActiveStrokeStyle : state === "hover" ? resolvedHoverStrokeStyle : resolvedStrokeStyle;
+    if (preparedPersistedRegions.length > 0) {
+      for (const entry of preparedPersistedRegions) {
+        const { region, polygons, regionIndex, regionKey } = entry;
+        const state: RegionStyleContext["state"] = isSameRegionId(activeRegionId, regionKey) ? "active" : isSameRegionId(hoveredRegionId, regionKey) ? "hover" : "default";
+        let strokeStyle = state === "active" ? resolvedActiveStrokeStyle : state === "hover" ? resolvedHoverStrokeStyle : resolvedStrokeStyle;
 
-          if (resolveRegionStrokeStyle) {
-            const resolved = resolveRegionStrokeStyle({
-              region,
-              regionId: regionKey,
-              regionIndex: i,
-              state,
-            });
-            strokeStyle = mergeStrokeStyle(strokeStyle, resolved || undefined);
+        if (resolveRegionStrokeStyle) {
+          const resolved = resolveRegionStrokeStyle({
+            region,
+            regionId: regionKey,
+            regionIndex,
+            state,
+          });
+          strokeStyle = mergeStrokeStyle(strokeStyle, resolved || undefined);
+        }
+
+        for (const polygon of polygons) {
+          const screenOuter = worldToScreenPoints(polygon.outer);
+          if (screenOuter.length >= 4) {
+            drawPath(ctx, screenOuter, strokeStyle, true, false);
           }
-          drawPath(ctx, screen, strokeStyle, true, false);
+          for (const hole of polygon.holes) {
+            const screenHole = worldToScreenPoints(hole);
+            if (screenHole.length >= 4) {
+              drawPath(ctx, screenHole, strokeStyle, true, false);
+            }
+          }
         }
       }
     }
 
-    if (mergedPatchRegions.length > 0) {
-      for (let i = 0; i < mergedPatchRegions.length; i += 1) {
-        const region = mergedPatchRegions[i];
-        const ring = region?.coordinates;
-        if (!ring || ring.length < 3) continue;
-        const closed = closeRing(ring);
-        const screen = worldToScreenPoints(closed);
-        if (screen.length < 4) continue;
-        drawPath(ctx, screen, resolvedPatchStrokeStyle, true, false);
+    if (preparedPatchRegions.length > 0) {
+      for (const entry of preparedPatchRegions) {
+        for (const polygon of entry.polygons) {
+          const screenOuter = worldToScreenPoints(polygon.outer);
+          if (screenOuter.length >= 4) {
+            drawPath(ctx, screenOuter, resolvedPatchStrokeStyle, true, false);
+          }
+          for (const hole of polygon.holes) {
+            const screenHole = worldToScreenPoints(hole);
+            if (screenHole.length >= 4) {
+              drawPath(ctx, screenHole, resolvedPatchStrokeStyle, true, false);
+            }
+          }
+        }
       }
     }
 
@@ -1030,17 +1135,14 @@ export function DrawLayer({
     }
 
     // Draw labels last so they stay visually on top.
-    if (mergedPersistedRegions.length > 0) {
-      for (const region of mergedPersistedRegions) {
-        if (!region.label) continue;
-        const ring = region?.coordinates;
-        if (!ring || ring.length < 3) continue;
-        const closed = closeRing(ring);
-        const anchorWorld = getTopAnchor(closed);
+    if (preparedPersistedRegions.length > 0) {
+      for (const entry of preparedPersistedRegions) {
+        if (!entry.region.label) continue;
+        const anchorWorld = getTopAnchorFromPolygons(entry.polygons);
         if (!anchorWorld) continue;
         const anchorScreen = toCoord(projectorRef.current?.worldToScreen(anchorWorld[0], anchorWorld[1]) ?? []);
         if (!anchorScreen) continue;
-        drawRegionLabel(ctx, region.label, anchorScreen, canvasWidth, canvasHeight, resolvedLabelStyle);
+        drawRegionLabel(ctx, entry.region.label, anchorScreen, canvasWidth, canvasHeight, resolvedLabelStyle);
       }
     }
   }, [
@@ -1054,14 +1156,14 @@ export function DrawLayer({
     imageWidth,
     imageHeight,
     projectorRef,
-    mergedPersistedRegions,
+    preparedPersistedRegions,
     overlayShapes,
     hoveredRegionId,
     activeRegionId,
     resolvedStrokeStyle,
     resolvedHoverStrokeStyle,
     resolvedActiveStrokeStyle,
-    mergedPatchRegions,
+    preparedPatchRegions,
     resolvedPatchStrokeStyle,
     resolveRegionStrokeStyle,
     resolvedLabelStyle,
@@ -1145,7 +1247,8 @@ export function DrawLayer({
         clipBounds: [0, 0, imageWidth, imageHeight],
         minRasterStep,
         circleSides: Math.max(24, Math.round(64 * edgeDetail)),
-        simplifyTolerance: minRasterStep * 0.4,
+        simplifyTolerance: minRasterStep * 0.25,
+        smoothingPasses: resolvedBrushOptions.edgeSmoothing,
       }) as DrawCoordinate[];
     }
 
@@ -1162,7 +1265,7 @@ export function DrawLayer({
 
     resetSession(true);
     requestDraw();
-  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.clickSelectRoi, imageWidth, imageHeight, onBrushTap]);
+  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.edgeSmoothing, resolvedBrushOptions.clickSelectRoi, imageWidth, imageHeight, onBrushTap]);
 
   const handleStampAt = useCallback(
     (stampTool: StampDrawTool, center: DrawCoordinate): void => {

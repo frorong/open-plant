@@ -152,6 +152,7 @@ import { WsiViewerCanvas } from "open-plant";
   brushOptions={{
     radius: 32,
     edgeDetail: 1.6, // 값이 클수록 더 둥글고 섬세한 브러시 경계
+    edgeSmoothing: 2, // 계단 현상 감소(0~4)
     clickSelectRoi: true, // brush에서 "클릭만" 하면 ROI 선택 우선
   }}
   stampOptions={{
@@ -188,6 +189,8 @@ import { WsiViewerCanvas } from "open-plant";
 `rotationDeg`는 뷰포트 회전 각도(도 단위)이며, `Ctrl/Cmd + drag`로 조작하거나 `viewState`로 직접 제어할 수 있습니다.
 
 `brushOptions.clickSelectRoi`를 `true`로 두면 브러시 모드에서 클릭(드래그 없음) 시 ROI hit-test로 선택을 시도하고, ROI 밖 클릭은 기존 브러시 점찍기 동작을 유지합니다.
+`brushOptions.edgeDetail`/`edgeSmoothing`으로 브러시 경계의 해상도와 스무딩 정도를 조절할 수 있습니다.
+`roiRegions[].coordinates`는 단일 링뿐 아니라 hole이 포함된 Polygon(`[[outer],[hole1], ...]`)과 MultiPolygon(`[[[...]], [[...]], ...]`)도 지원합니다.
 
 ### `<DrawLayer>`
 

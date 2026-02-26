@@ -1,4 +1,10 @@
 import type { WsiPointData, WsiRegion } from "./types";
+import {
+	pointInPreparedPolygon,
+	prepareRoiPolygons,
+	type PreparedRoiPolygon,
+	type RoiGeometry,
+} from "./roi-geometry";
 
 export interface RoiTermCount {
 	termId: string;
@@ -28,95 +34,30 @@ export interface RoiPointGroupStats {
 interface PreparedRegion {
 	regionId: string | number;
 	regionIndex: number;
-	ring: Array<[number, number]>;
-	minX: number;
-	minY: number;
-	maxX: number;
-	maxY: number;
+	polygons: PreparedRoiPolygon[];
 	area: number;
-}
-
-function closeRing(
-	coordinates: readonly [number, number][],
-): Array<[number, number]> {
-	if (!Array.isArray(coordinates) || coordinates.length < 3) return [];
-	const out = coordinates.map(
-		(point): [number, number] => [Number(point[0]), Number(point[1])],
-	);
-	const first = out[0];
-	const last = out[out.length - 1];
-	if (!first || !last) return [];
-	if (first[0] !== last[0] || first[1] !== last[1]) {
-		out.push([first[0], first[1]]);
-	}
-	return out;
-}
-
-function polygonArea(ring: Array<[number, number]>): number {
-	let sum = 0;
-	for (let i = 0; i < ring.length - 1; i += 1) {
-		const [ax, ay] = ring[i];
-		const [bx, by] = ring[i + 1];
-		sum += ax * by - bx * ay;
-	}
-	return Math.abs(sum * 0.5);
 }
 
 function prepareRegions(regions: readonly WsiRegion[]): PreparedRegion[] {
 	const prepared: PreparedRegion[] = [];
 	for (let i = 0; i < regions.length; i += 1) {
 		const region = regions[i];
-		if (!region?.coordinates?.length) continue;
+		const polygons = prepareRoiPolygons([region?.coordinates as RoiGeometry | null | undefined]);
+		if (polygons.length === 0) continue;
 
-		const ring = closeRing(region.coordinates);
-		if (ring.length < 4) continue;
-
-		let minX = Infinity;
-		let minY = Infinity;
-		let maxX = -Infinity;
-		let maxY = -Infinity;
-		for (const [x, y] of ring) {
-			if (x < minX) minX = x;
-			if (x > maxX) maxX = x;
-			if (y < minY) minY = y;
-			if (y > maxY) maxY = y;
-		}
-		if (
-			!Number.isFinite(minX) ||
-			!Number.isFinite(minY) ||
-			!Number.isFinite(maxX) ||
-			!Number.isFinite(maxY)
-		) {
-			continue;
+		let area = 0;
+		for (const polygon of polygons) {
+			area += polygon.area;
 		}
 
 		prepared.push({
 			regionId: region.id ?? i,
 			regionIndex: i,
-			ring,
-			minX,
-			minY,
-			maxX,
-			maxY,
-			area: Math.max(1e-6, polygonArea(ring)),
+			polygons,
+			area: Math.max(1e-6, area),
 		});
 	}
 	return prepared;
-}
-
-function isInsideRing(x: number, y: number, ring: Array<[number, number]>): boolean {
-	let inside = false;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-		const xi = ring[i][0];
-		const yi = ring[i][1];
-		const xj = ring[j][0];
-		const yj = ring[j][1];
-		const intersect =
-			yi > y !== yj > y &&
-			x < ((xj - xi) * (y - yi)) / ((yj - yi) || Number.EPSILON) + xi;
-		if (intersect) inside = !inside;
-	}
-	return inside;
 }
 
 function resolveTermId(
@@ -197,10 +138,13 @@ export function computeRoiPointGroups(
 		let bestRegion: PreparedRegion | null = null;
 
 		for (const region of preparedRegions) {
-			if (x < region.minX || x > region.maxX || y < region.minY || y > region.maxY) {
-				continue;
+			let inside = false;
+			for (const polygon of region.polygons) {
+				if (!pointInPreparedPolygon(x, y, polygon)) continue;
+				inside = true;
+				break;
 			}
-			if (!isInsideRing(x, y, region.ring)) continue;
+			if (!inside) continue;
 			if (!bestRegion || region.area < bestRegion.area) {
 				bestRegion = region;
 			}

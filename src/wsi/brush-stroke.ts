@@ -9,6 +9,7 @@ export interface BrushStrokePolygonOptions {
 	maxRasterSize?: number;
 	simplifyTolerance?: number;
 	circleSides?: number;
+	smoothingPasses?: number;
 }
 
 interface RasterConfig {
@@ -30,6 +31,8 @@ const DEFAULT_MIN_RASTER_STEP = 0.1;
 const DEFAULT_MAX_RASTER_PIXELS = 4_000_000;
 const DEFAULT_MAX_RASTER_SIZE = 4096;
 const DEFAULT_CIRCLE_SIDES = 64;
+const DEFAULT_SMOOTHING_PASSES = 1;
+const MAX_SMOOTHING_PASSES = 4;
 const MIN_RADIUS = 1e-6;
 const ALPHA_THRESHOLD = 24;
 
@@ -496,6 +499,30 @@ function simplifyClosedRing(
 	return closeRing(simplified);
 }
 
+function smoothClosedRingChaikin(
+	ring: BrushStrokeCoordinate[],
+	iterations: number,
+): BrushStrokeCoordinate[] {
+	let out = closeRing(ring);
+	if (iterations <= 0 || out.length < 5) return out;
+
+	for (let pass = 0; pass < iterations; pass += 1) {
+		const open = out.slice(0, -1);
+		if (open.length < 3) break;
+		const next: BrushStrokeCoordinate[] = [];
+		for (let i = 0; i < open.length; i += 1) {
+			const a = open[i];
+			const b = open[(i + 1) % open.length];
+			next.push(
+				[a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25],
+				[a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75],
+			);
+		}
+		out = closeRing(next);
+	}
+	return out;
+}
+
 function clampRingToBounds(
 	ring: BrushStrokeCoordinate[],
 	bounds: BrushStrokeBounds | undefined,
@@ -556,8 +583,15 @@ export function buildBrushStrokePolygon(
 		typeof options.simplifyTolerance === "number" && Number.isFinite(options.simplifyTolerance)
 			? Math.max(0, options.simplifyTolerance)
 			: raster.step * 0.2;
+	const smoothingPasses =
+		typeof options.smoothingPasses === "number" && Number.isFinite(options.smoothingPasses)
+			? Math.round(clamp(options.smoothingPasses, 0, MAX_SMOOTHING_PASSES))
+			: DEFAULT_SMOOTHING_PASSES;
 	const simplified = simplifyClosedRing(
-		removeCollinearVertices(bestRing, raster.step * 1e-3),
+		smoothClosedRingChaikin(
+			removeCollinearVertices(bestRing, raster.step * 1e-3),
+			smoothingPasses,
+		),
 		tolerance,
 	);
 	return clampRingToBounds(simplified, options.clipBounds);

@@ -58,3 +58,43 @@ test("computeRoiPointGroups: respects drawIndices bridge input", () => {
   assert.equal(stats.groups[0].termCounts[0].paletteIndex, 3);
   assert.equal(stats.groups[0].termCounts[0].count, 1);
 });
+
+test("computeRoiPointGroups: excludes points inside polygon holes", () => {
+  const stats = computeRoiPointGroups(
+    {
+      count: 4,
+      positions: new Float32Array([
+        1, 1, // inside outer
+        5, 5, // inside hole
+        9, 9, // inside outer
+        12, 12, // outside
+      ]),
+      paletteIndices: new Uint16Array([1, 2, 3, 4]),
+    },
+    [
+      {
+        id: "roi-hole",
+        coordinates: [
+          [
+            [0, 0],
+            [10, 0],
+            [10, 10],
+            [0, 10],
+          ],
+          [
+            [3, 3],
+            [7, 3],
+            [7, 7],
+            [3, 7],
+          ],
+        ],
+      },
+    ]
+  );
+
+  assert.equal(stats.inputPointCount, 4);
+  assert.equal(stats.pointsInsideAnyRegion, 2);
+  assert.equal(stats.unmatchedPointCount, 2);
+  assert.equal(stats.groups.length, 1);
+  assert.equal(stats.groups[0].totalCount, 2);
+});

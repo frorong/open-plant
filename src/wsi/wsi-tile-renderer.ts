@@ -42,6 +42,7 @@ interface PointProgram {
 	uPointSize: WebGLUniformLocation;
 	uPalette: WebGLUniformLocation;
 	uPaletteSize: WebGLUniformLocation;
+	uPointStrokeScale: WebGLUniformLocation;
 }
 
 interface OrthoViewport {
@@ -88,6 +89,7 @@ export interface WsiTileRendererOptions {
 	onStats?: (stats: WsiRenderStats) => void;
 	authToken?: string;
 	pointSizeByZoom?: PointSizeByZoom;
+	pointStrokeScale?: number;
 	maxCacheTiles?: number;
 	ctrlDragRotate?: boolean;
 	rotationDragSensitivityDegPerPixel?: number;
@@ -305,6 +307,14 @@ function resolvePointSizeByZoomStops(continuousZoom: number, stops: readonly Poi
 	return last.size + (continuousZoom - last.zoom) * slope;
 }
 
+const MIN_STROKE_SCALE = 0.1;
+const MAX_STROKE_SCALE = 5.0;
+
+function normalizeStrokeScale(value: number | null | undefined): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return 1.0;
+	return clamp(value, MIN_STROKE_SCALE, MAX_STROKE_SCALE);
+}
+
 export class WsiTileRenderer {
 	private readonly canvas: HTMLCanvasElement;
 	private readonly source: WsiImageSource;
@@ -344,6 +354,7 @@ export class WsiTileRenderer {
 	private pointBuffersDirty = true;
 	private pointPaletteSize = 1;
 	private pointSizeStops: PointSizeStop[] = clonePointSizeStops(DEFAULT_POINT_SIZE_STOPS);
+	private pointStrokeScale = 1.0;
 	private lastPointData: WsiPointData | null = null;
 	private lastPointPalette: Uint8Array | null = null;
 	private cache = new Map<string, CachedTile>();
@@ -378,6 +389,7 @@ export class WsiTileRenderer {
 				? Math.max(0, options.rotationDragSensitivityDegPerPixel)
 				: DEFAULT_ROTATION_DRAG_SENSITIVITY;
 		this.pointSizeStops = normalizePointSizeStops(options.pointSizeByZoom);
+		this.pointStrokeScale = normalizeStrokeScale(options.pointStrokeScale);
 
 		const gl = canvas.getContext("webgl2", {
 			alpha: false,
@@ -600,6 +612,13 @@ export class WsiTileRenderer {
 		const nextStops = normalizePointSizeStops(pointSizeByZoom);
 		if (arePointSizeStopsEqual(this.pointSizeStops, nextStops)) return;
 		this.pointSizeStops = nextStops;
+		this.requestRender();
+	}
+
+	setPointStrokeScale(scale: number | null | undefined): void {
+		const next = normalizeStrokeScale(scale);
+		if (this.pointStrokeScale === next) return;
+		this.pointStrokeScale = next;
 		this.requestRender();
 	}
 
@@ -938,6 +957,7 @@ export class WsiTileRenderer {
 			gl.bindVertexArray(pointProgram.vao);
 			gl.uniformMatrix3fv(pointProgram.uCamera, false, this.camera.getMatrix());
 			gl.uniform1f(pointProgram.uPointSize, this.getPointSizeByZoom());
+			gl.uniform1f(pointProgram.uPointStrokeScale, this.pointStrokeScale);
 			gl.uniform1f(pointProgram.uPaletteSize, this.pointPaletteSize);
 			gl.uniform1i(pointProgram.uPalette, 1);
 			gl.activeTexture(gl.TEXTURE1);
@@ -1284,6 +1304,7 @@ export class WsiTileRenderer {
     uniform sampler2D uPalette;
     uniform float uPaletteSize;
     uniform float uPointSize;
+    uniform float uPointStrokeScale;
     out vec4 outColor;
     void main() {
       vec2 pc = gl_PointCoord * 2.0 - 1.0;
@@ -1295,7 +1316,8 @@ export class WsiTileRenderer {
       vec4 color = texture(uPalette, uv);
       if (color.a <= 0.0) discard;
 
-      float ringWidth = clamp(3.0 / max(1.0, uPointSize), 0.12, 0.62);
+      float s = uPointStrokeScale;
+      float ringWidth = clamp(3.0 * s / max(1.0, uPointSize), 0.12 * s, 0.62 * s);
       float innerRadius = 1.0 - ringWidth;
       float aa = 1.5 / max(1.0, uPointSize);
 
@@ -1310,6 +1332,7 @@ export class WsiTileRenderer {
 		const program = createProgram(gl, pointVertex, pointFragment);
 		const uCamera = requireUniformLocation(gl, program, "uCamera");
 		const uPointSize = requireUniformLocation(gl, program, "uPointSize");
+		const uPointStrokeScale = requireUniformLocation(gl, program, "uPointStrokeScale");
 		const uPalette = requireUniformLocation(gl, program, "uPalette");
 		const uPaletteSize = requireUniformLocation(gl, program, "uPaletteSize");
 
@@ -1376,6 +1399,7 @@ export class WsiTileRenderer {
 			paletteTexture,
 			uCamera,
 			uPointSize,
+			uPointStrokeScale,
 			uPalette,
 			uPaletteSize,
 		};

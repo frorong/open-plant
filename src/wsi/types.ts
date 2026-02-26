@@ -52,10 +52,17 @@ export interface WsiPointData {
 }
 
 export type WsiCoordinate = [number, number];
+export type WsiRingCoordinates = WsiCoordinate[];
+export type WsiPolygonCoordinates = WsiRingCoordinates[];
+export type WsiMultiPolygonCoordinates = WsiPolygonCoordinates[];
+export type WsiRegionCoordinates =
+	| WsiRingCoordinates
+	| WsiPolygonCoordinates
+	| WsiMultiPolygonCoordinates;
 
 export interface WsiRegion {
 	id?: string | number;
-	coordinates: WsiCoordinate[];
+	coordinates: WsiRegionCoordinates;
 	label?: string;
 }
 
