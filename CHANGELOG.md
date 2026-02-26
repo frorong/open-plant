@@ -7,7 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- No changes yet.
+### Added
+- Web Worker 기반 포인트 공간 인덱스 빌드 (`point-hit-index-worker`). 메인 스레드 ~175ms 블로킹 제거.
+- `FlatPointSpatialIndex` flat typed array 자료구조 + open-addressing hash table lookup.
+- `buildPointSpatialIndexAsync()`, `lookupCellIndex()`, `terminatePointHitIndexWorker()` public API.
+- 인접 tier (T±1) 타일 prefetch: 빠른 줌 시 blank frame 감소.
+- `getVisibleTilesForTier(tier)` public method on `WsiTileRenderer`.
+- 최적화 리포트: `perf-optimization-report.md`.
+
+### Changed
+- `pointHitIndex` 빌드가 `useMemo` (동기) → `useEffect` + `useState` (비동기 워커)로 전환.
+- 워커 인덱스 알고리즘: nested `Map` → 4-pass counting sort (GC-free, typed arrays only).
+- 워커 프로토콜: positions/ids를 워커가 반환하지 않음 — 메인 스레드가 원본 참조 (전송량 ~120MB → ~48MB).
+- `getCellByCoordinates` 내부 lookup: nested `Map.get()` → `Int32Array` hash table O(1).
+- 타일 스케줄링: 현재 tier 외 인접 tier 타일을 `distance2` 페널티 기반 낮은 우선순위로 포함.
+- 내부 perf logging (`logPerf`, `shouldLogPerf`, `PERF_LOG_*`) 제거.
+
+### Docs
+- `performance-optimization.md` 업데이트: 워커 인덱스, prefetch, flat hash 내용 추가.
+- `README.md` 프로젝트 구조: 워커/클라이언트 파일 반영.
 
 ## [1.2.4] - 2026-02-25
 

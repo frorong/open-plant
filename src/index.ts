@@ -78,6 +78,18 @@ export type {
   RoiClipWorkerResponse,
   RoiClipWorkerSuccess,
 } from "./wsi/point-clip-worker-protocol";
+export type { FlatPointSpatialIndex } from "./wsi/point-hit-index-worker-client";
+export {
+  buildPointSpatialIndexAsync,
+  lookupCellIndex,
+  terminatePointHitIndexWorker,
+} from "./wsi/point-hit-index-worker-client";
+export type {
+  PointHitIndexWorkerFailure,
+  PointHitIndexWorkerRequest,
+  PointHitIndexWorkerResponse,
+  PointHitIndexWorkerSuccess,
+} from "./wsi/point-hit-index-worker-protocol";
 export type {
   RoiPointGroup,
   RoiPointGroupOptions,

@@ -14,9 +14,10 @@
 - 타일 우선순위를 `distance2` 기반으로 정렬해 화면 중심부터 채움.
 - S3 URL(`amazonaws.com`, `s3.*`)에는 `Authorization` 헤더를 자동 제거해 불필요한 실패/재시도 방지.
 
-### 1.3 타일 캐시 및 시각적 연속성
+### 1.3 타일 캐시, 시각적 연속성, 인접 tier prefetch
 - 텍스처 캐시(Map) + LRU trim(`maxCacheTiles`) 적용.
 - 현재 화면 타일이 비어도 cache fallback 타일을 먼저 그려 블랙 프레임을 줄임.
+- **인접 tier (T±1) prefetch**: `render()` 시 현재 tier 외 인접 tier의 뷰포트 내 타일을 `distance2` 페널티 기반 낮은 우선순위로 스케줄. 빠른 줌 전환 시 blank frame 대폭 감소.
 
 ### 1.4 포인트 렌더 파이프라인
 - 포인트 입력을 `Float32Array(positions)` + `Uint16Array(paletteIndices)`로 고정해 CPU/GPU 전송 비용 최소화.
@@ -24,18 +25,26 @@
 - 포인트는 단일 draw call(`gl.POINTS`)로 렌더.
 - 링 형태는 fragment shader에서 계산해 geometry 확장 없이 표현.
 
-### 1.5 ROI 클리핑 경로 분리
+### 1.5 포인트 공간 인덱스 워커 (pointHitIndex)
+- 포인트 hover/click hit-test용 공간 인덱스 빌드를 Web Worker로 이동. 메인 스레드 ~175ms 블로킹 제거.
+- 자료구조: nested `Map` → flat typed arrays + open-addressing `Int32Array` hash table.
+- 워커 알고리즘: 4-pass counting sort (GC-free). Pass 1: 셀 좌표 계산, Pass 2: hash로 유니크 셀 카운팅, Pass 3: prefix sum offset, Pass 4: scatter.
+- 워커 프로토콜: positions/ids를 워커가 반환하지 않고 메인 스레드가 원본 참조 (전송량 ~120MB → ~48MB).
+- React 연동: `useMemo` (동기) → `useEffect` + `useState` (비동기). 빌드 중 UI 프리징 대신 hover 잠시 비활성.
+- 10M 포인트 기준 v2 결과: 메인 스레드 블로킹 175ms → 0ms, 총 wall-clock 371ms (전체 off-thread).
+
+### 1.6 ROI 클리핑 경로 분리
 - `sync`: 기준 경로
 - `worker`: 메인 스레드 블로킹을 줄이는 기본 권장 경로
 - `hybrid-webgpu`: bbox prefilter(WebGPU) + polygon 정밀 판정
 - `onClipStats`로 mode/duration/input/output/candidate를 수집 가능.
 
-### 1.6 Draw/UX 분리 렌더링
+### 1.7 Draw/UX 분리 렌더링
 - 드로잉은 별도 Canvas 2D(`DrawLayer`)로 분리.
 - draw mode에서 pointer capture + `interactionLock`로 pan/zoom 충돌 제거.
 - draw overlay는 `requestAnimationFrame` 단위로만 갱신.
 
-### 1.7 Overview Map 비용 제어
+### 1.8 Overview Map 비용 제어
 - 썸네일 생성 시 `maxThumbnailTiles` 제한으로 과도한 요청 방지.
 - 자체 invalidate/ref 기반 redraw로 불필요한 재렌더를 줄임.
 

@@ -118,11 +118,14 @@ src/
 │   ├── point-clip.ts           # ROI 포인트 클리핑
 │   ├── point-clip-worker-client.ts # ROI 워커 클리핑 클라이언트
 │   ├── point-clip-hybrid.ts    # WebGPU + polygon 하이브리드 클리핑(실험)
+│   ├── point-hit-index-worker-client.ts # 포인트 공간 인덱스 워커 클라이언트
+│   ├── point-hit-index-worker-protocol.ts # 인덱스 워커 메시지 프로토콜
 │   ├── webgpu.ts               # WebGPU capability/compute 유틸
 │   ├── image-info.ts           # 이미지 메타데이터 정규화
 │   └── utils.ts                # 팔레트, 색상, 토큰 유틸리티
 ├── workers/
-│   └── roi-clip-worker.ts      # ROI point-in-polygon worker
+│   ├── roi-clip-worker.ts      # ROI point-in-polygon worker
+│   └── point-hit-index-worker.ts # 포인트 공간 인덱스 빌드 worker
 └── react/                      # React 컴포넌트
     ├── wsi-viewer-canvas.tsx   # 전체 기능 WSI 뷰어
     ├── draw-layer.tsx          # 드로잉 오버레이
@@ -315,6 +318,7 @@ import { WsiViewerCanvas } from "open-plant";
 | `buildTermPalette`, `calcScaleResolution`, `calcScaleLength`, `toBearerToken` | 공통 유틸 |
 | `filterPointDataByPolygons`, `filterPointDataByPolygonsInWorker`, `filterPointDataByPolygonsHybrid` | ROI 포인트 클리핑 |
 | `filterPointIndicesByPolygons`, `filterPointIndicesByPolygonsInWorker`, `terminateRoiClipWorker` | 인덱스 기반 클리핑/워커 관리 |
+| `buildPointSpatialIndexAsync`, `lookupCellIndex`, `terminatePointHitIndexWorker` | 포인트 공간 인덱스 (워커) |
 | `computeRoiPointGroups` | ROI term 통계 |
 | `getWebGpuCapabilities`, `prefilterPointsByBoundsWebGpu` | WebGPU capability/연산(실험) |
 | `closeRing`, `createRectangle`, `createCircle` | 도형 유틸 |

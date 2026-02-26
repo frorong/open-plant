@@ -13,17 +13,11 @@ import {
 import { filterPointDataByPolygons, type RoiPolygon } from "../wsi/point-clip";
 import { filterPointDataByPolygonsHybrid } from "../wsi/point-clip-hybrid";
 import { filterPointDataByPolygonsInWorker, type PointClipMode } from "../wsi/point-clip-worker-client";
+import { buildPointSpatialIndexAsync, type FlatPointSpatialIndex, lookupCellIndex } from "../wsi/point-hit-index-worker-client";
 import { type PreparedRoiPolygon, prepareRoiPolygons, type RoiGeometry } from "../wsi/roi-geometry";
 import { computeRoiPointGroups, type RoiPointGroupStats } from "../wsi/roi-term-stats";
-import type {
-  WsiImageColorSettings,
-  WsiImageSource,
-  WsiPointData,
-  WsiRegion,
-  WsiRenderStats,
-  WsiViewState,
-} from "../wsi/types";
-import { type PointSizeByZoom, type WsiTileErrorEvent, type WsiViewTransitionOptions, WsiTileRenderer } from "../wsi/wsi-tile-renderer";
+import type { WsiImageColorSettings, WsiImageSource, WsiPointData, WsiRegion, WsiRenderStats, WsiViewState } from "../wsi/types";
+import { type PointSizeByZoom, type WsiTileErrorEvent, WsiTileRenderer, type WsiViewTransitionOptions } from "../wsi/wsi-tile-renderer";
 import type {
   BrushOptions,
   DrawAreaTooltipOptions,
@@ -51,16 +45,12 @@ const EMPTY_CLIPPED_POINTS: WsiPointData = {
 };
 const POINT_HIT_RADIUS_SCALE = 0.65;
 const MIN_POINT_HIT_RADIUS_PX = 4;
-const MIN_POINT_HIT_GRID_SIZE = 24;
-const MAX_POINT_HIT_GRID_SIZE = 1024;
-const POINT_HIT_GRID_DENSITY_SCALE = 4;
 const REGION_CONTOUR_HIT_DISTANCE_PX = 6;
 const TOP_ANCHOR_Y_TOLERANCE = 0.5;
 const LABEL_MEASURE_FALLBACK_EM = 0.58;
 const LABEL_MEASURE_CACHE_LIMIT = 4096;
 const REGION_LABEL_AUTO_LIFT_ANIMATION_DURATION_MS = 180;
 const REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX = 20;
-
 let sharedLabelMeasureContext: CanvasRenderingContext2D | null = null;
 const labelTextWidthCache = new Map<string, number>();
 
@@ -133,14 +123,6 @@ export interface WsiCustomLayer {
   render: (context: WsiCustomLayerContext) => ReactNode;
 }
 
-interface PointSpatialIndex {
-  cellSize: number;
-  safeCount: number;
-  positions: Float32Array;
-  ids: Uint32Array | null;
-  buckets: Map<number, Map<number, number[]>>;
-}
-
 interface PreparedRegionHit {
   region: WsiRegion;
   regionIndex: number;
@@ -148,109 +130,6 @@ interface PreparedRegionHit {
   polygons: PreparedRoiPolygon[];
   label: string;
   labelAnchor: DrawCoordinate | null;
-}
-
-function sanitizePointCount(pointData: WsiPointData): number {
-  const fillModesLength = pointData.fillModes instanceof Uint8Array ? pointData.fillModes.length : Number.MAX_SAFE_INTEGER;
-  return Math.max(0, Math.min(Math.floor(pointData.count ?? 0), Math.floor((pointData.positions?.length ?? 0) / 2), pointData.paletteIndices?.length ?? 0, fillModesLength));
-}
-
-function sanitizeDrawIndices(drawIndices: Uint32Array | undefined, maxExclusive: number): Uint32Array | null {
-  if (!(drawIndices instanceof Uint32Array) || maxExclusive <= 0 || drawIndices.length === 0) {
-    return null;
-  }
-
-  let invalidFound = false;
-  for (let i = 0; i < drawIndices.length; i += 1) {
-    if (drawIndices[i] < maxExclusive) continue;
-    invalidFound = true;
-    break;
-  }
-  if (!invalidFound) {
-    return drawIndices;
-  }
-
-  const out = new Uint32Array(drawIndices.length);
-  let cursor = 0;
-  for (let i = 0; i < drawIndices.length; i += 1) {
-    const idx = drawIndices[i];
-    if (idx >= maxExclusive) continue;
-    out[cursor] = idx;
-    cursor += 1;
-  }
-  return out.subarray(0, cursor);
-}
-
-function resolvePointHitGridSize(source: WsiImageSource | null, visibleCount: number): number {
-  if (!source || visibleCount <= 0) return 256;
-  const area = Math.max(1, source.width * source.height);
-  const avgSpacing = Math.sqrt(area / Math.max(1, visibleCount));
-  const raw = avgSpacing * POINT_HIT_GRID_DENSITY_SCALE;
-  return Math.max(MIN_POINT_HIT_GRID_SIZE, Math.min(MAX_POINT_HIT_GRID_SIZE, raw));
-}
-
-function buildPointSpatialIndex(pointData: WsiPointData | null | undefined, source: WsiImageSource | null): PointSpatialIndex | null {
-  if (!pointData || !pointData.positions || !pointData.paletteIndices) {
-    return null;
-  }
-
-  const safeCount = sanitizePointCount(pointData);
-  if (safeCount <= 0) {
-    return null;
-  }
-
-  const positions = pointData.positions.subarray(0, safeCount * 2);
-  const ids = pointData.ids instanceof Uint32Array && pointData.ids.length >= safeCount ? pointData.ids.subarray(0, safeCount) : null;
-  const drawIndices = sanitizeDrawIndices(pointData.drawIndices, safeCount);
-  const visibleCount = drawIndices ? drawIndices.length : safeCount;
-  if (visibleCount === 0) {
-    return null;
-  }
-
-  const cellSize = resolvePointHitGridSize(source, visibleCount);
-  const buckets = new Map<number, Map<number, number[]>>();
-
-  const pushBucket = (pointIndex: number): void => {
-    const px = positions[pointIndex * 2];
-    const py = positions[pointIndex * 2 + 1];
-    if (!Number.isFinite(px) || !Number.isFinite(py)) return;
-
-    const cellX = Math.floor(px / cellSize);
-    const cellY = Math.floor(py / cellSize);
-    let column = buckets.get(cellX);
-    if (!column) {
-      column = new Map<number, number[]>();
-      buckets.set(cellX, column);
-    }
-    const bucket = column.get(cellY);
-    if (bucket) {
-      bucket.push(pointIndex);
-    } else {
-      column.set(cellY, [pointIndex]);
-    }
-  };
-
-  if (drawIndices) {
-    for (let i = 0; i < drawIndices.length; i += 1) {
-      pushBucket(drawIndices[i] ?? 0);
-    }
-  } else {
-    for (let i = 0; i < safeCount; i += 1) {
-      pushBucket(i);
-    }
-  }
-
-  if (buckets.size === 0) {
-    return null;
-  }
-
-  return {
-    cellSize,
-    safeCount,
-    positions,
-    ids,
-    buckets,
-  };
 }
 
 function resolveRegionId(region: WsiRegion, index: number): string | number {
@@ -378,14 +257,7 @@ function measureLabelTextWidth(label: string, labelStyle: RegionLabelStyle): num
   return width;
 }
 
-function isScreenPointInsideLabel(
-  region: PreparedRegionHit,
-  screenCoord: DrawCoordinate,
-  renderer: WsiTileRenderer,
-  labelStyle: RegionLabelStyle,
-  canvasWidth: number,
-  canvasHeight: number
-): boolean {
+function isScreenPointInsideLabel(region: PreparedRegionHit, screenCoord: DrawCoordinate, renderer: WsiTileRenderer, labelStyle: RegionLabelStyle, canvasWidth: number, canvasHeight: number): boolean {
   if (!region.label || !region.labelAnchor) return false;
 
   const anchorScreen = toDrawCoordinate(renderer.worldToScreen(region.labelAnchor[0], region.labelAnchor[1]));
@@ -784,12 +656,13 @@ export function WsiViewerCanvas({
 
     const applyResult = (data: WsiPointData | null, stats: Omit<PointClipStatsEvent, "inputCount" | "outputCount" | "polygonCount">) => {
       if (cancelled || runId !== clipRunIdRef.current) return;
+      const inputCount = pointData.count;
       const outputCount = data?.drawIndices ? data.drawIndices.length : (data?.count ?? 0);
       setRenderPointData(data);
       onClipStats?.({
         mode: stats.mode,
         durationMs: stats.durationMs,
-        inputCount: pointData.count,
+        inputCount,
         outputCount,
         polygonCount: clipPolygons.length,
         usedWebGpu: stats.usedWebGpu,
@@ -844,9 +717,20 @@ export function WsiViewerCanvas({
   }, [clipPointsToRois, clipMode, pointData, clipPolygons, onClipStats]);
 
   const shouldEnablePointHitTest = Boolean(onPointHover || onPointClick || getCellByCoordinatesRef);
-  const pointSpatialIndex = useMemo(() => {
-    if (!shouldEnablePointHitTest) return null;
-    return buildPointSpatialIndex(renderPointData, source);
+  const [pointSpatialIndex, setPointSpatialIndex] = useState<FlatPointSpatialIndex | null>(null);
+
+  useEffect(() => {
+    if (!shouldEnablePointHitTest || !renderPointData) {
+      setPointSpatialIndex(null);
+      return;
+    }
+    let cancelled = false;
+
+    buildPointSpatialIndexAsync(renderPointData, source).then(nextIndex => {
+      if (!cancelled) setPointSpatialIndex(nextIndex);
+    });
+
+    return () => { cancelled = true; };
   }, [shouldEnablePointHitTest, renderPointData, source]);
 
   const getCellByCoordinates = useCallback(
@@ -864,7 +748,7 @@ export function WsiViewerCanvas({
       const hitRadiusWorld = hitRadiusPx / zoom;
       if (!Number.isFinite(hitRadiusWorld) || hitRadiusWorld <= 0) return null;
 
-      const cellSize = pointSpatialIndex.cellSize;
+      const { cellSize, cellOffsets, cellLengths, pointIndices: idxBuf, positions: posBuf, safeCount } = pointSpatialIndex;
       const baseCellX = Math.floor(x / cellSize);
       const baseCellY = Math.floor(y / cellSize);
       const cellRadius = Math.max(1, Math.ceil(hitRadiusWorld / cellSize));
@@ -876,19 +760,18 @@ export function WsiViewerCanvas({
       let nearestY = 0;
 
       for (let cx = baseCellX - cellRadius; cx <= baseCellX + cellRadius; cx += 1) {
-        const column = pointSpatialIndex.buckets.get(cx);
-        if (!column) continue;
-
         for (let cy = baseCellY - cellRadius; cy <= baseCellY + cellRadius; cy += 1) {
-          const bucket = column.get(cy);
-          if (!bucket || bucket.length === 0) continue;
+          const ci = lookupCellIndex(pointSpatialIndex, cx, cy);
+          if (ci < 0) continue;
 
-          for (let i = 0; i < bucket.length; i += 1) {
-            const pointIndex = bucket[i];
-            if (pointIndex >= pointSpatialIndex.safeCount) continue;
+          const off = cellOffsets[ci];
+          const end = off + cellLengths[ci];
+          for (let i = off; i < end; i += 1) {
+            const pointIndex = idxBuf[i];
+            if (pointIndex >= safeCount) continue;
 
-            const px = pointSpatialIndex.positions[pointIndex * 2];
-            const py = pointSpatialIndex.positions[pointIndex * 2 + 1];
+            const px = posBuf[pointIndex * 2];
+            const py = posBuf[pointIndex * 2 + 1];
             const dx = px - x;
             const dy = py - y;
             const dist2 = dx * dx + dy * dy;
@@ -1134,17 +1017,7 @@ export function WsiViewerCanvas({
     (coord: DrawCoordinate, screenCoord: DrawCoordinate, canvasWidth: number, canvasHeight: number) => {
       const renderer = rendererRef.current;
       if (!renderer) return null;
-      return pickPreparedRegionAt(
-        coord,
-        screenCoord,
-        preparedRegionHits,
-        renderer,
-        resolvedRegionLabelStyle,
-        resolveRegionLabelStyleProp,
-        regionLabelAutoLiftOffsetPx,
-        canvasWidth,
-        canvasHeight
-      );
+      return pickPreparedRegionAt(coord, screenCoord, preparedRegionHits, renderer, resolvedRegionLabelStyle, resolveRegionLabelStyleProp, regionLabelAutoLiftOffsetPx, canvasWidth, canvasHeight);
     },
     [preparedRegionHits, resolvedRegionLabelStyle, resolveRegionLabelStyleProp, regionLabelAutoLiftOffsetPx]
   );

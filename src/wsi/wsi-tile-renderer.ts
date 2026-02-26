@@ -790,9 +790,10 @@ export class WsiTileRenderer {
 		const nextDrawIndices = hasDrawIndices
 			? this.sanitizeDrawIndices(points.drawIndices as Uint32Array, safeCount)
 			: null;
+
 		const prev = this.lastPointData;
 		const prevHasFillModes = prev?.fillModes instanceof Uint8Array;
-		let geometryChanged =
+		const geometryChanged =
 			this.pointBuffersDirty ||
 			!prev ||
 			prev.count !== safeCount ||
@@ -801,7 +802,7 @@ export class WsiTileRenderer {
 			prevHasFillModes !== hasFillModes ||
 			(hasFillModes &&
 				(!prev?.fillModes || !isSameArrayView(prev.fillModes, nextFillModes)));
-		let drawIndicesChanged =
+		const drawIndicesChanged =
 			this.pointBuffersDirty ||
 			(hasDrawIndices &&
 				(!prev?.drawIndices ||
@@ -849,9 +850,10 @@ export class WsiTileRenderer {
 		}
 
 		this.usePointIndices = hasDrawIndices;
-		this.pointCount = hasDrawIndices
+		const drawCount = hasDrawIndices
 			? (nextDrawIndices?.length ?? 0)
 			: this.lastPointData.count;
+		this.pointCount = drawCount;
 		if (geometryChanged || drawIndicesChanged) {
 			this.pointBuffersDirty = false;
 		}
@@ -1117,7 +1119,10 @@ export class WsiTileRenderer {
 	getVisibleTiles(): ScheduledTile[] {
 		const tier = this.selectTier();
 		this.currentTier = tier;
+		return this.getVisibleTilesForTier(tier);
+	}
 
+	getVisibleTilesForTier(tier: number): ScheduledTile[] {
 		const viewBounds = this.getViewBounds();
 
 		const levelScale = Math.pow(2, this.source.maxTierZoom - tier);
@@ -1202,7 +1207,7 @@ export class WsiTileRenderer {
 
 	render(): void {
 		if (this.destroyed || this.contextLost || this.gl.isContextLost()) return;
-		const frameStartMs = nowMs();
+		const frameStartMs = this.onStats ? nowMs() : 0;
 		this.frameSerial += 1;
 
 		const gl = this.gl;
@@ -1230,8 +1235,8 @@ export class WsiTileRenderer {
 			if (!this.intersectsBounds(cached.bounds, viewBounds)) continue;
 			fallbackTiles.push(cached);
 		}
-
 		fallbackTiles.sort((a, b) => a.tier - b.tier);
+
 		for (const cached of fallbackTiles) {
 			cached.lastUsed = this.frameSerial;
 			gl.activeTexture(gl.TEXTURE0);
@@ -1267,7 +1272,21 @@ export class WsiTileRenderer {
 			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 			renderedTiles += 1;
 		}
-		this.tileScheduler.schedule(missingTiles);
+
+		const tilesToSchedule: ScheduledTile[] = missingTiles.slice();
+		const PREFETCH_DISTANCE_PENALTY = 1e6;
+		const prefetchTiers: number[] = [];
+		if (this.currentTier > 0) prefetchTiers.push(this.currentTier - 1);
+		if (this.currentTier < this.source.maxTierZoom) prefetchTiers.push(this.currentTier + 1);
+		for (const prefetchTier of prefetchTiers) {
+			const prefetchCandidates = this.getVisibleTilesForTier(prefetchTier);
+			for (const tile of prefetchCandidates) {
+				if (this.cache.has(tile.key)) continue;
+				tile.distance2 += PREFETCH_DISTANCE_PENALTY;
+				tilesToSchedule.push(tile);
+			}
+		}
+		this.tileScheduler.schedule(tilesToSchedule);
 
 		gl.bindTexture(gl.TEXTURE_2D, null);
 		gl.bindVertexArray(null);
@@ -1297,10 +1316,6 @@ export class WsiTileRenderer {
 
 		if (this.onStats) {
 			const schedulerStats = this.tileScheduler.getSnapshot();
-			const cacheHits = renderedTiles;
-			const cacheMisses = missingTiles.length;
-			const drawCalls =
-				fallbackTiles.length + renderedTiles + (renderedPoints > 0 ? 1 : 0);
 			this.onStats({
 				tier: this.currentTier,
 				visible: visible.length,
@@ -1313,9 +1328,9 @@ export class WsiTileRenderer {
 				retries: schedulerStats.retries,
 				failed: schedulerStats.failed,
 				aborted: schedulerStats.aborted,
-				cacheHits,
-				cacheMisses,
-				drawCalls,
+				cacheHits: renderedTiles,
+				cacheMisses: missingTiles.length,
+				drawCalls: fallbackTiles.length + renderedTiles + (renderedPoints > 0 ? 1 : 0),
 				frameMs: nowMs() - frameStartMs,
 			});
 		}
