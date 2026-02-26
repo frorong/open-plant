@@ -220,6 +220,7 @@ export default function App() {
   const [rotationResetNonce, setRotationResetNonce] = useState(0);
   const [clipMode, setClipMode] = useState<PointClipMode>("worker");
   const [clipStats, setClipStats] = useState<PointClipStatsEvent | null>(null);
+  const [autoLiftRegionLabelAtMaxZoom, setAutoLiftRegionLabelAtMaxZoom] = useState(true);
   const [webGpuCaps, setWebGpuCaps] = useState<WebGpuCapabilities | null>(null);
   const [lastDraw, setLastDraw] = useState<DrawResult | null>(null);
   const [roiRegions, setRoiRegions] = useState<WsiRegion[]>([]);
@@ -945,6 +946,9 @@ export default function App() {
             >
               HPF 0.2mm²
             </button>
+            <button type="button" className={autoLiftRegionLabelAtMaxZoom ? "active" : ""} disabled={!source} onClick={() => setAutoLiftRegionLabelAtMaxZoom(prev => !prev)}>
+              Label Auto Lift
+            </button>
             <input className="label-input" type="text" value={labelInput} onChange={e => setLabelInput(e.target.value)} placeholder="Region label (optional)" />
             <button type="button" disabled={!source || (roiRegions.length === 0 && patchRegions.length === 0)} onClick={handleClearRoi}>
               Clear Regions
@@ -1014,6 +1018,7 @@ export default function App() {
             overlayShapes={overlayShapes}
             customLayers={customLayers}
             regionLabelStyle={regionLabelStyle}
+            autoLiftRegionLabelAtMaxZoom={autoLiftRegionLabelAtMaxZoom}
             onPointerWorldMove={event => {
               if (event.coordinate) {
                 setPointerWorld([event.coordinate[0], event.coordinate[1]]);
@@ -1059,7 +1064,8 @@ export default function App() {
           {lastPointClick ? `${lastPointClick.button === 2 ? "right" : "left"}:${lastPointClick.id ?? "-"}@${lastPointClick.index}` : "-"}
           <br />
           stamp rect {stampRectangleAreaMm2}mm² | stamp circle {stampCircleAreaMm2}
-          mm² | stamp rect px {stampRectanglePixelSize} | brush r {brushRadius}px | brush α {brushOpacity.toFixed(2)} | preview {brushEraserPreview ? "eraser" : "brush"}
+          mm² | stamp rect px {stampRectanglePixelSize} | brush r {brushRadius}px | brush α {brushOpacity.toFixed(2)} | preview {brushEraserPreview ? "eraser" : "brush"} | label auto-lift{" "}
+          {autoLiftRegionLabelAtMaxZoom ? "on" : "off"}
           {clipStats ? (
             <>
               <br />

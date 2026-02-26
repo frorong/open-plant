@@ -212,7 +212,7 @@ import { WsiViewerCanvas } from "open-plant";
 `minZoom`/`maxZoom`으로 뷰어 zoom 범위를 지정할 수 있으며, 휠 줌/더블클릭 줌/`setViewState`/`fitToImage` 모두 동일하게 clamp됩니다.
 `viewTransition`을 지정하면 `viewState` 반영, `fitToImage`, `zoomBy` 전환에 애니메이션이 적용됩니다.
 `resolveRegionLabelStyle`로 zoom/region context 기반 nametag 스타일(예: `offsetY`)을 동적으로 계산할 수 있습니다.
-`autoLiftRegionLabelAtMaxZoom`을 `true`로 주면 최대 줌 구간에서 nametag가 위로 최대 `20px`까지 부드럽게 올라가며, 축소 시 다시 내려옵니다.
+`autoLiftRegionLabelAtMaxZoom`을 `true`로 주면 `maxZoom`에 도달하는 순간 nametag가 위로 `20px` 부드럽게 올라가고, `maxZoom`에서 벗어나면 다시 부드럽게 내려옵니다.
 `drawAreaTooltip`을 켜면 freehand/rectangle/circular 드로잉 중 커서 근처에 실시간 면적(mm²) tooltip을 표시합니다.
 `imageColorSettings`는 이미지 타일에만 적용되며, cell marker/ROI/draw overlay에는 영향을 주지 않습니다.
 `pointData.fillModes`(선택, `Uint8Array`)를 주면 포인트별 렌더 모드를 제어할 수 있습니다. `0`은 ring(stroked), `1`은 solid(fill)이며 `0`이 아닌 값은 solid로 처리됩니다.

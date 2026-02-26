@@ -58,6 +58,8 @@ const REGION_CONTOUR_HIT_DISTANCE_PX = 6;
 const TOP_ANCHOR_Y_TOLERANCE = 0.5;
 const LABEL_MEASURE_FALLBACK_EM = 0.58;
 const LABEL_MEASURE_CACHE_LIMIT = 4096;
+const REGION_LABEL_AUTO_LIFT_ANIMATION_DURATION_MS = 180;
+const REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX = 20;
 
 let sharedLabelMeasureContext: CanvasRenderingContext2D | null = null;
 const labelTextWidthCache = new Map<string, number>();
@@ -259,6 +261,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function smoothstep01(t: number): number {
+  const x = clamp(t, 0, 1);
+  return x * x * (3 - 2 * x);
+}
+
 function toDrawCoordinate(value: unknown): DrawCoordinate | null {
   if (!Array.isArray(value) || value.length < 2) return null;
   const x = Number(value[0]);
@@ -424,7 +431,7 @@ function pickPreparedRegionAt(
   renderer: WsiTileRenderer,
   labelStyle: RegionLabelStyle,
   labelStyleResolver: RegionLabelStyleResolver | undefined,
-  autoLiftRegionLabelAtMaxZoom: boolean | undefined,
+  labelAutoLiftOffsetPx: number,
   canvasWidth: number,
   canvasHeight: number
 ): {
@@ -435,7 +442,7 @@ function pickPreparedRegionAt(
   const x = coord[0];
   const y = coord[1];
   const zoom = Math.max(1e-6, renderer.getViewState().zoom);
-  const labelAutoLiftOffset = resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, renderer.getZoomRange());
+  const labelAutoLiftOffset = Math.max(0, labelAutoLiftOffsetPx);
   const contourHitDistance = REGION_CONTOUR_HIT_DISTANCE_PX / zoom;
   for (let i = regions.length - 1; i >= 0; i -= 1) {
     const region = regions[i];
@@ -615,9 +622,17 @@ export function WsiViewerCanvas({
   const activeRegionId = isActiveRegionControlled ? (controlledActiveRegionId ?? null) : uncontrolledActiveRegionId;
   const [customLayerViewState, setCustomLayerViewState] = useState<WsiViewState | null>(null);
   const [debugStats, setDebugStats] = useState<WsiRenderStats | null>(null);
+  const [regionLabelAutoLiftOffsetPx, setRegionLabelAutoLiftOffsetPx] = useState(0);
   const hoveredRegionIdRef = useRef<string | number | null>(null);
   const hoveredPointIndexRef = useRef<number | null>(null);
   const hoveredPointIdRef = useRef<number | null>(null);
+  const regionLabelAutoLiftOffsetRef = useRef(0);
+  const regionLabelAutoLiftAnimationRef = useRef<{ rafId: number | null; startMs: number; from: number; to: number }>({
+    rafId: null,
+    startMs: 0,
+    from: 0,
+    to: 0,
+  });
   const clipRunIdRef = useRef(0);
   const safeRoiRegions = roiRegions ?? EMPTY_ROI_REGIONS;
   const safePatchRegions = patchRegions ?? EMPTY_ROI_REGIONS;
@@ -663,6 +678,73 @@ export function WsiViewerCanvas({
   }, [safeRoiRegions, safeRoiPolygons]);
   const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRoiRegions), [effectiveRoiRegions]);
   const resolvedRegionLabelStyle = useMemo(() => resolveRegionLabelStyle(regionLabelStyle), [regionLabelStyle]);
+
+  const applyRegionLabelAutoLiftOffset = useCallback((next: number) => {
+    const clamped = clamp(next, 0, REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX);
+    if (Math.abs(regionLabelAutoLiftOffsetRef.current - clamped) < 1e-4) return;
+    regionLabelAutoLiftOffsetRef.current = clamped;
+    setRegionLabelAutoLiftOffsetPx(clamped);
+  }, []);
+
+  const cancelRegionLabelAutoLiftAnimation = useCallback(() => {
+    const animation = regionLabelAutoLiftAnimationRef.current;
+    if (animation.rafId !== null) {
+      cancelAnimationFrame(animation.rafId);
+      animation.rafId = null;
+    }
+  }, []);
+
+  const animateRegionLabelAutoLiftTo = useCallback(
+    (target: number) => {
+      const clampedTarget = clamp(target, 0, REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX);
+      const animation = regionLabelAutoLiftAnimationRef.current;
+      const from = regionLabelAutoLiftOffsetRef.current;
+      if (Math.abs(from - clampedTarget) < 1e-4) {
+        cancelRegionLabelAutoLiftAnimation();
+        animation.to = clampedTarget;
+        applyRegionLabelAutoLiftOffset(clampedTarget);
+        return;
+      }
+
+      cancelRegionLabelAutoLiftAnimation();
+      animation.startMs = performance.now();
+      animation.from = from;
+      animation.to = clampedTarget;
+
+      const step = (timestamp: number) => {
+        const current = regionLabelAutoLiftAnimationRef.current;
+        const elapsed = Math.max(0, timestamp - current.startMs);
+        const rawT = REGION_LABEL_AUTO_LIFT_ANIMATION_DURATION_MS <= 0 ? 1 : clamp(elapsed / REGION_LABEL_AUTO_LIFT_ANIMATION_DURATION_MS, 0, 1);
+        const eased = smoothstep01(rawT);
+        const nextValue = current.from + (current.to - current.from) * eased;
+        applyRegionLabelAutoLiftOffset(nextValue);
+        drawInvalidateRef.current?.();
+
+        if (rawT >= 1) {
+          current.rafId = null;
+          applyRegionLabelAutoLiftOffset(current.to);
+          return;
+        }
+        current.rafId = requestAnimationFrame(step);
+      };
+
+      animation.rafId = requestAnimationFrame(step);
+    },
+    [applyRegionLabelAutoLiftOffset, cancelRegionLabelAutoLiftAnimation]
+  );
+
+  const syncRegionLabelAutoLiftTarget = useCallback(
+    (zoom: number | null | undefined) => {
+      const renderer = rendererRef.current;
+      if (!renderer || typeof zoom !== "number" || !Number.isFinite(zoom)) {
+        animateRegionLabelAutoLiftTo(0);
+        return;
+      }
+      const target = resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, renderer.getZoomRange());
+      animateRegionLabelAutoLiftTo(target);
+    },
+    [autoLiftRegionLabelAtMaxZoom, animateRegionLabelAutoLiftTo]
+  );
 
   const clipPolygons = useMemo<RoiPolygon[]>(() => effectiveRoiRegions.map(region => region.coordinates as RoiPolygon), [effectiveRoiRegions]);
 
@@ -902,6 +984,12 @@ export function WsiViewerCanvas({
     if (!debugOverlay) setDebugStats(null);
   }, [debugOverlay]);
 
+  useEffect(() => {
+    return () => {
+      cancelRegionLabelAutoLiftAnimation();
+    };
+  }, [cancelRegionLabelAutoLiftAnimation]);
+
   const handleRendererStats = useCallback((stats: WsiRenderStats): void => {
     onStatsRef.current?.(stats);
     if (debugOverlayRef.current) {
@@ -959,6 +1047,7 @@ export function WsiViewerCanvas({
 
   const emitViewStateChange = useCallback(
     (next: WsiViewState): void => {
+      syncRegionLabelAutoLiftTarget(next.zoom);
       if (shouldTrackCustomLayerViewState) {
         setCustomLayerViewState(next);
       }
@@ -969,8 +1058,14 @@ export function WsiViewerCanvas({
       drawInvalidateRef.current?.();
       overviewInvalidateRef.current?.();
     },
-    [shouldTrackCustomLayerViewState]
+    [shouldTrackCustomLayerViewState, syncRegionLabelAutoLiftTarget]
   );
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    syncRegionLabelAutoLiftTarget(renderer.getViewState().zoom);
+  }, [syncRegionLabelAutoLiftTarget, minZoom, maxZoom]);
 
   useEffect(() => {
     if (drawTool === "cursor") return;
@@ -1046,12 +1141,12 @@ export function WsiViewerCanvas({
         renderer,
         resolvedRegionLabelStyle,
         resolveRegionLabelStyleProp,
-        autoLiftRegionLabelAtMaxZoom,
+        regionLabelAutoLiftOffsetPx,
         canvasWidth,
         canvasHeight
       );
     },
-    [preparedRegionHits, resolvedRegionLabelStyle, resolveRegionLabelStyleProp, autoLiftRegionLabelAtMaxZoom]
+    [preparedRegionHits, resolvedRegionLabelStyle, resolveRegionLabelStyleProp, regionLabelAutoLiftOffsetPx]
   );
 
   const requestCustomLayerRedraw = useCallback(() => {
@@ -1261,16 +1356,34 @@ export function WsiViewerCanvas({
     if (viewState) {
       renderer.setViewState(viewState);
     }
+    syncRegionLabelAutoLiftTarget(renderer.getViewState().zoom);
     renderer.setInteractionLock(interactionLock);
     if (shouldTrackCustomLayerViewState) {
       setCustomLayerViewState(renderer.getViewState());
     }
 
     return () => {
+      cancelRegionLabelAutoLiftAnimation();
+      applyRegionLabelAutoLiftOffset(0);
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [source, handleRendererStats, onTileError, onContextLost, onContextRestored, authToken, ctrlDragRotate, pointSizeByZoom, pointStrokeScale, emitViewStateChange, shouldTrackCustomLayerViewState]);
+  }, [
+    source,
+    handleRendererStats,
+    onTileError,
+    onContextLost,
+    onContextRestored,
+    authToken,
+    ctrlDragRotate,
+    pointSizeByZoom,
+    pointStrokeScale,
+    emitViewStateChange,
+    shouldTrackCustomLayerViewState,
+    syncRegionLabelAutoLiftTarget,
+    cancelRegionLabelAutoLiftAnimation,
+    applyRegionLabelAutoLiftOffset,
+  ]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1320,7 +1433,8 @@ export function WsiViewerCanvas({
     const renderer = rendererRef.current;
     if (!renderer) return;
     renderer.setZoomRange(minZoom, maxZoom);
-  }, [minZoom, maxZoom]);
+    syncRegionLabelAutoLiftTarget(renderer.getViewState().zoom);
+  }, [minZoom, maxZoom, syncRegionLabelAutoLiftTarget]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1428,6 +1542,7 @@ export function WsiViewerCanvas({
           regionLabelStyle={regionLabelStyle}
           drawAreaTooltip={drawAreaTooltip}
           autoLiftRegionLabelAtMaxZoom={autoLiftRegionLabelAtMaxZoom}
+          regionLabelAutoLiftOffsetPx={regionLabelAutoLiftOffsetPx}
           invalidateRef={drawInvalidateRef}
           onDrawComplete={onDrawComplete}
           onPatchComplete={onPatchComplete}

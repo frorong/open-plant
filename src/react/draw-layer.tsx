@@ -188,6 +188,7 @@ export interface DrawLayerProps {
   regionLabelStyle?: Partial<RegionLabelStyle>;
   drawAreaTooltip?: DrawAreaTooltipOptions;
   autoLiftRegionLabelAtMaxZoom?: boolean;
+  regionLabelAutoLiftOffsetPx?: number;
   invalidateRef?: MutableRefObject<(() => void) | null>;
   className?: string;
   style?: CSSProperties;
@@ -326,16 +327,11 @@ const DEFAULT_DRAW_AREA_TOOLTIP_OFFSET = {
   x: 16,
   y: -24,
 } as const;
-const REGION_LABEL_AUTO_LIFT_START_RATIO = 0.85;
 const REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX = 20;
+const REGION_LABEL_AUTO_LIFT_MAX_EPSILON = 1e-6;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function smoothstep01(t: number): number {
-  const x = clamp(t, 0, 1);
-  return x * x * (3 - 2 * x);
 }
 
 export function resolveRegionLabelAutoLiftOffsetPx(
@@ -350,13 +346,9 @@ export function resolveRegionLabelAutoLiftOffsetPx(
   const maxZoom = Number(zoomRange.maxZoom);
   if (!Number.isFinite(minZoom) || !Number.isFinite(maxZoom)) return 0;
 
-  const span = maxZoom - minZoom;
-  if (!(span > 1e-9)) return 0;
-
-  const normalized = clamp((zoom - minZoom) / span, 0, 1);
-  const liftedRange = 1 - REGION_LABEL_AUTO_LIFT_START_RATIO;
-  const t = liftedRange > 0 ? clamp((normalized - REGION_LABEL_AUTO_LIFT_START_RATIO) / liftedRange, 0, 1) : 1;
-  return REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX * smoothstep01(t);
+  if (maxZoom - minZoom <= REGION_LABEL_AUTO_LIFT_MAX_EPSILON) return 0;
+  if (!Number.isFinite(zoom)) return 0;
+  return zoom >= maxZoom - REGION_LABEL_AUTO_LIFT_MAX_EPSILON ? REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX : 0;
 }
 
 function isStampTool(tool: DrawTool): tool is StampDrawTool {
@@ -948,6 +940,7 @@ export function DrawLayer({
   regionLabelStyle,
   drawAreaTooltip,
   autoLiftRegionLabelAtMaxZoom = false,
+  regionLabelAutoLiftOffsetPx,
   invalidateRef,
   className,
   style,
@@ -1368,7 +1361,10 @@ export function DrawLayer({
     // Draw labels last so they stay visually on top.
     if (preparedPersistedRegions.length > 0) {
       const zoom = Math.max(1e-6, projectorRef.current?.getViewState?.().zoom ?? 1);
-      const labelAutoLiftOffset = resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, projectorRef.current?.getZoomRange?.());
+      const labelAutoLiftOffset =
+        typeof regionLabelAutoLiftOffsetPx === "number" && Number.isFinite(regionLabelAutoLiftOffsetPx)
+          ? Math.max(0, regionLabelAutoLiftOffsetPx)
+          : resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, projectorRef.current?.getZoomRange?.());
       for (const entry of preparedPersistedRegions) {
         if (!entry.region.label) continue;
         const anchorWorld = getTopAnchorFromPolygons(entry.polygons);
@@ -1453,6 +1449,7 @@ export function DrawLayer({
     resolvedLabelStyle,
     resolvedDrawAreaTooltipOptions,
     autoLiftRegionLabelAtMaxZoom,
+    regionLabelAutoLiftOffsetPx,
     imageMpp,
   ]);
 
