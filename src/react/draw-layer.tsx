@@ -99,6 +99,10 @@ export interface StampOptions {
 }
 
 export interface BrushOptions {
+  /**
+   * Brush radius in screen pixels (px).
+   * This value is zoom-invariant: the on-screen brush size stays fixed.
+   */
   radius: number;
   /**
    * Brush edge detail factor. Higher values create rounder/finer edges.
@@ -846,15 +850,23 @@ export function DrawLayer({
     [projectorRef]
   );
 
-  const worldRadiusToScreenPixels = useCallback(
-    (center: DrawCoordinate, worldRadius: number): number => {
-      if (!Number.isFinite(worldRadius) || worldRadius <= 0) return 0;
+  const screenRadiusToWorldRadius = useCallback(
+    (center: DrawCoordinate, screenRadiusPx: number): number => {
+      if (!Number.isFinite(screenRadiusPx) || screenRadiusPx <= 0) return 0;
       const projector = projectorRef.current;
       if (!projector) return 0;
-      const a = toCoord(projector.worldToScreen(center[0], center[1]));
-      const b = toCoord(projector.worldToScreen(center[0] + worldRadius, center[1]));
-      if (!a || !b) return 0;
-      return Math.hypot(b[0] - a[0], b[1] - a[1]);
+
+      const centerScreen = toCoord(projector.worldToScreen(center[0], center[1]));
+      if (centerScreen) {
+        const edgeWorld = toCoord(projector.screenToWorld(centerScreen[0] + screenRadiusPx, centerScreen[1]));
+        if (edgeWorld) {
+          const radiusWorld = Math.hypot(edgeWorld[0] - center[0], edgeWorld[1] - center[1]);
+          if (Number.isFinite(radiusWorld) && radiusWorld > 0) return radiusWorld;
+        }
+      }
+
+      const zoom = Math.max(1e-6, projector.getViewState?.().zoom ?? 1);
+      return screenRadiusPx / zoom;
     },
     [projectorRef]
   );
@@ -940,8 +952,7 @@ export function DrawLayer({
 
       const screenPoints = worldToScreenPoints(session.points);
       if (screenPoints.length === 0) return;
-      const anchor = session.points[session.points.length - 1] ?? session.points[0];
-      const radiusPx = worldRadiusToScreenPixels(anchor, resolvedBrushOptions.radius);
+      const radiusPx = resolvedBrushOptions.radius;
       if (!Number.isFinite(radiusPx) || radiusPx <= 0) return;
 
       ctx.save();
@@ -965,7 +976,7 @@ export function DrawLayer({
       }
       ctx.restore();
     },
-    [worldToScreenPoints, worldRadiusToScreenPixels, resolvedBrushOptions]
+    [worldToScreenPoints, resolvedBrushOptions]
   );
 
   const drawBrushCursor = useCallback(
@@ -975,7 +986,7 @@ export function DrawLayer({
       if (!cursor) return;
       const screen = toCoord(projectorRef.current?.worldToScreen(cursor[0], cursor[1]) ?? []);
       if (!screen) return;
-      const radiusPx = worldRadiusToScreenPixels(cursor, resolvedBrushOptions.radius);
+      const radiusPx = resolvedBrushOptions.radius;
       if (!Number.isFinite(radiusPx) || radiusPx <= 0) return;
 
       ctx.save();
@@ -988,7 +999,7 @@ export function DrawLayer({
       ctx.setLineDash(EMPTY_DASH);
       ctx.restore();
     },
-    [projectorRef, worldRadiusToScreenPixels, resolvedBrushOptions]
+    [projectorRef, resolvedBrushOptions]
   );
 
   const drawOverlay = useCallback(() => {
@@ -1237,13 +1248,15 @@ export function DrawLayer({
         requestDraw();
         return;
       }
+      const anchor = session.points[session.points.length - 1] ?? session.current ?? session.start;
+      const brushRadiusWorld = anchor ? screenRadiusToWorldRadius(anchor, resolvedBrushOptions.radius) : 0;
       const edgeDetail = resolvedBrushOptions.edgeDetail;
       const minRasterStep = Math.max(
         MIN_BRUSH_RASTER_STEP,
-        (resolvedBrushOptions.radius * 2) / (BRUSH_RASTER_DIAMETER_SAMPLES * edgeDetail),
+        (brushRadiusWorld * 2) / (BRUSH_RASTER_DIAMETER_SAMPLES * edgeDetail),
       );
       coordinates = buildBrushStrokePolygon(session.points, {
-        radius: resolvedBrushOptions.radius,
+        radius: brushRadiusWorld,
         clipBounds: [0, 0, imageWidth, imageHeight],
         minRasterStep,
         circleSides: Math.max(24, Math.round(64 * edgeDetail)),
@@ -1265,7 +1278,7 @@ export function DrawLayer({
 
     resetSession(true);
     requestDraw();
-  }, [tool, onDrawComplete, resetSession, requestDraw, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.edgeSmoothing, resolvedBrushOptions.clickSelectRoi, imageWidth, imageHeight, onBrushTap]);
+  }, [tool, onDrawComplete, resetSession, requestDraw, screenRadiusToWorldRadius, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.edgeSmoothing, resolvedBrushOptions.clickSelectRoi, imageWidth, imageHeight, onBrushTap]);
 
   const handleStampAt = useCallback(
     (stampTool: StampDrawTool, center: DrawCoordinate): void => {
