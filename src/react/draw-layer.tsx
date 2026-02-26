@@ -336,8 +336,37 @@ function mm2ToUm2(areaMm2: number): number {
   return areaMm2 * MICRONS_PER_MM * MICRONS_PER_MM;
 }
 
-function createSquareFromCenter(center: DrawCoordinate | null, halfLength: number): DrawCoordinate[] {
+function createSquareFromCenter(
+  center: DrawCoordinate | null,
+  halfLength: number,
+  projection?: {
+    worldToScreen: (x: number, y: number) => DrawCoordinate | null;
+    screenToWorld: (screen: DrawCoordinate) => DrawCoordinate | null;
+  },
+): DrawCoordinate[] {
   if (!center || !Number.isFinite(halfLength) || halfLength <= 0) return [];
+
+  if (projection) {
+    const screenCenter = projection.worldToScreen(center[0], center[1]);
+    const screenEdge = projection.worldToScreen(center[0] + halfLength, center[1]);
+    if (screenCenter && screenEdge) {
+      const screenHL = Math.hypot(screenEdge[0] - screenCenter[0], screenEdge[1] - screenCenter[1]);
+      const screenCorners: DrawCoordinate[] = [
+        [screenCenter[0] - screenHL, screenCenter[1] - screenHL],
+        [screenCenter[0] + screenHL, screenCenter[1] - screenHL],
+        [screenCenter[0] + screenHL, screenCenter[1] + screenHL],
+        [screenCenter[0] - screenHL, screenCenter[1] + screenHL],
+      ];
+      const worldCorners: DrawCoordinate[] = [];
+      for (const corner of screenCorners) {
+        const world = projection.screenToWorld(corner);
+        if (!world) throw new Error("Failed to create rectangle");
+        worldCorners.push(world);
+      }
+      return closeRing(worldCorners);
+    }
+  }
+
   return closeRing([
     [center[0] - halfLength, center[1] - halfLength],
     [center[0] + halfLength, center[1] - halfLength],
@@ -373,8 +402,38 @@ export function closeRing(coords: DrawCoordinate[]): DrawCoordinate[] {
   return out;
 }
 
-export function createRectangle(start: DrawCoordinate | null, end: DrawCoordinate | null): DrawCoordinate[] {
+export function createRectangle(
+  start: DrawCoordinate | null,
+  end: DrawCoordinate | null,
+  projection?: {
+    worldToScreen: (x: number, y: number) => DrawCoordinate | null;
+    screenToWorld: (screen: DrawCoordinate) => DrawCoordinate | null;
+  },
+): DrawCoordinate[] {
   if (!start || !end) return [];
+
+  if (projection) {
+    const startScreen = projection.worldToScreen(start[0], start[1]);
+    const endScreen = projection.worldToScreen(end[0], end[1]);
+
+    console.log("startScreen", startScreen);
+    console.log("endScreen", endScreen);
+    if (startScreen && endScreen) {
+      const screenCorners: DrawCoordinate[] = [
+        [startScreen[0], startScreen[1]],
+        [endScreen[0], startScreen[1]],
+        [endScreen[0], endScreen[1]],
+        [startScreen[0], endScreen[1]],
+      ];
+      const worldCorners: DrawCoordinate[] = [];
+      for (const corner of screenCorners) {
+        const world = projection.screenToWorld(corner);
+        if (!world) return createRectangle(start, end);
+        worldCorners.push(world);
+      }
+      return closeRing(worldCorners);
+    }
+  }
 
   return closeRing([
     [start[0], start[1]],
@@ -884,6 +943,18 @@ export function DrawLayer({
     [projectorRef, imageWidth, imageHeight]
   );
 
+  const getRectangleProjection = useCallback(() => {
+    const projector = projectorRef.current;
+    const rotationDeg = projector?.getViewState?.().rotationDeg ?? 0;
+    if (Math.abs(rotationDeg % 360) < 0.01 || !projector) return undefined;
+
+    return {
+      worldToScreen: (x: number, y: number): DrawCoordinate | null =>
+        toCoord(projector.worldToScreen(x, y)),
+      screenToWorld: localScreenToWorld,
+    };
+  }, [projectorRef, localScreenToWorld]);
+
   const micronsToWorldPixels = useCallback(
     (lengthUm: number): number => {
       if (!Number.isFinite(lengthUm) || lengthUm <= 0) return 0;
@@ -908,8 +979,7 @@ export function DrawLayer({
       let areaMm2 = 0;
       if (stampTool === "stamp-rectangle-4096px") {
         const halfLength = resolvedStampOptions.rectanglePixelSize * 0.5;
-        const fixed = createSquareFromCenter(center, halfLength);
-        return fixed.map(point => clampWorld(point, imageWidth, imageHeight));
+        return createSquareFromCenter(center, halfLength, getRectangleProjection()).map(point => clampWorld(point, imageWidth, imageHeight));
       }
 
       if (stampTool === "stamp-rectangle" || stampTool === "stamp-rectangle-2mm2") {
@@ -923,7 +993,7 @@ export function DrawLayer({
       let coords: DrawCoordinate[] = [];
       if (stampTool === "stamp-rectangle" || stampTool === "stamp-rectangle-2mm2") {
         const halfLength = micronsToWorldPixels(Math.sqrt(areaUm2) * 0.5);
-        coords = createSquareFromCenter(center, halfLength);
+        coords = createSquareFromCenter(center, halfLength, getRectangleProjection());
       } else if (stampTool === "stamp-circle" || stampTool === "stamp-circle-2mm2" || stampTool === "stamp-circle-hpf-0.2mm2") {
         const radius = micronsToWorldPixels(Math.sqrt(areaUm2 / Math.PI));
         coords = createCircleFromCenter(center, radius);
@@ -932,7 +1002,7 @@ export function DrawLayer({
       if (!coords.length) return [];
       return coords.map(point => clampWorld(point, imageWidth, imageHeight));
     },
-    [micronsToWorldPixels, imageWidth, imageHeight, resolvedStampOptions]
+    [micronsToWorldPixels, imageWidth, imageHeight, resolvedStampOptions, getRectangleProjection]
   );
 
   const buildPreviewCoords = useCallback((): DrawCoordinate[] => {
@@ -949,14 +1019,14 @@ export function DrawLayer({
       return session.points;
     }
     if (tool === "rectangle") {
-      return createRectangle(session.start, session.current);
+      return createRectangle(session.start, session.current, getRectangleProjection());
     }
     if (tool === "circular") {
       return createCircle(session.start, session.current);
     }
 
     return [];
-  }, [tool, buildStampCoords]);
+  }, [tool, buildStampCoords, getRectangleProjection]);
 
   const drawBrushStrokePreview = useCallback(
     (ctx: CanvasRenderingContext2D): void => {
@@ -1271,7 +1341,7 @@ export function DrawLayer({
         coordinates = closeRing(session.points);
       }
     } else if (tool === "rectangle") {
-      coordinates = createRectangle(session.start, session.current);
+      coordinates = createRectangle(session.start, session.current, getRectangleProjection());
     } else if (tool === "circular") {
       coordinates = createCircle(session.start, session.current);
     } else if (tool === "brush") {
@@ -1319,7 +1389,7 @@ export function DrawLayer({
 
     resetSession(true);
     requestDraw();
-  }, [tool, onDrawComplete, resetSession, requestDraw, worldToScreenPoints, localScreenToWorld, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.edgeSmoothing, resolvedBrushOptions.clickSelectRoi, onBrushTap]);
+  }, [tool, onDrawComplete, resetSession, requestDraw, worldToScreenPoints, localScreenToWorld, getRectangleProjection, resolvedBrushOptions.radius, resolvedBrushOptions.edgeDetail, resolvedBrushOptions.edgeSmoothing, resolvedBrushOptions.clickSelectRoi, onBrushTap]);
 
   const handleStampAt = useCallback(
     (stampTool: StampDrawTool, center: DrawCoordinate): void => {
