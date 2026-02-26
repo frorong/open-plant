@@ -242,6 +242,13 @@ function pickRegionAt(
   return null;
 }
 
+export interface OverviewMapConfig {
+  show?: boolean;
+  options?: Partial<OverviewMapOptions>;
+  className?: string;
+  style?: CSSProperties;
+}
+
 export interface WsiViewerCanvasProps {
   source: WsiImageSource | null;
   viewState?: Partial<WsiViewState> | null;
@@ -288,8 +295,7 @@ export interface WsiViewerCanvasProps {
   getCellByCoordinatesRef?: MutableRefObject<((coordinate: DrawCoordinate) => PointHitEvent | null) | null>;
   onDrawComplete?: (result: DrawResult) => void;
   onPatchComplete?: (result: PatchDrawResult) => void;
-  showOverviewMap?: boolean;
-  overviewMapOptions?: Partial<OverviewMapOptions>;
+  overviewMapConfig?: OverviewMapConfig;
   className?: string;
   style?: CSSProperties;
 }
@@ -340,11 +346,12 @@ export function WsiViewerCanvas({
   getCellByCoordinatesRef,
   onDrawComplete,
   onPatchComplete,
-  showOverviewMap = false,
-  overviewMapOptions,
+  overviewMapConfig,
   className,
   style,
 }: WsiViewerCanvasProps): React.ReactElement {
+  const showOverviewMap = overviewMapConfig?.show ?? false;
+  const overviewMapOptions = overviewMapConfig?.options;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WsiTileRenderer | null>(null);
   const drawInvalidateRef = useRef<(() => void) | null>(null);
@@ -352,7 +359,6 @@ export function WsiViewerCanvas({
   const onViewStateChangeRef = useRef<typeof onViewStateChange>(onViewStateChange);
   const onStatsRef = useRef<typeof onStats>(onStats);
   const debugOverlayRef = useRef(debugOverlay);
-  const [isOverviewOpen, setIsOverviewOpen] = useState(true);
   const [hoveredRegionId, setHoveredRegionId] = useState<string | number | null>(null);
   const [activeRegionId, setActiveRegionId] = useState<string | number | null>(null);
   const [customLayerViewState, setCustomLayerViewState] = useState<WsiViewState | null>(null);
@@ -603,20 +609,6 @@ export function WsiViewerCanvas({
     [onPointClick, getCellByCoordinates]
   );
 
-  const overviewWidth = useMemo(() => {
-    const value = Number(overviewMapOptions?.width ?? 220);
-    return Number.isFinite(value) ? Math.max(64, value) : 220;
-  }, [overviewMapOptions?.width]);
-  const overviewHeight = useMemo(() => {
-    const value = Number(overviewMapOptions?.height ?? 140);
-    return Number.isFinite(value) ? Math.max(48, value) : 140;
-  }, [overviewMapOptions?.height]);
-  const overviewMargin = useMemo(() => {
-    const value = Number(overviewMapOptions?.margin ?? 16);
-    return Number.isFinite(value) ? Math.max(0, value) : 16;
-  }, [overviewMapOptions?.margin]);
-  const overviewPosition = overviewMapOptions?.position || "bottom-right";
-
   useEffect(() => {
     if (!getCellByCoordinatesRef) return;
     getCellByCoordinatesRef.current = getCellByCoordinates;
@@ -722,14 +714,6 @@ export function WsiViewerCanvas({
     },
     [shouldTrackCustomLayerViewState]
   );
-
-  useEffect(() => {
-    if (!showOverviewMap) {
-      setIsOverviewOpen(false);
-      return;
-    }
-    setIsOverviewOpen(true);
-  }, [showOverviewMap, source?.id]);
 
   useEffect(() => {
     if (drawTool === "cursor") return;
@@ -1109,60 +1093,17 @@ export function WsiViewerCanvas({
           {debugOverlayText}
         </pre>
       ) : null}
-      {source && showOverviewMap ? (
-        isOverviewOpen ? (
-          <>
-            <OverviewMap source={source} projectorRef={rendererRef} authToken={authToken} options={overviewMapOptions} invalidateRef={overviewInvalidateRef} />
-            <button
-              type="button"
-              aria-label="Hide overview map"
-              onClick={() => setIsOverviewOpen(false)}
-              style={{
-                position: "absolute",
-                zIndex: 6,
-                ...(overviewPosition.includes("left") ? { left: overviewMargin } : { right: overviewMargin }),
-                ...(overviewPosition.includes("top") ? { top: overviewMargin + overviewHeight + 8 } : { bottom: overviewMargin + overviewHeight + 8 }),
-                width: 20,
-                height: 20,
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.4)",
-                background: "rgba(8, 14, 22, 0.9)",
-                color: "#fff",
-                fontSize: 13,
-                lineHeight: 1,
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              ×
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            aria-label="Show overview map"
-            onClick={() => setIsOverviewOpen(true)}
-            style={{
-              position: "absolute",
-              zIndex: 6,
-              ...(overviewPosition.includes("left") ? { left: overviewMargin } : { right: overviewMargin }),
-              ...(overviewPosition.includes("top") ? { top: overviewMargin } : { bottom: overviewMargin }),
-              height: 24,
-              minWidth: 40,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.45)",
-              background: "rgba(8, 14, 22, 0.9)",
-              color: "#dff8ff",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-              padding: "0 8px",
-            }}
-          >
-            Map
-          </button>
-        )
-      ) : null}
+      {source && showOverviewMap && (
+        <OverviewMap
+          source={source}
+          projectorRef={rendererRef}
+          authToken={authToken}
+          options={overviewMapOptions}
+          invalidateRef={overviewInvalidateRef}
+          className={overviewMapConfig?.className}
+          style={overviewMapConfig?.style}
+        />
+      )}
     </div>
   );
 }
