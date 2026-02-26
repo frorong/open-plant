@@ -42,6 +42,15 @@ export interface RegionStyleContext {
 
 export type RegionStrokeStyleResolver = (context: RegionStyleContext) => Partial<RegionStrokeStyle> | null | undefined;
 
+export interface RegionLabelStyleContext {
+  region: DrawRegion;
+  regionId: string | number;
+  regionIndex: number;
+  zoom: number;
+}
+
+export type RegionLabelStyleResolver = (context: RegionLabelStyleContext) => Partial<RegionLabelStyle> | null | undefined;
+
 export type DrawOverlayCoordinates = DrawCoordinate[] | DrawCoordinate[][] | DrawCoordinate[][][];
 
 export interface DrawOverlayShape {
@@ -83,6 +92,27 @@ export interface RegionLabelStyle {
   paddingY: number;
   offsetY: number;
   borderRadius: number;
+}
+
+export interface DrawAreaTooltipStyle {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: string | number;
+  textColor: string;
+  backgroundColor: string;
+  borderRadius: number;
+  paddingX: number;
+  paddingY: number;
+}
+
+export interface DrawAreaTooltipOptions {
+  enabled?: boolean;
+  format?: (areaMm2: number) => string;
+  style?: Partial<DrawAreaTooltipStyle>;
+  cursorOffset?: {
+    x: number;
+    y: number;
+  };
 }
 
 export interface DrawProjector {
@@ -150,10 +180,12 @@ export interface DrawLayerProps {
   regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
   patchStrokeStyle?: Partial<RegionStrokeStyle>;
   resolveRegionStrokeStyle?: RegionStrokeStyleResolver;
+  resolveRegionLabelStyle?: RegionLabelStyleResolver;
   overlayShapes?: DrawOverlayShape[];
   hoveredRegionId?: string | number | null;
   activeRegionId?: string | number | null;
   regionLabelStyle?: Partial<RegionLabelStyle>;
+  drawAreaTooltip?: DrawAreaTooltipOptions;
   invalidateRef?: MutableRefObject<(() => void) | null>;
   className?: string;
   style?: CSSProperties;
@@ -194,6 +226,14 @@ interface ResolvedBrushOptions {
   cursorActiveColor: string;
   cursorLineWidth: number;
   cursorLineDash: number[];
+}
+
+interface ResolvedDrawAreaTooltipOptions {
+  enabled: boolean;
+  format: (areaMm2: number) => string;
+  style: DrawAreaTooltipStyle;
+  cursorOffsetX: number;
+  cursorOffsetY: number;
 }
 
 const DRAW_FILL = "rgba(255, 77, 79, 0.16)";
@@ -268,6 +308,22 @@ const DEFAULT_REGION_LABEL_STYLE: RegionLabelStyle = {
   offsetY: 10,
   borderRadius: 4,
 };
+
+const DEFAULT_DRAW_AREA_TOOLTIP_STYLE: DrawAreaTooltipStyle = {
+  fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  fontSize: 13,
+  fontWeight: 500,
+  textColor: "#FFFFFF",
+  backgroundColor: "rgba(23, 23, 25, 0.5)",
+  borderRadius: 4,
+  paddingX: 6,
+  paddingY: 3,
+};
+
+const DEFAULT_DRAW_AREA_TOOLTIP_OFFSET = {
+  x: 16,
+  y: -24,
+} as const;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -610,6 +666,63 @@ export function resolveRegionLabelStyle(style: Partial<RegionLabelStyle> | undef
   };
 }
 
+export function mergeRegionLabelStyle(base: RegionLabelStyle, override: Partial<RegionLabelStyle> | null | undefined): RegionLabelStyle {
+  if (!override) return base;
+  return resolveRegionLabelStyle({
+    fontFamily: override.fontFamily ?? base.fontFamily,
+    fontSize: override.fontSize ?? base.fontSize,
+    fontWeight: override.fontWeight ?? base.fontWeight,
+    textColor: override.textColor ?? base.textColor,
+    backgroundColor: override.backgroundColor ?? base.backgroundColor,
+    borderColor: override.borderColor ?? base.borderColor,
+    borderWidth: override.borderWidth ?? base.borderWidth,
+    paddingX: override.paddingX ?? base.paddingX,
+    paddingY: override.paddingY ?? base.paddingY,
+    offsetY: override.offsetY ?? base.offsetY,
+    borderRadius: override.borderRadius ?? base.borderRadius,
+  });
+}
+
+function resolveDrawAreaTooltipStyle(style: Partial<DrawAreaTooltipStyle> | undefined): DrawAreaTooltipStyle {
+  const fontSize = typeof style?.fontSize === "number" && Number.isFinite(style.fontSize) ? Math.max(8, style.fontSize) : DEFAULT_DRAW_AREA_TOOLTIP_STYLE.fontSize;
+  const borderRadius = typeof style?.borderRadius === "number" && Number.isFinite(style.borderRadius) ? Math.max(0, style.borderRadius) : DEFAULT_DRAW_AREA_TOOLTIP_STYLE.borderRadius;
+  const paddingX = typeof style?.paddingX === "number" && Number.isFinite(style.paddingX) ? Math.max(0, style.paddingX) : DEFAULT_DRAW_AREA_TOOLTIP_STYLE.paddingX;
+  const paddingY = typeof style?.paddingY === "number" && Number.isFinite(style.paddingY) ? Math.max(0, style.paddingY) : DEFAULT_DRAW_AREA_TOOLTIP_STYLE.paddingY;
+  return {
+    fontFamily: style?.fontFamily || DEFAULT_DRAW_AREA_TOOLTIP_STYLE.fontFamily,
+    fontSize,
+    fontWeight: style?.fontWeight || DEFAULT_DRAW_AREA_TOOLTIP_STYLE.fontWeight,
+    textColor: style?.textColor || DEFAULT_DRAW_AREA_TOOLTIP_STYLE.textColor,
+    backgroundColor: style?.backgroundColor || DEFAULT_DRAW_AREA_TOOLTIP_STYLE.backgroundColor,
+    borderRadius,
+    paddingX,
+    paddingY,
+  };
+}
+
+function resolveTooltipCursorOffset(value: DrawAreaTooltipOptions["cursorOffset"]): { x: number; y: number } {
+  const x = typeof value?.x === "number" && Number.isFinite(value.x) ? value.x : DEFAULT_DRAW_AREA_TOOLTIP_OFFSET.x;
+  const y = typeof value?.y === "number" && Number.isFinite(value.y) ? value.y : DEFAULT_DRAW_AREA_TOOLTIP_OFFSET.y;
+  return { x, y };
+}
+
+function defaultDrawAreaTooltipFormatter(areaMm2: number): string {
+  if (!Number.isFinite(areaMm2)) return "0.000 mm²";
+  return `${Math.max(0, areaMm2).toFixed(3)} mm²`;
+}
+
+function resolveDrawAreaTooltipOptions(options: DrawAreaTooltipOptions | undefined): ResolvedDrawAreaTooltipOptions {
+  const format = typeof options?.format === "function" ? options.format : defaultDrawAreaTooltipFormatter;
+  const cursorOffset = resolveTooltipCursorOffset(options?.cursorOffset);
+  return {
+    enabled: options?.enabled === true,
+    format,
+    style: resolveDrawAreaTooltipStyle(options?.style),
+    cursorOffsetX: cursorOffset.x,
+    cursorOffsetY: cursorOffset.y,
+  };
+}
+
 function resolveRegionInteractionShadowStyle(strokeStyle: RegionStrokeStyle): RegionStrokeStyle {
   return {
     color: REGION_INTERACTION_SHADOW_COLOR,
@@ -727,6 +840,42 @@ function drawRegionLabel(ctx: CanvasRenderingContext2D, text: string, anchor: Dr
   ctx.restore();
 }
 
+function drawAreaTooltipBox(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cursorScreen: DrawCoordinate,
+  canvasWidth: number,
+  canvasHeight: number,
+  style: DrawAreaTooltipStyle,
+  offsetX: number,
+  offsetY: number
+): void {
+  const label = text.trim();
+  if (!label) return;
+
+  ctx.save();
+  ctx.font = `${style.fontWeight} ${style.fontSize}px ${style.fontFamily}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const textWidth = ctx.measureText(label).width;
+  const boxWidth = textWidth + style.paddingX * 2;
+  const boxHeight = style.fontSize + style.paddingY * 2;
+
+  const x = clamp(cursorScreen[0] + offsetX, boxWidth * 0.5 + 1, canvasWidth - boxWidth * 0.5 - 1);
+  const y = clamp(cursorScreen[1] + offsetY, boxHeight * 0.5 + 1, canvasHeight - boxHeight * 0.5 - 1);
+  const left = x - boxWidth * 0.5;
+  const top = y - boxHeight * 0.5;
+
+  ctx.fillStyle = style.backgroundColor;
+  drawRoundedRect(ctx, left, top, boxWidth, boxHeight, style.borderRadius);
+  ctx.fill();
+
+  ctx.fillStyle = style.textColor;
+  ctx.fillText(label, x, y + 0.5);
+  ctx.restore();
+}
+
 function clampWorld(coord: DrawCoordinate, imageWidth: number, imageHeight: number): DrawCoordinate {
   return [clamp(coord[0], 0, imageWidth), clamp(coord[1], 0, imageHeight)];
 }
@@ -762,10 +911,12 @@ export function DrawLayer({
   regionStrokeActiveStyle,
   patchStrokeStyle,
   resolveRegionStrokeStyle,
+  resolveRegionLabelStyle: resolveRegionLabelStyleProp,
   overlayShapes,
   hoveredRegionId = null,
   activeRegionId = null,
   regionLabelStyle,
+  drawAreaTooltip,
   invalidateRef,
   className,
   style,
@@ -838,6 +989,7 @@ export function DrawLayer({
   const resolvedDrawPreviewFillColor = useMemo(() => resolveDrawPreviewFillColor(drawFillColor), [drawFillColor]);
 
   const resolvedLabelStyle = useMemo(() => resolveRegionLabelStyle(regionLabelStyle), [regionLabelStyle]);
+  const resolvedDrawAreaTooltipOptions = useMemo(() => resolveDrawAreaTooltipOptions(drawAreaTooltip), [drawAreaTooltip]);
   const resolvedStampOptions = useMemo(() => resolveStampOptions(stampOptions), [stampOptions]);
   const resolvedBrushOptions = useMemo(() => resolveBrushOptions(brushOptions), [brushOptions]);
 
@@ -1158,26 +1310,25 @@ export function DrawLayer({
       }
     }
 
+    const preview = buildPreviewCoords();
+
     if (active) {
       if (tool === "brush") {
         drawBrushStrokePreview(ctx);
         drawBrushCursor(ctx);
-      } else {
-        const preview = buildPreviewCoords();
-        if (preview.length > 0) {
-          if (tool === "freehand") {
-            const line = worldToScreenPoints(preview);
-            if (line.length >= 2) {
-              drawPath(ctx, line, resolvedStrokeStyle, false, false);
-            }
-            if (line.length >= 3) {
-              drawPath(ctx, worldToScreenPoints(closeRing(preview)), resolvedStrokeStyle, true, true, resolvedDrawPreviewFillColor);
-            }
-          } else {
-            const polygon = worldToScreenPoints(preview);
-            if (polygon.length >= 4) {
-              drawPath(ctx, polygon, resolvedStrokeStyle, true, true, resolvedDrawPreviewFillColor);
-            }
+      } else if (preview.length > 0) {
+        if (tool === "freehand") {
+          const line = worldToScreenPoints(preview);
+          if (line.length >= 2) {
+            drawPath(ctx, line, resolvedStrokeStyle, false, false);
+          }
+          if (line.length >= 3) {
+            drawPath(ctx, worldToScreenPoints(closeRing(preview)), resolvedStrokeStyle, true, true, resolvedDrawPreviewFillColor);
+          }
+        } else {
+          const polygon = worldToScreenPoints(preview);
+          if (polygon.length >= 4) {
+            drawPath(ctx, polygon, resolvedStrokeStyle, true, true, resolvedDrawPreviewFillColor);
           }
         }
       }
@@ -1185,13 +1336,57 @@ export function DrawLayer({
 
     // Draw labels last so they stay visually on top.
     if (preparedPersistedRegions.length > 0) {
+      const zoom = Math.max(1e-6, projectorRef.current?.getViewState?.().zoom ?? 1);
       for (const entry of preparedPersistedRegions) {
         if (!entry.region.label) continue;
         const anchorWorld = getTopAnchorFromPolygons(entry.polygons);
         if (!anchorWorld) continue;
         const anchorScreen = toCoord(projectorRef.current?.worldToScreen(anchorWorld[0], anchorWorld[1]) ?? []);
         if (!anchorScreen) continue;
-        drawRegionLabel(ctx, entry.region.label, anchorScreen, canvasWidth, canvasHeight, resolvedLabelStyle);
+        const dynamicLabelStyle = mergeRegionLabelStyle(
+          resolvedLabelStyle,
+          resolveRegionLabelStyleProp?.({
+            region: entry.region,
+            regionId: entry.regionKey,
+            regionIndex: entry.regionIndex,
+            zoom,
+          })
+        );
+        drawRegionLabel(ctx, entry.region.label, anchorScreen, canvasWidth, canvasHeight, dynamicLabelStyle);
+      }
+    }
+
+    if (resolvedDrawAreaTooltipOptions.enabled && active && (tool === "freehand" || tool === "rectangle" || tool === "circular")) {
+      const session = sessionRef.current;
+      if (session.isDrawing) {
+        const areaCoords = tool === "freehand" ? closeRing(preview) : preview;
+        if (areaCoords.length >= 4) {
+          const areaPx = polygonArea(areaCoords);
+          const mpp = typeof imageMpp === "number" && Number.isFinite(imageMpp) && imageMpp > 0 ? imageMpp : 0;
+          const areaMm2 = mpp > 0 ? (areaPx * mpp * mpp) / (MICRONS_PER_MM * MICRONS_PER_MM) : 0;
+          let text = defaultDrawAreaTooltipFormatter(areaMm2);
+          try {
+            text = resolvedDrawAreaTooltipOptions.format(areaMm2);
+          } catch {
+            text = defaultDrawAreaTooltipFormatter(areaMm2);
+          }
+
+          const cursor =
+            session.cursorScreen ??
+            (session.current ? toCoord(projectorRef.current?.worldToScreen(session.current[0], session.current[1]) ?? []) : null);
+          if (cursor) {
+            drawAreaTooltipBox(
+              ctx,
+              text,
+              cursor,
+              canvasWidth,
+              canvasHeight,
+              resolvedDrawAreaTooltipOptions.style,
+              resolvedDrawAreaTooltipOptions.cursorOffsetX,
+              resolvedDrawAreaTooltipOptions.cursorOffsetY
+            );
+          }
+        }
       }
     }
   }, [
@@ -1216,7 +1411,10 @@ export function DrawLayer({
     preparedPatchRegions,
     resolvedPatchStrokeStyle,
     resolveRegionStrokeStyle,
+    resolveRegionLabelStyleProp,
     resolvedLabelStyle,
+    resolvedDrawAreaTooltipOptions,
+    imageMpp,
   ]);
 
   const requestDraw = useCallback(() => {
@@ -1391,8 +1589,8 @@ export function DrawLayer({
 
       const world = toWorld(event);
       if (!world) return;
-      const screen = tool === "brush" ? toLocalScreen(event) : null;
-      if (tool === "brush" && !screen) return;
+      const screen = toLocalScreen(event);
+      if (!screen) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -1418,7 +1616,7 @@ export function DrawLayer({
       session.cursor = world;
       session.cursorScreen = screen;
       session.points = tool === "freehand" || tool === "brush" ? [world] : [];
-      session.screenPoints = tool === "brush" && screen ? [screen] : [];
+      session.screenPoints = tool === "brush" ? [screen] : [];
       requestDraw();
     },
     [active, tool, toWorld, toLocalScreen, handleStampAt, requestDraw]
@@ -1431,9 +1629,14 @@ export function DrawLayer({
 
       const world = toWorld(event);
       if (!world) return;
+      const screen = toLocalScreen(event);
+      if (!screen) return;
+
+      const session = sessionRef.current;
+      session.cursor = world;
+      session.cursorScreen = screen;
 
       if (isStampTool(tool)) {
-        const session = sessionRef.current;
         session.stampCenter = world;
         event.preventDefault();
         event.stopPropagation();
@@ -1441,12 +1644,7 @@ export function DrawLayer({
         return;
       }
 
-      const session = sessionRef.current;
       if (tool === "brush") {
-        const screen = toLocalScreen(event);
-        if (!screen) return;
-        session.cursor = world;
-        session.cursorScreen = screen;
         if (!session.isDrawing || session.pointerId !== event.pointerId) {
           requestDraw();
           return;
@@ -1497,12 +1695,14 @@ export function DrawLayer({
       event.preventDefault();
       event.stopPropagation();
       const world = toWorld(event);
-      const screen = tool === "brush" ? toLocalScreen(event) : null;
+      const screen = toLocalScreen(event);
       if (world) {
         session.cursor = world;
+        if (screen) {
+          session.cursorScreen = screen;
+        }
         if (tool === "brush") {
           if (screen) {
-            session.cursorScreen = screen;
             appendBrushPoint(session, world, screen);
           }
         } else {

@@ -23,9 +23,10 @@ import type {
   WsiRenderStats,
   WsiViewState,
 } from "../wsi/types";
-import { type PointSizeByZoom, type WsiTileErrorEvent, WsiTileRenderer } from "../wsi/wsi-tile-renderer";
+import { type PointSizeByZoom, type WsiTileErrorEvent, type WsiViewTransitionOptions, WsiTileRenderer } from "../wsi/wsi-tile-renderer";
 import type {
   BrushOptions,
+  DrawAreaTooltipOptions,
   DrawCoordinate,
   DrawOverlayShape,
   DrawRegionCoordinates,
@@ -33,11 +34,12 @@ import type {
   DrawTool,
   PatchDrawResult,
   RegionLabelStyle,
+  RegionLabelStyleResolver,
   RegionStrokeStyle,
   RegionStrokeStyleResolver,
   StampOptions,
 } from "./draw-layer";
-import { DrawLayer, resolveRegionLabelStyle } from "./draw-layer";
+import { DrawLayer, mergeRegionLabelStyle, resolveRegionLabelStyle } from "./draw-layer";
 import { OverviewMap, type OverviewMapOptions } from "./overview-map";
 
 const EMPTY_ROI_REGIONS: WsiRegion[] = [];
@@ -421,6 +423,7 @@ function pickPreparedRegionAt(
   regions: PreparedRegionHit[],
   renderer: WsiTileRenderer,
   labelStyle: RegionLabelStyle,
+  labelStyleResolver: RegionLabelStyleResolver | undefined,
   canvasWidth: number,
   canvasHeight: number
 ): {
@@ -442,7 +445,16 @@ function pickPreparedRegionAt(
         regionId: region.regionId,
       };
     }
-    if (!isScreenPointInsideLabel(region, screenCoord, renderer, labelStyle, canvasWidth, canvasHeight)) continue;
+    const dynamicLabelStyle = mergeRegionLabelStyle(
+      labelStyle,
+      labelStyleResolver?.({
+        region: region.region,
+        regionId: region.regionId,
+        regionIndex: region.regionIndex,
+        zoom,
+      })
+    );
+    if (!isScreenPointInsideLabel(region, screenCoord, renderer, dynamicLabelStyle, canvasWidth, canvasHeight)) continue;
     return {
       region: region.region,
       regionIndex: region.regionIndex,
@@ -478,6 +490,9 @@ export interface WsiViewerCanvasProps {
   pointPalette?: Uint8Array | null;
   pointSizeByZoom?: PointSizeByZoom;
   pointStrokeScale?: number;
+  minZoom?: number;
+  maxZoom?: number;
+  viewTransition?: WsiViewTransitionOptions;
   roiRegions?: WsiRegion[];
   roiPolygons?: DrawRegionCoordinates[];
   clipPointsToRois?: boolean;
@@ -495,10 +510,12 @@ export interface WsiViewerCanvasProps {
   regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
   patchStrokeStyle?: Partial<RegionStrokeStyle>;
   resolveRegionStrokeStyle?: RegionStrokeStyleResolver;
+  resolveRegionLabelStyle?: RegionLabelStyleResolver;
   overlayShapes?: DrawOverlayShape[];
   customLayers?: WsiCustomLayer[];
   patchRegions?: WsiRegion[];
   regionLabelStyle?: Partial<RegionLabelStyle>;
+  drawAreaTooltip?: DrawAreaTooltipOptions;
   onPointerWorldMove?: (event: PointerWorldMoveEvent) => void;
   onPointHover?: (event: PointHoverEvent) => void;
   onPointClick?: (event: PointClickEvent) => void;
@@ -533,6 +550,9 @@ export function WsiViewerCanvas({
   pointPalette = null,
   pointSizeByZoom,
   pointStrokeScale,
+  minZoom,
+  maxZoom,
+  viewTransition,
   roiRegions,
   roiPolygons,
   clipPointsToRois = false,
@@ -550,10 +570,12 @@ export function WsiViewerCanvas({
   regionStrokeActiveStyle,
   patchStrokeStyle,
   resolveRegionStrokeStyle,
+  resolveRegionLabelStyle: resolveRegionLabelStyleProp,
   overlayShapes,
   customLayers,
   patchRegions,
   regionLabelStyle,
+  drawAreaTooltip,
   onPointerWorldMove,
   onPointHover,
   onPointClick,
@@ -1007,9 +1029,9 @@ export function WsiViewerCanvas({
     (coord: DrawCoordinate, screenCoord: DrawCoordinate, canvasWidth: number, canvasHeight: number) => {
       const renderer = rendererRef.current;
       if (!renderer) return null;
-      return pickPreparedRegionAt(coord, screenCoord, preparedRegionHits, renderer, resolvedRegionLabelStyle, canvasWidth, canvasHeight);
+      return pickPreparedRegionAt(coord, screenCoord, preparedRegionHits, renderer, resolvedRegionLabelStyle, resolveRegionLabelStyleProp, canvasWidth, canvasHeight);
     },
-    [preparedRegionHits, resolvedRegionLabelStyle]
+    [preparedRegionHits, resolvedRegionLabelStyle, resolveRegionLabelStyleProp]
   );
 
   const requestCustomLayerRedraw = useCallback(() => {
@@ -1210,6 +1232,9 @@ export function WsiViewerCanvas({
       ctrlDragRotate,
       pointSizeByZoom,
       pointStrokeScale,
+      minZoom,
+      maxZoom,
+      viewTransition,
     });
 
     rendererRef.current = renderer;
@@ -1270,6 +1295,18 @@ export function WsiViewerCanvas({
     if (!renderer) return;
     renderer.setPointStrokeScale(pointStrokeScale);
   }, [pointStrokeScale]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setZoomRange(minZoom, maxZoom);
+  }, [minZoom, maxZoom]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setViewTransition(viewTransition);
+  }, [viewTransition]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1364,10 +1401,12 @@ export function WsiViewerCanvas({
           regionStrokeActiveStyle={regionStrokeActiveStyle}
           patchStrokeStyle={patchStrokeStyle}
           resolveRegionStrokeStyle={resolveRegionStrokeStyle}
+          resolveRegionLabelStyle={resolveRegionLabelStyleProp}
           overlayShapes={overlayShapes}
           hoveredRegionId={hoveredRegionId}
           activeRegionId={activeRegionId}
           regionLabelStyle={regionLabelStyle}
+          drawAreaTooltip={drawAreaTooltip}
           invalidateRef={drawInvalidateRef}
           onDrawComplete={onDrawComplete}
           onPatchComplete={onPatchComplete}

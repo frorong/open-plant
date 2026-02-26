@@ -82,6 +82,11 @@ const DEFAULT_POINT_SIZE_STOPS: readonly PointSizeStop[] = [
 
 export type PointSizeByZoom = Readonly<Record<number, number>>;
 
+export interface WsiViewTransitionOptions {
+	duration?: number;
+	easing?: (t: number) => number;
+}
+
 export interface WsiTileSchedulerConfig {
 	maxConcurrency?: number;
 	maxRetries?: number;
@@ -94,6 +99,9 @@ export interface WsiTileRendererOptions {
 	onStats?: (stats: WsiRenderStats) => void;
 	authToken?: string;
 	imageColorSettings?: WsiImageColorSettings | null;
+	minZoom?: number;
+	maxZoom?: number;
+	viewTransition?: WsiViewTransitionOptions;
 	pointSizeByZoom?: PointSizeByZoom;
 	pointStrokeScale?: number;
 	maxCacheTiles?: number;
@@ -109,6 +117,14 @@ export interface WsiTileErrorEvent {
 	tile: ScheduledTile;
 	error: unknown;
 	attemptCount: number;
+}
+
+interface ViewAnimationState {
+	startMs: number;
+	durationMs: number;
+	from: WsiViewState;
+	to: WsiViewState;
+	easing: (t: number) => number;
 }
 
 class OrthoCamera {
@@ -348,6 +364,38 @@ function toNormalizedImageColorSettings(
 	};
 }
 
+const MAX_VIEW_TRANSITION_DURATION_MS = 2000;
+
+function linearEasing(t: number): number {
+	return t;
+}
+
+function normalizeViewTransitionDuration(duration: number | null | undefined): number {
+	if (typeof duration !== "number" || !Number.isFinite(duration)) return 0;
+	return clamp(duration, 0, MAX_VIEW_TRANSITION_DURATION_MS);
+}
+
+function normalizeZoomOverride(value: number | null | undefined): number | null {
+	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+	return Math.max(1e-6, value);
+}
+
+function normalizeTransitionEasing(
+	easing: ((t: number) => number) | null | undefined,
+): (t: number) => number {
+	return typeof easing === "function" ? easing : linearEasing;
+}
+
+function isSameViewState(a: WsiViewState, b: WsiViewState): boolean {
+	const epsilon = 1e-6;
+	return (
+		Math.abs(a.zoom - b.zoom) <= epsilon &&
+		Math.abs(a.offsetX - b.offsetX) <= epsilon &&
+		Math.abs(a.offsetY - b.offsetY) <= epsilon &&
+		Math.abs(a.rotationDeg - b.rotationDeg) <= epsilon
+	);
+}
+
 export class WsiTileRenderer {
 	private readonly canvas: HTMLCanvasElement;
 	private readonly source: WsiImageSource;
@@ -381,6 +429,12 @@ export class WsiTileRenderer {
 	private fitZoom = 1;
 	private minZoom = 1e-6;
 	private maxZoom = 1;
+	private minZoomOverride: number | null = null;
+	private maxZoomOverride: number | null = null;
+	private viewTransitionDurationMs = 0;
+	private viewTransitionEasing: (t: number) => number = linearEasing;
+	private viewAnimation: ViewAnimationState | null = null;
+	private viewAnimationFrame: number | null = null;
 	private currentTier = 0;
 	private pointCount = 0;
 	private usePointIndices = false;
@@ -432,6 +486,10 @@ export class WsiTileRenderer {
 		this.imageColorSettings = toNormalizedImageColorSettings(
 			options.imageColorSettings,
 		);
+		this.minZoomOverride = normalizeZoomOverride(options.minZoom);
+		this.maxZoomOverride = normalizeZoomOverride(options.maxZoom);
+		this.viewTransitionDurationMs = normalizeViewTransitionDuration(options.viewTransition?.duration);
+		this.viewTransitionEasing = normalizeTransitionEasing(options.viewTransition?.easing);
 
 		const gl = canvas.getContext("webgl2", {
 			alpha: false,
@@ -483,8 +541,129 @@ export class WsiTileRenderer {
 		canvas.addEventListener("webglcontextlost", this.boundContextLost);
 		canvas.addEventListener("webglcontextrestored", this.boundContextRestored);
 
-		this.fitToImage();
+		this.fitToImage({ duration: 0 });
 		this.resize();
+	}
+
+	private resolveDefaultZoomBounds(): { minZoom: number; maxZoom: number } {
+		const minZoom = Math.max(this.fitZoom * 0.5, 1e-6);
+		const maxZoom = Math.max(1, this.fitZoom * 8);
+		return {
+			minZoom,
+			maxZoom: Math.max(minZoom, maxZoom),
+		};
+	}
+
+	private applyZoomBounds(): void {
+		const defaults = this.resolveDefaultZoomBounds();
+		let minZoom = this.minZoomOverride ?? defaults.minZoom;
+		let maxZoom = this.maxZoomOverride ?? defaults.maxZoom;
+		minZoom = Math.max(1e-6, minZoom);
+		maxZoom = Math.max(1e-6, maxZoom);
+		if (minZoom > maxZoom) {
+			minZoom = maxZoom;
+		}
+		this.minZoom = minZoom;
+		this.maxZoom = maxZoom;
+	}
+
+	private resolveTargetViewState(next: Partial<WsiViewState>): WsiViewState {
+		const current = this.camera.getViewState();
+		const candidate: WsiViewState = {
+			zoom:
+				typeof next.zoom === "number" && Number.isFinite(next.zoom)
+					? clamp(next.zoom, this.minZoom, this.maxZoom)
+					: current.zoom,
+			offsetX:
+				typeof next.offsetX === "number" && Number.isFinite(next.offsetX)
+					? next.offsetX
+					: current.offsetX,
+			offsetY:
+				typeof next.offsetY === "number" && Number.isFinite(next.offsetY)
+					? next.offsetY
+					: current.offsetY,
+			rotationDeg:
+				typeof next.rotationDeg === "number" && Number.isFinite(next.rotationDeg)
+					? next.rotationDeg
+					: current.rotationDeg,
+		};
+
+		this.camera.setViewState(candidate);
+		this.clampViewState();
+		const target = this.camera.getViewState();
+		this.camera.setViewState(current);
+		return target;
+	}
+
+	private cancelViewAnimation(): void {
+		this.viewAnimation = null;
+		if (this.viewAnimationFrame !== null) {
+			cancelAnimationFrame(this.viewAnimationFrame);
+			this.viewAnimationFrame = null;
+		}
+	}
+
+	private startViewAnimation(
+		target: WsiViewState,
+		durationMs: number,
+		easing: (t: number) => number,
+	): void {
+		const from = this.camera.getViewState();
+		this.cancelViewAnimation();
+		this.viewAnimation = {
+			startMs: nowMs(),
+			durationMs: Math.max(0, durationMs),
+			from,
+			to: target,
+			easing,
+		};
+
+		const step = (): void => {
+			const animation = this.viewAnimation;
+			if (!animation) return;
+
+			const elapsed = Math.max(0, nowMs() - animation.startMs);
+			const rawT =
+				animation.durationMs <= 0 ? 1 : clamp(elapsed / animation.durationMs, 0, 1);
+			let eased = rawT;
+			try {
+				eased = animation.easing(rawT);
+			} catch {
+				eased = rawT;
+			}
+			if (!Number.isFinite(eased)) {
+				eased = rawT;
+			}
+			eased = clamp(eased, 0, 1);
+
+			const nextState: WsiViewState = {
+				zoom: animation.from.zoom + (animation.to.zoom - animation.from.zoom) * eased,
+				offsetX:
+					animation.from.offsetX +
+					(animation.to.offsetX - animation.from.offsetX) * eased,
+				offsetY:
+					animation.from.offsetY +
+					(animation.to.offsetY - animation.from.offsetY) * eased,
+				rotationDeg:
+					animation.from.rotationDeg +
+					(animation.to.rotationDeg - animation.from.rotationDeg) * eased,
+			};
+
+			this.camera.setViewState(nextState);
+			this.clampViewState();
+			this.emitViewState();
+			this.requestRender();
+
+			if (rawT >= 1) {
+				this.viewAnimation = null;
+				this.viewAnimationFrame = null;
+				return;
+			}
+
+			this.viewAnimationFrame = requestAnimationFrame(step);
+		};
+
+		this.viewAnimationFrame = requestAnimationFrame(step);
 	}
 
 	setAuthToken(token: string): void {
@@ -492,15 +671,59 @@ export class WsiTileRenderer {
 		this.tileScheduler.setAuthToken(this.authToken);
 	}
 
-	setViewState(next: Partial<WsiViewState>): void {
-		const normalized: Partial<WsiViewState> = { ...next };
-		if (typeof normalized.zoom === "number") {
-			normalized.zoom = clamp(normalized.zoom, this.minZoom, this.maxZoom);
+	setZoomRange(minZoom: number | null | undefined, maxZoom: number | null | undefined): void {
+		const nextMinOverride = normalizeZoomOverride(minZoom);
+		const nextMaxOverride = normalizeZoomOverride(maxZoom);
+		if (
+			this.minZoomOverride === nextMinOverride &&
+			this.maxZoomOverride === nextMaxOverride
+		) {
+			return;
 		}
-		this.camera.setViewState(normalized);
-		this.clampViewState();
+
+		this.minZoomOverride = nextMinOverride;
+		this.maxZoomOverride = nextMaxOverride;
+		this.applyZoomBounds();
+
+		const target = this.resolveTargetViewState({});
+		const current = this.camera.getViewState();
+		if (isSameViewState(current, target)) {
+			return;
+		}
+		this.cancelViewAnimation();
+		this.camera.setViewState(target);
 		this.emitViewState();
 		this.requestRender();
+	}
+
+	setViewTransition(options: WsiViewTransitionOptions | null | undefined): void {
+		this.viewTransitionDurationMs = normalizeViewTransitionDuration(options?.duration);
+		this.viewTransitionEasing = normalizeTransitionEasing(options?.easing);
+	}
+
+	setViewState(
+		next: Partial<WsiViewState>,
+		transition?: WsiViewTransitionOptions,
+	): void {
+		const target = this.resolveTargetViewState(next);
+		const current = this.camera.getViewState();
+		if (isSameViewState(current, target)) return;
+
+		const durationMs = normalizeViewTransitionDuration(
+			transition?.duration ?? this.viewTransitionDurationMs,
+		);
+		const easing = normalizeTransitionEasing(
+			transition?.easing ?? this.viewTransitionEasing,
+		);
+		if (durationMs <= 0) {
+			this.cancelViewAnimation();
+			this.camera.setViewState(target);
+			this.emitViewState();
+			this.requestRender();
+			return;
+		}
+
+		this.startViewAnimation(target, durationMs, easing);
 	}
 
 	getViewState(): WsiViewState {
@@ -738,25 +961,32 @@ export class WsiTileRenderer {
 		return this.camera.worldToScreen(worldX, worldY);
 	}
 
-	setViewCenter(worldX: number, worldY: number): void {
+	setViewCenter(
+		worldX: number,
+		worldY: number,
+		transition?: WsiViewTransitionOptions,
+	): void {
 		if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return;
-		this.camera.setCenter(worldX, worldY);
-		this.clampViewState();
-		this.emitViewState();
-		this.requestRender();
+		const state = this.camera.getViewState();
+		const zoom = Math.max(1e-6, state.zoom);
+		const vp = this.camera.getViewport();
+		this.setViewState(
+			{
+				offsetX: worldX - vp.width / (2 * zoom),
+				offsetY: worldY - vp.height / (2 * zoom),
+			},
+			transition,
+		);
 	}
 
 	getViewCorners(): [WorldPoint, WorldPoint, WorldPoint, WorldPoint] {
 		return this.camera.getViewCorners();
 	}
 
-	resetRotation(): void {
+	resetRotation(transition?: WsiViewTransitionOptions): void {
 		const state = this.camera.getViewState();
 		if (Math.abs(state.rotationDeg) < 1e-6) return;
-		this.camera.setViewState({ rotationDeg: 0 });
-		this.clampViewState();
-		this.emitViewState();
-		this.requestRender();
+		this.setViewState({ rotationDeg: 0 }, transition);
 	}
 
 	getPointSizeByZoom(): number {
@@ -766,7 +996,7 @@ export class WsiTileRenderer {
 		return clamp(size, MIN_POINT_SIZE_PX, MAX_POINT_SIZE_PX);
 	}
 
-	fitToImage(): void {
+	fitToImage(transition?: WsiViewTransitionOptions): void {
 		const rect = this.canvas.getBoundingClientRect();
 		const vw = Math.max(1, rect.width || 1);
 		const vh = Math.max(1, rect.height || 1);
@@ -775,49 +1005,52 @@ export class WsiTileRenderer {
 		const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
 
 		this.fitZoom = safeZoom;
-		this.minZoom = Math.max(this.fitZoom * 0.5, 1e-6);
-		this.maxZoom = Math.max(1, this.fitZoom * 8);
-		if (this.minZoom > this.maxZoom) {
-			this.minZoom = this.maxZoom;
-		}
+		this.applyZoomBounds();
+		const clampedZoom = clamp(safeZoom, this.minZoom, this.maxZoom);
+		const visibleWorldW = vw / clampedZoom;
+		const visibleWorldH = vh / clampedZoom;
 
-		const visibleWorldW = vw / safeZoom;
-		const visibleWorldH = vh / safeZoom;
-
-		this.camera.setViewState({
-			zoom: clamp(safeZoom, this.minZoom, this.maxZoom),
-			offsetX: (this.source.width - visibleWorldW) * 0.5,
-			offsetY: (this.source.height - visibleWorldH) * 0.5,
-			rotationDeg: 0,
-		});
-
-		this.clampViewState();
-		this.emitViewState();
-		this.requestRender();
+		this.setViewState(
+			{
+				zoom: clampedZoom,
+				offsetX: (this.source.width - visibleWorldW) * 0.5,
+				offsetY: (this.source.height - visibleWorldH) * 0.5,
+				rotationDeg: 0,
+			},
+			transition,
+		);
 	}
 
-	zoomBy(factor: number, screenX: number, screenY: number): void {
+	zoomBy(
+		factor: number,
+		screenX: number,
+		screenY: number,
+		transition?: WsiViewTransitionOptions,
+	): void {
 		const state = this.camera.getViewState();
 		const nextZoom = clamp(state.zoom * factor, this.minZoom, this.maxZoom);
 		if (nextZoom === state.zoom) return;
 
 		const [worldX, worldY] = this.camera.screenToWorld(screenX, screenY);
-
-		this.camera.setViewState({ zoom: nextZoom });
-
 		const vp = this.camera.getViewport();
 		const dx = screenX - vp.width * 0.5;
 		const dy = screenY - vp.height * 0.5;
-		const rad = toRadians(this.camera.getViewState().rotationDeg);
+		const rad = toRadians(state.rotationDeg);
 		const cos = Math.cos(rad);
 		const sin = Math.sin(rad);
 		const worldDx = (dx / nextZoom) * cos - (dy / nextZoom) * sin;
 		const worldDy = (dx / nextZoom) * sin + (dy / nextZoom) * cos;
-		this.camera.setCenter(worldX - worldDx, worldY - worldDy);
+		const nextCenterX = worldX - worldDx;
+		const nextCenterY = worldY - worldDy;
 
-		this.clampViewState();
-		this.emitViewState();
-		this.requestRender();
+		this.setViewState(
+			{
+				zoom: nextZoom,
+				offsetX: nextCenterX - vp.width / (2 * nextZoom),
+				offsetY: nextCenterY - vp.height / (2 * nextZoom),
+			},
+			transition,
+		);
 	}
 
 	clampViewState(): void {
@@ -1122,6 +1355,7 @@ export class WsiTileRenderer {
 		const wantsRotate = this.ctrlDragRotate && (event.ctrlKey || event.metaKey);
 		const allowButton = event.button === 0 || (wantsRotate && event.button === 2);
 		if (!allowButton) return;
+		this.cancelViewAnimation();
 		if (wantsRotate) {
 			event.preventDefault();
 		}
@@ -1230,6 +1464,7 @@ export class WsiTileRenderer {
 			cancelAnimationFrame(this.frame);
 			this.frame = null;
 		}
+		this.cancelViewAnimation();
 
 		this.cancelDrag();
 		this.tileScheduler.clear();
@@ -1268,6 +1503,7 @@ export class WsiTileRenderer {
 			cancelAnimationFrame(this.frame);
 			this.frame = null;
 		}
+		this.cancelViewAnimation();
 
 		this.resizeObserver.disconnect();
 		this.canvas.removeEventListener("pointerdown", this.boundPointerDown);

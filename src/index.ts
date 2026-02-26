@@ -6,6 +6,8 @@ export type {
   DrawBounds,
   DrawCoordinate,
   DrawIntent,
+  DrawAreaTooltipOptions,
+  DrawAreaTooltipStyle,
   DrawOverlayCoordinates,
   DrawOverlayInvertedFillStyle,
   DrawOverlayShape,
@@ -16,6 +18,8 @@ export type {
   DrawTool,
   PatchDrawResult,
   RegionLabelStyle,
+  RegionLabelStyleContext,
+  RegionLabelStyleResolver,
   RegionStrokeStyle,
   RegionStrokeStyleResolver,
   RegionStyleContext,
@@ -119,5 +123,6 @@ export type {
   WsiTileErrorEvent,
   WsiTileRendererOptions,
   WsiTileSchedulerConfig,
+  WsiViewTransitionOptions,
 } from "./wsi/wsi-tile-renderer";
 export { WsiTileRenderer } from "./wsi/wsi-tile-renderer";
