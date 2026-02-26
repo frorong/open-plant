@@ -150,7 +150,7 @@ import { WsiViewerCanvas } from "open-plant";
   onClipStats={(s) => console.log(s.mode, s.durationMs)}
   drawTool="stamp-rectangle-4096px"
   brushOptions={{
-    radius: 32, // screen px (zoom이 바뀌어도 화면에서 고정)
+    radius: 32, // HTML/CSS px (zoom이 바뀌어도 화면에서 고정)
     edgeDetail: 1.6, // 값이 클수록 더 둥글고 섬세한 브러시 경계
     edgeSmoothing: 2, // 계단 현상 감소(0~4)
     clickSelectRoi: true, // brush에서 "클릭만" 하면 ROI 선택 우선
@@ -190,7 +190,7 @@ import { WsiViewerCanvas } from "open-plant";
 
 `brushOptions.clickSelectRoi`를 `true`로 두면 브러시 모드에서 클릭(드래그 없음) 시 ROI hit-test로 선택을 시도하고, ROI 밖 클릭은 기존 브러시 점찍기 동작을 유지합니다.
 `brushOptions.edgeDetail`/`edgeSmoothing`으로 브러시 경계의 해상도와 스무딩 정도를 조절할 수 있습니다.
-`brushOptions.radius`는 world 좌표가 아니라 화면 px 단위이며, 줌 변화와 무관하게 on-screen 크기가 고정됩니다.
+`brushOptions.radius`는 world 좌표가 아니라 HTML/CSS px 단위이며, 줌 변화와 무관하게 on-screen 크기가 고정됩니다.
 `pointData.fillModes`(선택, `Uint8Array`)를 주면 포인트별 렌더 모드를 제어할 수 있습니다. `0`은 ring(stroked), `1`은 solid(fill)이며 `0`이 아닌 값은 solid로 처리됩니다.
 `roiRegions[].coordinates`는 단일 링뿐 아니라 hole이 포함된 Polygon(`[[outer],[hole1], ...]`)과 MultiPolygon(`[[[...]], [[...]], ...]`)도 지원합니다.
 
