@@ -5,6 +5,7 @@ import {
 	type TileBounds,
 } from "./tile-scheduler";
 import type {
+	WsiImageColorSettings,
 	WsiImageSource,
 	WsiPointData,
 	WsiRenderStats,
@@ -29,6 +30,9 @@ interface TileVertexProgram {
 	uCamera: WebGLUniformLocation;
 	uBounds: WebGLUniformLocation;
 	uTexture: WebGLUniformLocation;
+	uBrightness: WebGLUniformLocation;
+	uContrast: WebGLUniformLocation;
+	uSaturation: WebGLUniformLocation;
 }
 
 interface PointProgram {
@@ -89,6 +93,7 @@ export interface WsiTileRendererOptions {
 	onViewStateChange?: (next: WsiViewState) => void;
 	onStats?: (stats: WsiRenderStats) => void;
 	authToken?: string;
+	imageColorSettings?: WsiImageColorSettings | null;
 	pointSizeByZoom?: PointSizeByZoom;
 	pointStrokeScale?: number;
 	maxCacheTiles?: number;
@@ -316,6 +321,33 @@ function normalizeStrokeScale(value: number | null | undefined): number {
 	return clamp(value, MIN_STROKE_SCALE, MAX_STROKE_SCALE);
 }
 
+const MIN_IMAGE_COLOR_INPUT = -100;
+const MAX_IMAGE_COLOR_INPUT = 100;
+
+interface NormalizedImageColorSettings {
+	brightness: number;
+	contrast: number;
+	saturation: number;
+}
+
+function normalizeImageColorInput(value: number | null | undefined): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+	return clamp(value, MIN_IMAGE_COLOR_INPUT, MAX_IMAGE_COLOR_INPUT);
+}
+
+function toNormalizedImageColorSettings(
+	settings: WsiImageColorSettings | null | undefined,
+): NormalizedImageColorSettings {
+	const brightnessInput = normalizeImageColorInput(settings?.brightness);
+	const contrastInput = normalizeImageColorInput(settings?.contrast);
+	const saturationInput = normalizeImageColorInput(settings?.saturation);
+	return {
+		brightness: brightnessInput / 200,
+		contrast: contrastInput / 100,
+		saturation: saturationInput / 100,
+	};
+}
+
 export class WsiTileRenderer {
 	private readonly canvas: HTMLCanvasElement;
 	private readonly source: WsiImageSource;
@@ -356,6 +388,11 @@ export class WsiTileRenderer {
 	private pointPaletteSize = 1;
 	private pointSizeStops: PointSizeStop[] = clonePointSizeStops(DEFAULT_POINT_SIZE_STOPS);
 	private pointStrokeScale = 1.0;
+	private imageColorSettings: NormalizedImageColorSettings = {
+		brightness: 0,
+		contrast: 0,
+		saturation: 0,
+	};
 	private lastPointData: WsiPointData | null = null;
 	private lastPointPalette: Uint8Array | null = null;
 	private zeroFillModes = new Uint8Array(0);
@@ -392,6 +429,9 @@ export class WsiTileRenderer {
 				: DEFAULT_ROTATION_DRAG_SENSITIVITY;
 		this.pointSizeStops = normalizePointSizeStops(options.pointSizeByZoom);
 		this.pointStrokeScale = normalizeStrokeScale(options.pointStrokeScale);
+		this.imageColorSettings = toNormalizedImageColorSettings(
+			options.imageColorSettings,
+		);
 
 		const gl = canvas.getContext("webgl2", {
 			alpha: false,
@@ -648,6 +688,20 @@ export class WsiTileRenderer {
 		const next = normalizeStrokeScale(scale);
 		if (this.pointStrokeScale === next) return;
 		this.pointStrokeScale = next;
+		this.requestRender();
+	}
+
+	setImageColorSettings(settings: WsiImageColorSettings | null | undefined): void {
+		const next = toNormalizedImageColorSettings(settings);
+		const prev = this.imageColorSettings;
+		if (
+			prev.brightness === next.brightness &&
+			prev.contrast === next.contrast &&
+			prev.saturation === next.saturation
+		) {
+			return;
+		}
+		this.imageColorSettings = next;
 		this.requestRender();
 	}
 
@@ -929,6 +983,9 @@ export class WsiTileRenderer {
 		gl.bindVertexArray(tileProgram.vao);
 		gl.uniformMatrix3fv(tileProgram.uCamera, false, this.camera.getMatrix());
 		gl.uniform1i(tileProgram.uTexture, 0);
+		gl.uniform1f(tileProgram.uBrightness, this.imageColorSettings.brightness);
+		gl.uniform1f(tileProgram.uContrast, this.imageColorSettings.contrast);
+		gl.uniform1f(tileProgram.uSaturation, this.imageColorSettings.saturation);
 
 		const fallbackTiles: CachedTile[] = [];
 		for (const [, cached] of this.cache) {
@@ -1271,15 +1328,41 @@ export class WsiTileRenderer {
     precision highp float;
     in vec2 vUv;
     uniform sampler2D uTexture;
+    uniform float uBrightness;
+    uniform float uContrast;
+    uniform float uSaturation;
     out vec4 outColor;
     void main() {
-      outColor = texture(uTexture, vUv);
+      vec4 color = texture(uTexture, vUv);
+
+      color.rgb = clamp(
+        (uContrast + 1.0) * color.rgb - (uContrast / 2.0),
+        vec3(0.0),
+        vec3(1.0)
+      );
+
+      float saturation = uSaturation + 1.0;
+      float sr = (1.0 - saturation) * 0.2126;
+      float sg = (1.0 - saturation) * 0.7152;
+      float sb = (1.0 - saturation) * 0.0722;
+      mat3 saturationMatrix = mat3(
+        sr + saturation, sr, sr,
+        sg, sg + saturation, sg,
+        sb, sb, sb + saturation
+      );
+      color.rgb = clamp(saturationMatrix * color.rgb, vec3(0.0), vec3(1.0));
+
+      color.rgb = clamp(color.rgb + uBrightness, vec3(0.0), vec3(1.0));
+      outColor = color;
     }`;
 
 		const program = createProgram(gl, vertex, fragment);
 		const uCamera = requireUniformLocation(gl, program, "uCamera");
 		const uBounds = requireUniformLocation(gl, program, "uBounds");
 		const uTexture = requireUniformLocation(gl, program, "uTexture");
+		const uBrightness = requireUniformLocation(gl, program, "uBrightness");
+		const uContrast = requireUniformLocation(gl, program, "uContrast");
+		const uSaturation = requireUniformLocation(gl, program, "uSaturation");
 
 		const vao = gl.createVertexArray();
 		const vbo = gl.createBuffer();
@@ -1308,7 +1391,17 @@ export class WsiTileRenderer {
 		gl.bindVertexArray(null);
 		gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-		return { program, vao, vbo, uCamera, uBounds, uTexture };
+		return {
+			program,
+			vao,
+			vbo,
+			uCamera,
+			uBounds,
+			uTexture,
+			uBrightness,
+			uContrast,
+			uSaturation,
+		};
 	}
 
 	private initPointProgram(): PointProgram {

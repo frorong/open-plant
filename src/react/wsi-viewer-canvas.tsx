@@ -15,7 +15,14 @@ import { filterPointDataByPolygonsHybrid } from "../wsi/point-clip-hybrid";
 import { filterPointDataByPolygonsInWorker, type PointClipMode } from "../wsi/point-clip-worker-client";
 import { type PreparedRoiPolygon, pointInPreparedPolygon, prepareRoiPolygons, type RoiGeometry } from "../wsi/roi-geometry";
 import { computeRoiPointGroups, type RoiPointGroupStats } from "../wsi/roi-term-stats";
-import type { WsiImageSource, WsiPointData, WsiRegion, WsiRenderStats, WsiViewState } from "../wsi/types";
+import type {
+  WsiImageColorSettings,
+  WsiImageSource,
+  WsiPointData,
+  WsiRegion,
+  WsiRenderStats,
+  WsiViewState,
+} from "../wsi/types";
 import { type PointSizeByZoom, type WsiTileErrorEvent, WsiTileRenderer } from "../wsi/wsi-tile-renderer";
 import type {
   BrushOptions,
@@ -280,6 +287,7 @@ function pickPreparedRegionAt(
 export interface WsiViewerCanvasProps {
   source: WsiImageSource | null;
   viewState?: Partial<WsiViewState> | null;
+  imageColorSettings?: WsiImageColorSettings | null;
   onViewStateChange?: (next: WsiViewState) => void;
   onStats?: (stats: WsiRenderStats) => void;
   onTileError?: (event: WsiTileErrorEvent) => void;
@@ -333,6 +341,7 @@ export interface WsiViewerCanvasProps {
 export function WsiViewerCanvas({
   source,
   viewState,
+  imageColorSettings = null,
   onViewStateChange,
   onStats,
   onTileError,
@@ -997,6 +1006,7 @@ export function WsiViewerCanvas({
       onContextLost,
       onContextRestored,
       authToken,
+      imageColorSettings,
       ctrlDragRotate,
       pointSizeByZoom,
       pointStrokeScale,
@@ -1060,6 +1070,12 @@ export function WsiViewerCanvas({
     if (!renderer) return;
     renderer.setPointStrokeScale(pointStrokeScale);
   }, [pointStrokeScale]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setImageColorSettings(imageColorSettings);
+  }, [imageColorSettings]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

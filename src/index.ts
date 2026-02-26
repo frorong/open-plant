@@ -90,6 +90,7 @@ export { TileScheduler } from "./wsi/tile-scheduler";
 export type {
   TermPalette,
   WsiCoordinate,
+  WsiImageColorSettings,
   WsiImageSource,
   WsiMultiPolygonCoordinates,
   WsiPointData,

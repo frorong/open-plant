@@ -25,6 +25,12 @@ export interface WsiViewState {
 	rotationDeg: number;
 }
 
+export interface WsiImageColorSettings {
+	brightness?: number;
+	contrast?: number;
+	saturation?: number;
+}
+
 export interface WsiRenderStats {
 	tier: number;
 	visible: number;
