@@ -504,6 +504,7 @@ export interface WsiViewerCanvasProps {
   onPointClick?: (event: PointClickEvent) => void;
   onRegionHover?: (event: RegionHoverEvent) => void;
   onRegionClick?: (event: RegionClickEvent) => void;
+  activeRegionId?: string | number | null;
   onActiveRegionChange?: (regionId: string | number | null) => void;
   getCellByCoordinatesRef?: MutableRefObject<((coordinate: DrawCoordinate) => PointHitEvent | null) | null>;
   onDrawComplete?: (result: DrawResult) => void;
@@ -558,6 +559,7 @@ export function WsiViewerCanvas({
   onPointClick,
   onRegionHover,
   onRegionClick,
+  activeRegionId: controlledActiveRegionId,
   onActiveRegionChange,
   getCellByCoordinatesRef,
   onDrawComplete,
@@ -576,7 +578,9 @@ export function WsiViewerCanvas({
   const onStatsRef = useRef<typeof onStats>(onStats);
   const debugOverlayRef = useRef(debugOverlay);
   const [hoveredRegionId, setHoveredRegionId] = useState<string | number | null>(null);
-  const [activeRegionId, setActiveRegionId] = useState<string | number | null>(null);
+  const [uncontrolledActiveRegionId, setUncontrolledActiveRegionId] = useState<string | number | null>(() => controlledActiveRegionId ?? null);
+  const isActiveRegionControlled = controlledActiveRegionId !== undefined;
+  const activeRegionId = isActiveRegionControlled ? (controlledActiveRegionId ?? null) : uncontrolledActiveRegionId;
   const [customLayerViewState, setCustomLayerViewState] = useState<WsiViewState | null>(null);
   const [debugStats, setDebugStats] = useState<WsiRenderStats | null>(null);
   const hoveredRegionIdRef = useRef<string | number | null>(null);
@@ -837,17 +841,20 @@ export function WsiViewerCanvas({
     };
   }, [getCellByCoordinatesRef, getCellByCoordinates]);
 
+  useEffect(() => {
+    if (!isActiveRegionControlled) return;
+    setUncontrolledActiveRegionId(controlledActiveRegionId ?? null);
+  }, [isActiveRegionControlled, controlledActiveRegionId]);
+
   const commitActiveRegion = useCallback(
     (next: string | number | null) => {
-      setActiveRegionId(prev => {
-        if (String(prev) === String(next)) {
-          return prev;
-        }
-        onActiveRegionChange?.(next);
-        return next;
-      });
+      if (String(activeRegionId) === String(next)) return;
+      if (!isActiveRegionControlled) {
+        setUncontrolledActiveRegionId(next);
+      }
+      onActiveRegionChange?.(next);
     },
-    [onActiveRegionChange]
+    [activeRegionId, isActiveRegionControlled, onActiveRegionChange]
   );
 
   useEffect(() => {

@@ -151,6 +151,8 @@ import { WsiViewerCanvas } from "open-plant";
   onClipStats={(s) => console.log(s.mode, s.durationMs)}
   drawTool="stamp-rectangle-4096px"
   drawFillColor="transparent"
+  activeRegionId={selectedRoiId} // controlled: 외부에서 active ROI 제어
+  onActiveRegionChange={setSelectedRoiId} // 내부 클릭/탭 선택 변경 알림
   brushOptions={{
     radius: 32, // HTML/CSS px (zoom이 바뀌어도 화면에서 고정)
     edgeDetail: 1.6, // 값이 클수록 더 둥글고 섬세한 브러시 경계
@@ -194,6 +196,7 @@ import { WsiViewerCanvas } from "open-plant";
 `brushOptions.edgeDetail`/`edgeSmoothing`으로 브러시 경계의 해상도와 스무딩 정도를 조절할 수 있습니다.
 `brushOptions.radius`는 world 좌표가 아니라 HTML/CSS px 단위이며, 줌 변화와 무관하게 on-screen 크기가 고정됩니다.
 `drawFillColor`는 freehand/rectangle/circular draw preview 내부 채움 색을 제어합니다. 미지정 시 기본값은 `transparent`입니다.
+`activeRegionId`를 전달하면 controlled mode로 동작하며 내부 state 대신 prop 값을 active ROI로 사용합니다. `activeRegionId`를 생략하면 기존처럼 uncontrolled mode(내부 state)로 동작합니다.
 `imageColorSettings`는 이미지 타일에만 적용되며, cell marker/ROI/draw overlay에는 영향을 주지 않습니다.
 `pointData.fillModes`(선택, `Uint8Array`)를 주면 포인트별 렌더 모드를 제어할 수 있습니다. `0`은 ring(stroked), `1`은 solid(fill)이며 `0`이 아닌 값은 solid로 처리됩니다.
 `roiRegions[].coordinates`는 단일 링뿐 아니라 hole이 포함된 Polygon(`[[outer],[hole1], ...]`)과 MultiPolygon(`[[[...]], [[...]], ...]`)도 지원합니다.
