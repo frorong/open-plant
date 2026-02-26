@@ -489,6 +489,7 @@ export interface WsiViewerCanvasProps {
   drawTool?: DrawTool;
   stampOptions?: StampOptions;
   brushOptions?: BrushOptions;
+  drawFillColor?: string;
   regionStrokeStyle?: Partial<RegionStrokeStyle>;
   regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
   regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
@@ -542,6 +543,7 @@ export function WsiViewerCanvas({
   drawTool = "cursor",
   stampOptions,
   brushOptions,
+  drawFillColor,
   regionStrokeStyle,
   regionStrokeHoverStyle,
   regionStrokeActiveStyle,
@@ -1344,6 +1346,7 @@ export function WsiViewerCanvas({
           imageZoom={source.maxTierZoom}
           stampOptions={stampOptions}
           brushOptions={brushOptions}
+          drawFillColor={drawFillColor}
           projectorRef={rendererRef}
           onBrushTap={handleBrushTap}
           viewStateSignal={viewState}

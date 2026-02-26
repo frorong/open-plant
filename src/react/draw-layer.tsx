@@ -144,6 +144,7 @@ export interface DrawLayerProps {
   persistedRegions?: DrawRegion[];
   patchRegions?: DrawRegion[];
   persistedPolygons?: DrawRegionCoordinates[];
+  drawFillColor?: string;
   regionStrokeStyle?: Partial<RegionStrokeStyle>;
   regionStrokeHoverStyle?: Partial<RegionStrokeStyle>;
   regionStrokeActiveStyle?: Partial<RegionStrokeStyle>;
@@ -196,6 +197,7 @@ interface ResolvedBrushOptions {
 }
 
 const DRAW_FILL = "rgba(255, 77, 79, 0.16)";
+const DEFAULT_DRAW_PREVIEW_FILL = "transparent";
 const FREEHAND_MIN_POINTS = 3;
 const FREEHAND_SCREEN_STEP = 2;
 const CIRCLE_SIDES = 96;
@@ -449,13 +451,20 @@ function tracePath(ctx: CanvasRenderingContext2D, points: DrawCoordinate[], clos
   }
 }
 
-function drawPath(ctx: CanvasRenderingContext2D, points: DrawCoordinate[], strokeStyle: RegionStrokeStyle, close = false, fill = false): void {
+function drawPath(
+  ctx: CanvasRenderingContext2D,
+  points: DrawCoordinate[],
+  strokeStyle: RegionStrokeStyle,
+  close = false,
+  fill = false,
+  fillColor = DRAW_FILL
+): void {
   if (points.length === 0) return;
 
   ctx.beginPath();
   tracePath(ctx, points, close);
   if (fill && close) {
-    ctx.fillStyle = DRAW_FILL;
+    ctx.fillStyle = fillColor;
     ctx.fill();
   }
 
@@ -474,6 +483,12 @@ function drawPath(ctx: CanvasRenderingContext2D, points: DrawCoordinate[], strok
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
+}
+
+function resolveDrawPreviewFillColor(value: string | undefined): string {
+  if (typeof value !== "string") return DEFAULT_DRAW_PREVIEW_FILL;
+  const next = value.trim();
+  return next.length > 0 ? next : DEFAULT_DRAW_PREVIEW_FILL;
 }
 
 function resolveStrokeStyle(style: Partial<RegionStrokeStyle> | undefined): RegionStrokeStyle {
@@ -741,6 +756,7 @@ export function DrawLayer({
   persistedRegions,
   patchRegions,
   persistedPolygons,
+  drawFillColor,
   regionStrokeStyle,
   regionStrokeHoverStyle,
   regionStrokeActiveStyle,
@@ -819,6 +835,7 @@ export function DrawLayer({
   const resolvedHoverStrokeStyle = useMemo(() => mergeStrokeStyle(resolvedStrokeStyle, regionStrokeHoverStyle), [resolvedStrokeStyle, regionStrokeHoverStyle]);
   const resolvedActiveStrokeStyle = useMemo(() => mergeStrokeStyle(resolvedStrokeStyle, regionStrokeActiveStyle), [resolvedStrokeStyle, regionStrokeActiveStyle]);
   const resolvedPatchStrokeStyle = useMemo(() => mergeStrokeStyle(DEFAULT_PATCH_STROKE_STYLE, patchStrokeStyle), [patchStrokeStyle]);
+  const resolvedDrawPreviewFillColor = useMemo(() => resolveDrawPreviewFillColor(drawFillColor), [drawFillColor]);
 
   const resolvedLabelStyle = useMemo(() => resolveRegionLabelStyle(regionLabelStyle), [regionLabelStyle]);
   const resolvedStampOptions = useMemo(() => resolveStampOptions(stampOptions), [stampOptions]);
@@ -1154,12 +1171,12 @@ export function DrawLayer({
               drawPath(ctx, line, resolvedStrokeStyle, false, false);
             }
             if (line.length >= 3) {
-              drawPath(ctx, worldToScreenPoints(closeRing(preview)), resolvedStrokeStyle, true, true);
+              drawPath(ctx, worldToScreenPoints(closeRing(preview)), resolvedStrokeStyle, true, true, resolvedDrawPreviewFillColor);
             }
           } else {
             const polygon = worldToScreenPoints(preview);
             if (polygon.length >= 4) {
-              drawPath(ctx, polygon, resolvedStrokeStyle, true, true);
+              drawPath(ctx, polygon, resolvedStrokeStyle, true, true, resolvedDrawPreviewFillColor);
             }
           }
         }
@@ -1195,6 +1212,7 @@ export function DrawLayer({
     resolvedStrokeStyle,
     resolvedHoverStrokeStyle,
     resolvedActiveStrokeStyle,
+    resolvedDrawPreviewFillColor,
     preparedPatchRegions,
     resolvedPatchStrokeStyle,
     resolveRegionStrokeStyle,
