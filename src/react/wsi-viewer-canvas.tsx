@@ -1,17 +1,35 @@
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactNode, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type MutableRefObject,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { filterPointDataByPolygons, type RoiPolygon } from "../wsi/point-clip";
 import { filterPointDataByPolygonsHybrid } from "../wsi/point-clip-hybrid";
 import { filterPointDataByPolygonsInWorker, type PointClipMode } from "../wsi/point-clip-worker-client";
-import {
-  pointInPreparedPolygon,
-  prepareRoiPolygons,
-  type PreparedRoiPolygon,
-  type RoiGeometry,
-} from "../wsi/roi-geometry";
+import { type PreparedRoiPolygon, pointInPreparedPolygon, prepareRoiPolygons, type RoiGeometry } from "../wsi/roi-geometry";
 import { computeRoiPointGroups, type RoiPointGroupStats } from "../wsi/roi-term-stats";
 import type { WsiImageSource, WsiPointData, WsiRegion, WsiRenderStats, WsiViewState } from "../wsi/types";
 import { type PointSizeByZoom, type WsiTileErrorEvent, WsiTileRenderer } from "../wsi/wsi-tile-renderer";
-import type { BrushOptions, DrawCoordinate, DrawOverlayShape, DrawRegionCoordinates, DrawResult, DrawTool, PatchDrawResult, RegionLabelStyle, RegionStrokeStyle, RegionStrokeStyleResolver, StampOptions } from "./draw-layer";
+import type {
+  BrushOptions,
+  DrawCoordinate,
+  DrawOverlayShape,
+  DrawRegionCoordinates,
+  DrawResult,
+  DrawTool,
+  PatchDrawResult,
+  RegionLabelStyle,
+  RegionStrokeStyle,
+  RegionStrokeStyleResolver,
+  StampOptions,
+} from "./draw-layer";
 import { DrawLayer } from "./draw-layer";
 import { OverviewMap, type OverviewMapOptions } from "./overview-map";
 
@@ -219,9 +237,7 @@ function resolveRegionId(region: WsiRegion, index: number): string | number {
   return region.id ?? index;
 }
 
-function prepareRegionHits(
-  regions: WsiRegion[]
-): PreparedRegionHit[] {
+function prepareRegionHits(regions: WsiRegion[]): PreparedRegionHit[] {
   const out: PreparedRegionHit[] = [];
   for (let i = 0; i < regions.length; i += 1) {
     const region = regions[i];
@@ -426,10 +442,7 @@ export function WsiViewerCanvas({
   }, [safeRoiRegions, safeRoiPolygons]);
   const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRoiRegions), [effectiveRoiRegions]);
 
-  const clipPolygons = useMemo<RoiPolygon[]>(
-    () => effectiveRoiRegions.map(region => region.coordinates as RoiPolygon),
-    [effectiveRoiRegions]
-  );
+  const clipPolygons = useMemo<RoiPolygon[]>(() => effectiveRoiRegions.map(region => region.coordinates as RoiPolygon), [effectiveRoiRegions]);
 
   const [renderPointData, setRenderPointData] = useState<WsiPointData | null>(pointData);
 
@@ -1075,7 +1088,14 @@ export function WsiViewerCanvas({
   }, [interactionLock]);
 
   return (
-    <div className={className} style={mergedStyle} onPointerMove={handleRegionPointerMove} onPointerLeave={handleRegionPointerLeave} onClick={handleRegionClick} onContextMenu={handleRegionContextMenu}>
+    <div
+      className={className}
+      style={mergedStyle}
+      onPointerMove={handleRegionPointerMove}
+      onPointerLeave={handleRegionPointerLeave}
+      onClick={handleRegionClick}
+      onContextMenu={handleRegionContextMenu}
+    >
       <canvas
         ref={canvasRef}
         className="wsi-render-canvas"

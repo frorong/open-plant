@@ -164,7 +164,9 @@ interface DrawSession {
   start: DrawCoordinate | null;
   current: DrawCoordinate | null;
   cursor: DrawCoordinate | null;
+  cursorScreen: DrawCoordinate | null;
   points: DrawCoordinate[];
+  screenPoints: DrawCoordinate[];
   stampCenter: DrawCoordinate | null;
 }
 
@@ -745,7 +747,9 @@ export function DrawLayer({
     start: null,
     current: null,
     cursor: null,
+    cursorScreen: null,
     points: [],
+    screenPoints: [],
     stampCenter: null,
   });
 
@@ -940,9 +944,8 @@ export function DrawLayer({
   const drawBrushStrokePreview = useCallback(
     (ctx: CanvasRenderingContext2D): void => {
       const session = sessionRef.current;
-      if (!session.isDrawing || session.points.length === 0) return;
-
-      const screenPoints = worldToScreenPoints(session.points);
+      if (!session.isDrawing || session.screenPoints.length === 0) return;
+      const screenPoints = session.screenPoints;
       if (screenPoints.length === 0) return;
       const radiusPx = resolvedBrushOptions.radius;
       if (!Number.isFinite(radiusPx) || radiusPx <= 0) return;
@@ -968,7 +971,7 @@ export function DrawLayer({
       }
       ctx.restore();
     },
-    [worldToScreenPoints, resolvedBrushOptions]
+    [resolvedBrushOptions]
   );
 
   const drawBrushCursor = useCallback(
@@ -976,7 +979,9 @@ export function DrawLayer({
       const session = sessionRef.current;
       const cursor = session.cursor;
       if (!cursor) return;
-      const screen = toCoord(projectorRef.current?.worldToScreen(cursor[0], cursor[1]) ?? []);
+      const screen =
+        session.cursorScreen ??
+        toCoord(projectorRef.current?.worldToScreen(cursor[0], cursor[1]) ?? []);
       if (!screen) return;
       const radiusPx = resolvedBrushOptions.radius;
       if (!Number.isFinite(radiusPx) || radiusPx <= 0) return;
@@ -1198,9 +1203,11 @@ export function DrawLayer({
     session.start = null;
     session.current = null;
     session.points = [];
+    session.screenPoints = [];
     session.stampCenter = null;
     if (!preserveCursor) {
       session.cursor = null;
+      session.cursorScreen = null;
     }
   }, []);
 
@@ -1215,6 +1222,16 @@ export function DrawLayer({
     },
     [projectorRef, imageWidth, imageHeight]
   );
+
+  const toLocalScreen = useCallback((event: ReactPointerEvent<HTMLCanvasElement>): DrawCoordinate | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = clamp(event.clientX - rect.left, 0, rect.width);
+    const y = clamp(event.clientY - rect.top, 0, rect.height);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return [x, y];
+  }, []);
 
   const finishSession = useCallback(() => {
     const session = sessionRef.current;
@@ -1245,7 +1262,10 @@ export function DrawLayer({
         MIN_BRUSH_RASTER_STEP,
         (resolvedBrushOptions.radius * 2) / (BRUSH_RASTER_DIAMETER_SAMPLES * edgeDetail),
       );
-      const screenPath = worldToScreenPoints(session.points);
+      const screenPath =
+        session.screenPoints.length > 0
+          ? session.screenPoints
+          : worldToScreenPoints(session.points);
       const screenPolygon = buildBrushStrokePolygon(screenPath, {
         radius: resolvedBrushOptions.radius,
         minRasterStep,
@@ -1298,27 +1318,27 @@ export function DrawLayer({
   );
 
   const appendBrushPoint = useCallback(
-    (session: DrawSession, world: DrawCoordinate): void => {
-      const projector = projectorRef.current;
-      const zoom = Math.max(1e-6, projector?.getViewState?.().zoom ?? 1);
-      const minWorldStep = BRUSH_SCREEN_STEP / zoom;
-      const minWorldStep2 = minWorldStep * minWorldStep;
-      const prev = session.points[session.points.length - 1];
-      if (!prev) {
+    (session: DrawSession, world: DrawCoordinate, screen: DrawCoordinate): void => {
+      const minScreenStep2 = BRUSH_SCREEN_STEP * BRUSH_SCREEN_STEP;
+      const prevScreen = session.screenPoints[session.screenPoints.length - 1];
+      if (!prevScreen) {
         session.points.push(world);
+        session.screenPoints.push(screen);
         session.current = world;
         return;
       }
-      const dx = world[0] - prev[0];
-      const dy = world[1] - prev[1];
-      if (dx * dx + dy * dy >= minWorldStep2) {
+      const dx = screen[0] - prevScreen[0];
+      const dy = screen[1] - prevScreen[1];
+      if (dx * dx + dy * dy >= minScreenStep2) {
         session.points.push(world);
+        session.screenPoints.push(screen);
       } else {
         session.points[session.points.length - 1] = world;
+        session.screenPoints[session.screenPoints.length - 1] = screen;
       }
       session.current = world;
     },
-    [projectorRef]
+    []
   );
 
   const handlePointerDown = useCallback(
@@ -1329,6 +1349,8 @@ export function DrawLayer({
 
       const world = toWorld(event);
       if (!world) return;
+      const screen = tool === "brush" ? toLocalScreen(event) : null;
+      if (tool === "brush" && !screen) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -1352,10 +1374,12 @@ export function DrawLayer({
       session.start = world;
       session.current = world;
       session.cursor = world;
+      session.cursorScreen = screen;
       session.points = tool === "freehand" || tool === "brush" ? [world] : [];
+      session.screenPoints = tool === "brush" && screen ? [screen] : [];
       requestDraw();
     },
-    [active, tool, toWorld, handleStampAt, requestDraw]
+    [active, tool, toWorld, toLocalScreen, handleStampAt, requestDraw]
   );
 
   const handlePointerMove = useCallback(
@@ -1377,14 +1401,17 @@ export function DrawLayer({
 
       const session = sessionRef.current;
       if (tool === "brush") {
+        const screen = toLocalScreen(event);
+        if (!screen) return;
         session.cursor = world;
+        session.cursorScreen = screen;
         if (!session.isDrawing || session.pointerId !== event.pointerId) {
           requestDraw();
           return;
         }
         event.preventDefault();
         event.stopPropagation();
-        appendBrushPoint(session, world);
+        appendBrushPoint(session, world, screen);
         requestDraw();
         return;
       }
@@ -1417,7 +1444,7 @@ export function DrawLayer({
 
       requestDraw();
     },
-    [active, tool, toWorld, requestDraw, projectorRef, appendBrushPoint]
+    [active, tool, toWorld, toLocalScreen, requestDraw, projectorRef, appendBrushPoint]
   );
 
   const handlePointerUp = useCallback(
@@ -1428,10 +1455,14 @@ export function DrawLayer({
       event.preventDefault();
       event.stopPropagation();
       const world = toWorld(event);
+      const screen = tool === "brush" ? toLocalScreen(event) : null;
       if (world) {
         session.cursor = world;
         if (tool === "brush") {
-          appendBrushPoint(session, world);
+          if (screen) {
+            session.cursorScreen = screen;
+            appendBrushPoint(session, world, screen);
+          }
         } else {
           session.current = world;
         }
@@ -1447,7 +1478,7 @@ export function DrawLayer({
 
       finishSession();
     },
-    [finishSession, toWorld, tool, appendBrushPoint]
+    [finishSession, toWorld, toLocalScreen, tool, appendBrushPoint]
   );
 
   const handlePointerLeave = useCallback(() => {
@@ -1455,6 +1486,7 @@ export function DrawLayer({
     let changed = false;
     if (tool === "brush" && !session.isDrawing && session.cursor) {
       session.cursor = null;
+      session.cursorScreen = null;
       changed = true;
     }
     if (isStampTool(tool) && session.stampCenter) {
