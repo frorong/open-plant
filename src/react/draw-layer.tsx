@@ -416,8 +416,6 @@ export function createRectangle(
     const startScreen = projection.worldToScreen(start[0], start[1]);
     const endScreen = projection.worldToScreen(end[0], end[1]);
 
-    console.log("startScreen", startScreen);
-    console.log("endScreen", endScreen);
     if (startScreen && endScreen) {
       const screenCorners: DrawCoordinate[] = [
         [startScreen[0], startScreen[1]],
