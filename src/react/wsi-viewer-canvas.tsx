@@ -13,7 +13,7 @@ import {
 import { filterPointDataByPolygons, type RoiPolygon } from "../wsi/point-clip";
 import { filterPointDataByPolygonsHybrid } from "../wsi/point-clip-hybrid";
 import { filterPointDataByPolygonsInWorker, type PointClipMode } from "../wsi/point-clip-worker-client";
-import { type PreparedRoiPolygon, pointInPreparedPolygon, prepareRoiPolygons, type RoiGeometry } from "../wsi/roi-geometry";
+import { type PreparedRoiPolygon, prepareRoiPolygons, type RoiGeometry } from "../wsi/roi-geometry";
 import { computeRoiPointGroups, type RoiPointGroupStats } from "../wsi/roi-term-stats";
 import type {
   WsiImageColorSettings,
@@ -37,7 +37,7 @@ import type {
   RegionStrokeStyleResolver,
   StampOptions,
 } from "./draw-layer";
-import { DrawLayer } from "./draw-layer";
+import { DrawLayer, resolveRegionLabelStyle } from "./draw-layer";
 import { OverviewMap, type OverviewMapOptions } from "./overview-map";
 
 const EMPTY_ROI_REGIONS: WsiRegion[] = [];
@@ -52,6 +52,13 @@ const MIN_POINT_HIT_RADIUS_PX = 4;
 const MIN_POINT_HIT_GRID_SIZE = 24;
 const MAX_POINT_HIT_GRID_SIZE = 1024;
 const POINT_HIT_GRID_DENSITY_SCALE = 4;
+const REGION_CONTOUR_HIT_DISTANCE_PX = 6;
+const TOP_ANCHOR_Y_TOLERANCE = 0.5;
+const LABEL_MEASURE_FALLBACK_EM = 0.58;
+const LABEL_MEASURE_CACHE_LIMIT = 4096;
+
+let sharedLabelMeasureContext: CanvasRenderingContext2D | null = null;
+const labelTextWidthCache = new Map<string, number>();
 
 export interface RegionHoverEvent {
   region: WsiRegion | null;
@@ -135,6 +142,8 @@ interface PreparedRegionHit {
   regionIndex: number;
   regionId: string | number;
   polygons: PreparedRoiPolygon[];
+  label: string;
+  labelAnchor: DrawCoordinate | null;
 }
 
 function sanitizePointCount(pointData: WsiPointData): number {
@@ -244,17 +253,163 @@ function resolveRegionId(region: WsiRegion, index: number): string | number {
   return region.id ?? index;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function toDrawCoordinate(value: unknown): DrawCoordinate | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const x = Number(value[0]);
+  const y = Number(value[1]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return [x, y];
+}
+
+function getTopAnchor(ring: DrawCoordinate[]): DrawCoordinate | null {
+  if (ring.length === 0) return null;
+  let minY = Infinity;
+  for (const point of ring) {
+    if (point[1] < minY) minY = point[1];
+  }
+  if (!Number.isFinite(minY)) return null;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const point of ring) {
+    if (Math.abs(point[1] - minY) > TOP_ANCHOR_Y_TOLERANCE) continue;
+    if (point[0] < minX) minX = point[0];
+    if (point[0] > maxX) maxX = point[0];
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
+  return [(minX + maxX) * 0.5, minY];
+}
+
+function getTopAnchorFromPreparedPolygons(polygons: PreparedRoiPolygon[]): DrawCoordinate | null {
+  let best: DrawCoordinate | null = null;
+  for (const polygon of polygons) {
+    const anchor = getTopAnchor(polygon.outer);
+    if (!anchor) continue;
+    if (!best || anchor[1] < best[1] || (anchor[1] === best[1] && anchor[0] < best[0])) {
+      best = anchor;
+    }
+  }
+  return best;
+}
+
+function pointSegmentDistanceSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const lengthSq = abx * abx + aby * aby;
+  if (lengthSq <= 1e-12) {
+    const dx = px - ax;
+    const dy = py - ay;
+    return dx * dx + dy * dy;
+  }
+  const t = clamp(((px - ax) * abx + (py - ay) * aby) / lengthSq, 0, 1);
+  const nx = ax + abx * t;
+  const ny = ay + aby * t;
+  const dx = px - nx;
+  const dy = py - ny;
+  return dx * dx + dy * dy;
+}
+
+function isPointNearRing(x: number, y: number, ring: DrawCoordinate[], maxDistanceSq: number): boolean {
+  for (let i = 1; i < ring.length; i += 1) {
+    const prev = ring[i - 1];
+    const next = ring[i];
+    if (pointSegmentDistanceSq(x, y, prev[0], prev[1], next[0], next[1]) <= maxDistanceSq) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isPointNearPolygonContour(x: number, y: number, polygon: PreparedRoiPolygon, maxDistance: number): boolean {
+  if (x < polygon.minX - maxDistance || x > polygon.maxX + maxDistance || y < polygon.minY - maxDistance || y > polygon.maxY + maxDistance) {
+    return false;
+  }
+  const maxDistanceSq = maxDistance * maxDistance;
+  if (isPointNearRing(x, y, polygon.outer, maxDistanceSq)) return true;
+  for (const hole of polygon.holes) {
+    if (isPointNearRing(x, y, hole, maxDistanceSq)) return true;
+  }
+  return false;
+}
+
+function getLabelMeasureContext(): CanvasRenderingContext2D | null {
+  if (sharedLabelMeasureContext) return sharedLabelMeasureContext;
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  sharedLabelMeasureContext = ctx;
+  return sharedLabelMeasureContext;
+}
+
+function measureLabelTextWidth(label: string, labelStyle: RegionLabelStyle): number {
+  const key = `${labelStyle.fontWeight}|${labelStyle.fontSize}|${labelStyle.fontFamily}|${label}`;
+  const cached = labelTextWidthCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const fallback = label.length * labelStyle.fontSize * LABEL_MEASURE_FALLBACK_EM;
+  const ctx = getLabelMeasureContext();
+  let width = fallback;
+  if (ctx) {
+    ctx.font = `${labelStyle.fontWeight} ${labelStyle.fontSize}px ${labelStyle.fontFamily}`;
+    const measured = ctx.measureText(label).width;
+    if (Number.isFinite(measured) && measured >= 0) {
+      width = measured;
+    }
+  }
+
+  if (labelTextWidthCache.size > LABEL_MEASURE_CACHE_LIMIT) {
+    labelTextWidthCache.clear();
+  }
+  labelTextWidthCache.set(key, width);
+  return width;
+}
+
+function isScreenPointInsideLabel(
+  region: PreparedRegionHit,
+  screenCoord: DrawCoordinate,
+  renderer: WsiTileRenderer,
+  labelStyle: RegionLabelStyle,
+  canvasWidth: number,
+  canvasHeight: number
+): boolean {
+  if (!region.label || !region.labelAnchor) return false;
+
+  const anchorScreen = toDrawCoordinate(renderer.worldToScreen(region.labelAnchor[0], region.labelAnchor[1]));
+  if (!anchorScreen) return false;
+
+  const textWidth = measureLabelTextWidth(region.label, labelStyle);
+  const boxWidth = textWidth + labelStyle.paddingX * 2;
+  const boxHeight = labelStyle.fontSize + labelStyle.paddingY * 2;
+
+  const x = clamp(anchorScreen[0], boxWidth * 0.5 + 1, canvasWidth - boxWidth * 0.5 - 1);
+  const y = clamp(anchorScreen[1] - labelStyle.offsetY, boxHeight * 0.5 + 1, canvasHeight - boxHeight * 0.5 - 1);
+  const left = x - boxWidth * 0.5;
+  const right = x + boxWidth * 0.5;
+  const top = y - boxHeight * 0.5;
+  const bottom = y + boxHeight * 0.5;
+
+  return screenCoord[0] >= left && screenCoord[0] <= right && screenCoord[1] >= top && screenCoord[1] <= bottom;
+}
+
 function prepareRegionHits(regions: WsiRegion[]): PreparedRegionHit[] {
   const out: PreparedRegionHit[] = [];
   for (let i = 0; i < regions.length; i += 1) {
     const region = regions[i];
     const polygons = prepareRoiPolygons([region?.coordinates as RoiGeometry | null | undefined]);
     if (polygons.length === 0) continue;
+    const label = typeof region?.label === "string" ? region.label.trim() : "";
     out.push({
       region,
       regionIndex: i,
       regionId: resolveRegionId(region, i),
       polygons,
+      label,
+      labelAnchor: label ? getTopAnchorFromPreparedPolygons(polygons) : null,
     });
   }
   return out;
@@ -262,7 +417,12 @@ function prepareRegionHits(regions: WsiRegion[]): PreparedRegionHit[] {
 
 function pickPreparedRegionAt(
   coord: DrawCoordinate,
-  regions: PreparedRegionHit[]
+  screenCoord: DrawCoordinate,
+  regions: PreparedRegionHit[],
+  renderer: WsiTileRenderer,
+  labelStyle: RegionLabelStyle,
+  canvasWidth: number,
+  canvasHeight: number
 ): {
   region: WsiRegion;
   regionIndex: number;
@@ -270,16 +430,24 @@ function pickPreparedRegionAt(
 } | null {
   const x = coord[0];
   const y = coord[1];
+  const zoom = Math.max(1e-6, renderer.getViewState().zoom);
+  const contourHitDistance = REGION_CONTOUR_HIT_DISTANCE_PX / zoom;
   for (let i = regions.length - 1; i >= 0; i -= 1) {
     const region = regions[i];
     for (const polygon of region.polygons) {
-      if (!pointInPreparedPolygon(x, y, polygon)) continue;
+      if (!isPointNearPolygonContour(x, y, polygon, contourHitDistance)) continue;
       return {
         region: region.region,
         regionIndex: region.regionIndex,
         regionId: region.regionId,
       };
     }
+    if (!isScreenPointInsideLabel(region, screenCoord, renderer, labelStyle, canvasWidth, canvasHeight)) continue;
+    return {
+      region: region.region,
+      regionIndex: region.regionIndex,
+      regionId: region.regionId,
+    };
   }
   return null;
 }
@@ -456,6 +624,7 @@ export function WsiViewerCanvas({
     }));
   }, [safeRoiRegions, safeRoiPolygons]);
   const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRoiRegions), [effectiveRoiRegions]);
+  const resolvedRegionLabelStyle = useMemo(() => resolveRegionLabelStyle(regionLabelStyle), [regionLabelStyle]);
 
   const clipPolygons = useMemo<RoiPolygon[]>(() => effectiveRoiRegions.map(region => region.coordinates as RoiPolygon), [effectiveRoiRegions]);
 
@@ -803,12 +972,36 @@ export function WsiViewerCanvas({
     const renderer = rendererRef.current;
     if (!renderer) return null;
     const raw = renderer.worldToScreen(worldX, worldY);
-    if (!Array.isArray(raw) || raw.length < 2) return null;
-    const x = Number(raw[0]);
-    const y = Number(raw[1]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    return [x, y];
+    return toDrawCoordinate(raw);
   }, []);
+
+  const resolveCanvasPointerSnapshot = useCallback((clientX: number, clientY: number): { screenCoord: DrawCoordinate; canvasWidth: number; canvasHeight: number } | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+    const screenX = clientX - rect.left;
+    const screenY = clientY - rect.top;
+    if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) {
+      return null;
+    }
+    return {
+      screenCoord: [screenX, screenY],
+      canvasWidth: Math.max(1, rect.width),
+      canvasHeight: Math.max(1, rect.height),
+    };
+  }, []);
+
+  const pickRegionHit = useCallback(
+    (coord: DrawCoordinate, screenCoord: DrawCoordinate, canvasWidth: number, canvasHeight: number) => {
+      const renderer = rendererRef.current;
+      if (!renderer) return null;
+      return pickPreparedRegionAt(coord, screenCoord, preparedRegionHits, renderer, resolvedRegionLabelStyle, canvasWidth, canvasHeight);
+    },
+    [preparedRegionHits, resolvedRegionLabelStyle]
+  );
 
   const requestCustomLayerRedraw = useCallback(() => {
     rendererRef.current?.requestRender();
@@ -874,7 +1067,10 @@ export function WsiViewerCanvas({
       }
       if (!preparedRegionHits.length) return;
 
-      const hit = pickPreparedRegionAt(coord, preparedRegionHits);
+      const pointerSnapshot = resolveCanvasPointerSnapshot(event.clientX, event.clientY);
+      if (!pointerSnapshot) return;
+
+      const hit = pickRegionHit(coord, pointerSnapshot.screenCoord, pointerSnapshot.canvasWidth, pointerSnapshot.canvasHeight);
       const nextHoverId = hit?.regionId ?? null;
       const prevHoverId = hoveredRegionIdRef.current;
       if (String(prevHoverId) === String(nextHoverId)) return;
@@ -888,7 +1084,7 @@ export function WsiViewerCanvas({
         coordinate: coord,
       });
     },
-    [drawTool, preparedRegionHits, resolveWorldCoord, onRegionHover, onPointerWorldMove, source, emitPointHover, getCellByCoordinates, onPointHover]
+    [drawTool, preparedRegionHits, resolveWorldCoord, onRegionHover, onPointerWorldMove, source, emitPointHover, getCellByCoordinates, onPointHover, resolveCanvasPointerSnapshot, pickRegionHit]
   );
 
   const handleRegionPointerLeave = useCallback(() => {
@@ -924,7 +1120,10 @@ export function WsiViewerCanvas({
         return;
       }
 
-      const hit = pickPreparedRegionAt(coord, preparedRegionHits);
+      const pointerSnapshot = resolveCanvasPointerSnapshot(event.clientX, event.clientY);
+      if (!pointerSnapshot) return;
+
+      const hit = pickRegionHit(coord, pointerSnapshot.screenCoord, pointerSnapshot.canvasWidth, pointerSnapshot.canvasHeight);
       if (!hit) {
         commitActiveRegion(null);
         return;
@@ -939,7 +1138,7 @@ export function WsiViewerCanvas({
         coordinate: coord,
       });
     },
-    [drawTool, preparedRegionHits, resolveWorldCoord, onRegionClick, activeRegionId, commitActiveRegion, emitPointClick]
+    [drawTool, preparedRegionHits, resolveWorldCoord, onRegionClick, activeRegionId, commitActiveRegion, emitPointClick, resolveCanvasPointerSnapshot, pickRegionHit]
   );
 
   const handleBrushTap = useCallback(
@@ -948,7 +1147,15 @@ export function WsiViewerCanvas({
       if (brushOptions?.clickSelectRoi !== true) return false;
       if (!preparedRegionHits.length) return false;
 
-      const hit = pickPreparedRegionAt(coord, preparedRegionHits);
+      const renderer = rendererRef.current;
+      const canvas = canvasRef.current;
+      if (!renderer || !canvas) return false;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+
+      const screenCoord = toDrawCoordinate(renderer.worldToScreen(coord[0], coord[1]));
+      if (!screenCoord) return false;
+      const hit = pickRegionHit(coord, screenCoord, rect.width, rect.height);
       if (!hit) return false;
 
       const nextActive: string | number | null = activeRegionId !== null && String(activeRegionId) === String(hit.regionId) ? null : hit.regionId;
@@ -961,7 +1168,7 @@ export function WsiViewerCanvas({
       });
       return true;
     },
-    [drawTool, brushOptions?.clickSelectRoi, preparedRegionHits, activeRegionId, commitActiveRegion, onRegionClick]
+    [drawTool, brushOptions?.clickSelectRoi, preparedRegionHits, activeRegionId, commitActiveRegion, onRegionClick, pickRegionHit]
   );
 
   const handleRegionContextMenu = useCallback(
