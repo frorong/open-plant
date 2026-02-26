@@ -250,18 +250,21 @@ const DEFAULT_PATCH_STROKE_STYLE: RegionStrokeStyle = {
   shadowOffsetY: 0,
 };
 
+const REGION_INTERACTION_SHADOW_COLOR = "rgba(23, 23, 25, 0.1)";
+const REGION_INTERACTION_SHADOW_WIDTH = 6;
+
 const DEFAULT_REGION_LABEL_STYLE: RegionLabelStyle = {
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-  fontSize: 12,
-  fontWeight: 500,
-  textColor: "#ffffff",
-  backgroundColor: "rgba(8, 14, 22, 0.88)",
-  borderColor: "rgba(255, 77, 79, 0.85)",
-  borderWidth: 1,
-  paddingX: 6,
+  fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  fontSize: 11,
+  fontWeight: 600,
+  textColor: "#171719",
+  backgroundColor: "#FFCC00",
+  borderColor: "rgba(0, 0, 0, 0)",
+  borderWidth: 0,
+  paddingX: 8,
   paddingY: 4,
   offsetY: 10,
-  borderRadius: 3,
+  borderRadius: 4,
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -570,7 +573,7 @@ function drawInvertedFillMask(ctx: CanvasRenderingContext2D, outerRing: DrawCoor
   ctx.restore();
 }
 
-function resolveLabelStyle(style: Partial<RegionLabelStyle> | undefined): RegionLabelStyle {
+export function resolveRegionLabelStyle(style: Partial<RegionLabelStyle> | undefined): RegionLabelStyle {
   const px = typeof style?.paddingX === "number" && Number.isFinite(style.paddingX) ? Math.max(0, style.paddingX) : DEFAULT_REGION_LABEL_STYLE.paddingX;
   const py = typeof style?.paddingY === "number" && Number.isFinite(style.paddingY) ? Math.max(0, style.paddingY) : DEFAULT_REGION_LABEL_STYLE.paddingY;
   const fs = typeof style?.fontSize === "number" && Number.isFinite(style.fontSize) ? Math.max(8, style.fontSize) : DEFAULT_REGION_LABEL_STYLE.fontSize;
@@ -589,6 +592,20 @@ function resolveLabelStyle(style: Partial<RegionLabelStyle> | undefined): Region
     paddingY: py,
     offsetY: oy,
     borderRadius: br,
+  };
+}
+
+function resolveRegionInteractionShadowStyle(strokeStyle: RegionStrokeStyle): RegionStrokeStyle {
+  return {
+    color: REGION_INTERACTION_SHADOW_COLOR,
+    width: REGION_INTERACTION_SHADOW_WIDTH,
+    lineDash: EMPTY_DASH,
+    lineJoin: strokeStyle.lineJoin,
+    lineCap: strokeStyle.lineCap,
+    shadowColor: "rgba(0, 0, 0, 0)",
+    shadowBlur: 0,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
   };
 }
 
@@ -803,7 +820,7 @@ export function DrawLayer({
   const resolvedActiveStrokeStyle = useMemo(() => mergeStrokeStyle(resolvedStrokeStyle, regionStrokeActiveStyle), [resolvedStrokeStyle, regionStrokeActiveStyle]);
   const resolvedPatchStrokeStyle = useMemo(() => mergeStrokeStyle(DEFAULT_PATCH_STROKE_STYLE, patchStrokeStyle), [patchStrokeStyle]);
 
-  const resolvedLabelStyle = useMemo(() => resolveLabelStyle(regionLabelStyle), [regionLabelStyle]);
+  const resolvedLabelStyle = useMemo(() => resolveRegionLabelStyle(regionLabelStyle), [regionLabelStyle]);
   const resolvedStampOptions = useMemo(() => resolveStampOptions(stampOptions), [stampOptions]);
   const resolvedBrushOptions = useMemo(() => resolveBrushOptions(brushOptions), [brushOptions]);
 
@@ -1031,15 +1048,22 @@ export function DrawLayer({
           });
           strokeStyle = mergeStrokeStyle(strokeStyle, resolved || undefined);
         }
+        const interactionShadowStyle = state === "default" ? null : resolveRegionInteractionShadowStyle(strokeStyle);
 
         for (const polygon of polygons) {
           const screenOuter = worldToScreenPoints(polygon.outer);
           if (screenOuter.length >= 4) {
+            if (interactionShadowStyle) {
+              drawPath(ctx, screenOuter, interactionShadowStyle, true, false);
+            }
             drawPath(ctx, screenOuter, strokeStyle, true, false);
           }
           for (const hole of polygon.holes) {
             const screenHole = worldToScreenPoints(hole);
             if (screenHole.length >= 4) {
+              if (interactionShadowStyle) {
+                drawPath(ctx, screenHole, interactionShadowStyle, true, false);
+              }
               drawPath(ctx, screenHole, strokeStyle, true, false);
             }
           }
