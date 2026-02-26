@@ -348,14 +348,14 @@ export function OverviewMap({
 		const isDash = viewportBorderStyle === "dash";
 
 		if (safeCorners) {
-			const screenCorners: Array<[number, number]> = [];
-			for (let i = 0; i < safeCorners.length; i += 1) {
-				const point = safeCorners[i];
-				screenCorners.push([
-					clamp(cx + point[0] * sx, cx, cx + cw),
-					clamp(cy + point[1] * sy, cy, cy + ch),
-				]);
-			}
+			const screenCorners: Array<[number, number]> = safeCorners.map(
+				(point) => [cx + point[0] * sx, cy + point[1] * sy],
+			);
+
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(cx, cy, cw, ch);
+			ctx.clip();
 
 			ctx.beginPath();
 			for (let i = 0; i < screenCorners.length; i += 1) {
@@ -373,6 +373,8 @@ export function OverviewMap({
 			} else {
 				ctx.stroke();
 			}
+
+			ctx.restore();
 			return;
 		}
 
