@@ -39,7 +39,7 @@ import type {
   RegionStrokeStyleResolver,
   StampOptions,
 } from "./draw-layer";
-import { DrawLayer, mergeRegionLabelStyle, resolveRegionLabelStyle } from "./draw-layer";
+import { DrawLayer, mergeRegionLabelStyle, resolveRegionLabelAutoLiftOffsetPx, resolveRegionLabelStyle } from "./draw-layer";
 import { OverviewMap, type OverviewMapOptions } from "./overview-map";
 
 const EMPTY_ROI_REGIONS: WsiRegion[] = [];
@@ -424,6 +424,7 @@ function pickPreparedRegionAt(
   renderer: WsiTileRenderer,
   labelStyle: RegionLabelStyle,
   labelStyleResolver: RegionLabelStyleResolver | undefined,
+  autoLiftRegionLabelAtMaxZoom: boolean | undefined,
   canvasWidth: number,
   canvasHeight: number
 ): {
@@ -434,6 +435,7 @@ function pickPreparedRegionAt(
   const x = coord[0];
   const y = coord[1];
   const zoom = Math.max(1e-6, renderer.getViewState().zoom);
+  const labelAutoLiftOffset = resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, renderer.getZoomRange());
   const contourHitDistance = REGION_CONTOUR_HIT_DISTANCE_PX / zoom;
   for (let i = regions.length - 1; i >= 0; i -= 1) {
     const region = regions[i];
@@ -445,7 +447,7 @@ function pickPreparedRegionAt(
         regionId: region.regionId,
       };
     }
-    const dynamicLabelStyle = mergeRegionLabelStyle(
+    let dynamicLabelStyle = mergeRegionLabelStyle(
       labelStyle,
       labelStyleResolver?.({
         region: region.region,
@@ -454,6 +456,12 @@ function pickPreparedRegionAt(
         zoom,
       })
     );
+    if (labelAutoLiftOffset > 0) {
+      dynamicLabelStyle = {
+        ...dynamicLabelStyle,
+        offsetY: dynamicLabelStyle.offsetY + labelAutoLiftOffset,
+      };
+    }
     if (!isScreenPointInsideLabel(region, screenCoord, renderer, dynamicLabelStyle, canvasWidth, canvasHeight)) continue;
     return {
       region: region.region,
@@ -516,6 +524,7 @@ export interface WsiViewerCanvasProps {
   patchRegions?: WsiRegion[];
   regionLabelStyle?: Partial<RegionLabelStyle>;
   drawAreaTooltip?: DrawAreaTooltipOptions;
+  autoLiftRegionLabelAtMaxZoom?: boolean;
   onPointerWorldMove?: (event: PointerWorldMoveEvent) => void;
   onPointHover?: (event: PointHoverEvent) => void;
   onPointClick?: (event: PointClickEvent) => void;
@@ -576,6 +585,7 @@ export function WsiViewerCanvas({
   patchRegions,
   regionLabelStyle,
   drawAreaTooltip,
+  autoLiftRegionLabelAtMaxZoom = false,
   onPointerWorldMove,
   onPointHover,
   onPointClick,
@@ -1029,9 +1039,19 @@ export function WsiViewerCanvas({
     (coord: DrawCoordinate, screenCoord: DrawCoordinate, canvasWidth: number, canvasHeight: number) => {
       const renderer = rendererRef.current;
       if (!renderer) return null;
-      return pickPreparedRegionAt(coord, screenCoord, preparedRegionHits, renderer, resolvedRegionLabelStyle, resolveRegionLabelStyleProp, canvasWidth, canvasHeight);
+      return pickPreparedRegionAt(
+        coord,
+        screenCoord,
+        preparedRegionHits,
+        renderer,
+        resolvedRegionLabelStyle,
+        resolveRegionLabelStyleProp,
+        autoLiftRegionLabelAtMaxZoom,
+        canvasWidth,
+        canvasHeight
+      );
     },
-    [preparedRegionHits, resolvedRegionLabelStyle, resolveRegionLabelStyleProp]
+    [preparedRegionHits, resolvedRegionLabelStyle, resolveRegionLabelStyleProp, autoLiftRegionLabelAtMaxZoom]
   );
 
   const requestCustomLayerRedraw = useCallback(() => {
@@ -1407,6 +1427,7 @@ export function WsiViewerCanvas({
           activeRegionId={activeRegionId}
           regionLabelStyle={regionLabelStyle}
           drawAreaTooltip={drawAreaTooltip}
+          autoLiftRegionLabelAtMaxZoom={autoLiftRegionLabelAtMaxZoom}
           invalidateRef={drawInvalidateRef}
           onDrawComplete={onDrawComplete}
           onPatchComplete={onPatchComplete}

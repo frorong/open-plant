@@ -730,6 +730,10 @@ export class WsiTileRenderer {
 		return this.camera.getViewState();
 	}
 
+	getZoomRange(): { minZoom: number; maxZoom: number } {
+		return { minZoom: this.minZoom, maxZoom: this.maxZoom };
+	}
+
 	setPointPalette(colors: Uint8Array | null | undefined): void {
 		if (!colors || colors.length === 0) {
 			this.lastPointPalette = null;
