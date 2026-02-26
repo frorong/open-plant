@@ -1030,11 +1030,13 @@ export default function App() {
             onPatchComplete={handlePatchComplete}
             onViewStateChange={handleViewStateChange}
             onStats={setStats}
-            showOverviewMap={showOverviewMap}
-            overviewMapOptions={{
-              width: 220,
-              height: 140,
-              margin: 24,
+            overviewMapConfig={{
+              show: showOverviewMap,
+              options: {
+                width: 220,
+                height: 140,
+                margin: 24,
+              },
             }}
           />
         ) : (

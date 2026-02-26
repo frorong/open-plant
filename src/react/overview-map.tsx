@@ -2,6 +2,7 @@ import {
 	type CSSProperties,
 	type MutableRefObject,
 	type PointerEvent as ReactPointerEvent,
+	type ReactNode,
 	type RefObject,
 	useCallback,
 	useEffect,
@@ -28,6 +29,8 @@ export type OverviewMapPosition =
 	| "top-right"
 	| "top-left";
 
+export type ViewportBorderStyle = "stroke" | "dash";
+
 export interface OverviewMapOptions {
 	width: number;
 	height: number;
@@ -37,11 +40,15 @@ export interface OverviewMapOptions {
 	borderWidth: number;
 	backgroundColor: string;
 	borderColor: string;
-	viewportStrokeColor: string;
+	viewportBorderColor: string;
+	viewportBorderStyle: ViewportBorderStyle;
 	viewportFillColor: string;
 	interactive: boolean;
 	showThumbnail: boolean;
 	maxThumbnailTiles: number;
+	onClose?: () => void;
+	closeIcon?: ReactNode;
+	closeButtonStyle?: CSSProperties;
 }
 
 export interface OverviewMapProps {
@@ -55,20 +62,55 @@ export interface OverviewMapProps {
 }
 
 const DEFAULT_OVERVIEW_MAP_OPTIONS: OverviewMapOptions = {
-	width: 220,
-	height: 140,
+	width: 200,
+	height: 125,
 	margin: 16,
 	position: "bottom-right",
-	borderRadius: 10,
-	borderWidth: 1.5,
+	borderRadius: 6,
+	borderWidth: 0,
 	backgroundColor: "rgba(4, 10, 18, 0.88)",
 	borderColor: "rgba(230, 244, 255, 0.35)",
-	viewportStrokeColor: "rgba(255, 106, 61, 0.95)",
-	viewportFillColor: "rgba(255, 106, 61, 0.2)",
+	viewportBorderColor: "#171719",
+	viewportBorderStyle: "dash",
+	viewportFillColor: "transparent",
 	interactive: true,
 	showThumbnail: true,
 	maxThumbnailTiles: 16,
 };
+
+function strokeSymmetricDashedPolygon(
+	ctx: CanvasRenderingContext2D,
+	points: Array<[number, number]>,
+	dashLen: number,
+	gapLen: number,
+): void {
+	const len = points.length;
+	if (len !== 4) return;
+	if (dashLen <= 0 || gapLen <= 0) return;
+
+	for (let i = 0; i < len; i += 1) {
+		const from = points[i];
+		const to = points[(i + 1) % len];
+		const sideLen = Math.hypot(to[0] - from[0], to[1] - from[1]);
+		if (sideLen < 1e-6) continue;
+
+		const n = Math.max(1, Math.round((sideLen + gapLen) / (dashLen + gapLen)));
+		const fittedLen = n * dashLen + (n - 1) * gapLen;
+		const scale = sideLen / Math.max(1e-6, fittedLen);
+		const adjDash = dashLen * scale;
+		const adjGap = gapLen * scale;
+
+		ctx.beginPath();
+		ctx.moveTo(from[0], from[1]);
+		ctx.lineTo(to[0], to[1]);
+		ctx.setLineDash([adjDash, adjGap]);
+		ctx.lineDashOffset = 0;
+		ctx.stroke();
+	}
+
+	ctx.setLineDash([]);
+	ctx.lineDashOffset = 0;
+}
 
 function toPositiveNumber(
 	value: number | undefined,
@@ -89,6 +131,26 @@ function isFiniteBounds(bounds: number[] | null | undefined): bounds is Bounds {
 		Number.isFinite(bounds[3])
 	);
 }
+
+const DEFAULT_CLOSE_BUTTON_STYLE: CSSProperties = {
+	position: "absolute",
+	top: 4,
+	right: 4,
+	zIndex: 1,
+	width: 18,
+	height: 18,
+	borderRadius: 999,
+	border: "1px solid rgba(255,255,255,0.4)",
+	background: "rgba(16, 17, 19, 0.85)",
+	color: "#fff",
+	fontSize: 12,
+	lineHeight: 1,
+	cursor: "pointer",
+	padding: 0,
+	display: "flex",
+	alignItems: "center",
+	justifyContent: "center",
+};
 
 export function OverviewMap({
 	source,
@@ -119,6 +181,30 @@ export function OverviewMap({
 		DEFAULT_OVERVIEW_MAP_OPTIONS.height,
 		48,
 	);
+
+	const contentRect = useMemo(() => {
+		const imgW = Math.max(1, source.width);
+		const imgH = Math.max(1, source.height);
+		const imageAspect = imgW / imgH;
+		const boxAspect = width / height;
+
+		let cw: number;
+		let ch: number;
+		if (imageAspect > boxAspect) {
+			cw = width;
+			ch = width / imageAspect;
+		} else {
+			ch = height;
+			cw = height * imageAspect;
+		}
+
+		return {
+			x: (width - cw) / 2,
+			y: (height - ch) / 2,
+			w: cw,
+			h: ch,
+		};
+	}, [source.width, source.height, width, height]);
 	const margin = toPositiveNumber(
 		options?.margin,
 		DEFAULT_OVERVIEW_MAP_OPTIONS.margin,
@@ -149,11 +235,15 @@ export function OverviewMap({
 		options?.backgroundColor || DEFAULT_OVERVIEW_MAP_OPTIONS.backgroundColor;
 	const borderColor =
 		options?.borderColor || DEFAULT_OVERVIEW_MAP_OPTIONS.borderColor;
-	const viewportStrokeColor =
-		options?.viewportStrokeColor ||
-		DEFAULT_OVERVIEW_MAP_OPTIONS.viewportStrokeColor;
+	const viewportBorderColor =
+		options?.viewportBorderColor ||
+		DEFAULT_OVERVIEW_MAP_OPTIONS.viewportBorderColor;
+	const viewportBorderStyle =
+		options?.viewportBorderStyle === "stroke" || options?.viewportBorderStyle === "dash"
+			? options.viewportBorderStyle
+			: DEFAULT_OVERVIEW_MAP_OPTIONS.viewportBorderStyle;
 	const viewportFillColor =
-		options?.viewportFillColor ||
+		options?.viewportFillColor ??
 		DEFAULT_OVERVIEW_MAP_OPTIONS.viewportFillColor;
 	const interactive =
 		options?.interactive ?? DEFAULT_OVERVIEW_MAP_OPTIONS.interactive;
@@ -161,6 +251,9 @@ export function OverviewMap({
 		options?.showThumbnail ?? DEFAULT_OVERVIEW_MAP_OPTIONS.showThumbnail;
 	const position =
 		options?.position || DEFAULT_OVERVIEW_MAP_OPTIONS.position;
+	const onClose = options?.onClose;
+	const closeIcon = options?.closeIcon;
+	const closeButtonStyle = options?.closeButtonStyle;
 
 	const mergedStyle = useMemo<CSSProperties>(() => {
 		const pos: CSSProperties = {};
@@ -209,9 +302,11 @@ export function OverviewMap({
 		ctx.fillStyle = backgroundColor;
 		ctx.fillRect(0, 0, cssW, cssH);
 
+		const { x: cx, y: cy, w: cw, h: ch } = contentRect;
+
 		const preview = thumbnailRef.current;
 		if (preview) {
-			ctx.drawImage(preview, 0, 0, cssW, cssH);
+			ctx.drawImage(preview, cx, cy, cw, ch);
 		}
 
 		ctx.strokeStyle = borderColor;
@@ -234,8 +329,8 @@ export function OverviewMap({
 		if (!safeBounds) return;
 		lastBoundsRef.current = safeBounds;
 
-		const sx = cssW / Math.max(1, source.width);
-		const sy = cssH / Math.max(1, source.height);
+		const sx = cw / Math.max(1, source.width);
+		const sy = ch / Math.max(1, source.height);
 
 		const safeCorners =
 			Array.isArray(corners) &&
@@ -250,45 +345,69 @@ export function OverviewMap({
 				? (corners as Array<[number, number]>)
 				: null;
 
+		const isDash = viewportBorderStyle === "dash";
+
 		if (safeCorners) {
-			ctx.beginPath();
+			const screenCorners: Array<[number, number]> = [];
 			for (let i = 0; i < safeCorners.length; i += 1) {
 				const point = safeCorners[i];
-				const x = clamp(point[0] * sx, 0, cssW);
-				const y = clamp(point[1] * sy, 0, cssH);
-				if (i === 0) ctx.moveTo(x, y);
-				else ctx.lineTo(x, y);
+				screenCorners.push([
+					clamp(cx + point[0] * sx, cx, cx + cw),
+					clamp(cy + point[1] * sy, cy, cy + ch),
+				]);
+			}
+
+			ctx.beginPath();
+			for (let i = 0; i < screenCorners.length; i += 1) {
+				if (i === 0) ctx.moveTo(screenCorners[i][0], screenCorners[i][1]);
+				else ctx.lineTo(screenCorners[i][0], screenCorners[i][1]);
 			}
 			ctx.closePath();
 			ctx.fillStyle = viewportFillColor;
 			ctx.fill();
-			ctx.strokeStyle = viewportStrokeColor;
-			ctx.lineWidth = 1.5;
-			ctx.stroke();
+
+			ctx.strokeStyle = viewportBorderColor;
+			ctx.lineWidth = 2.25;
+			if (isDash) {
+				strokeSymmetricDashedPolygon(ctx, screenCorners, 4, 3);
+			} else {
+				ctx.stroke();
+			}
 			return;
 		}
 
-		const left = clamp(safeBounds[0] * sx, 0, cssW);
-		const top = clamp(safeBounds[1] * sy, 0, cssH);
-		const right = clamp(safeBounds[2] * sx, 0, cssW);
-		const bottom = clamp(safeBounds[3] * sy, 0, cssH);
+		const left = clamp(cx + safeBounds[0] * sx, cx, cx + cw);
+		const top = clamp(cy + safeBounds[1] * sy, cy, cy + ch);
+		const right = clamp(cx + safeBounds[2] * sx, cx, cx + cw);
+		const bottom = clamp(cy + safeBounds[3] * sy, cy, cy + ch);
 		const rectW = Math.max(1, right - left);
 		const rectH = Math.max(1, bottom - top);
 
 		ctx.fillStyle = viewportFillColor;
 		ctx.fillRect(left, top, rectW, rectH);
 
-		ctx.strokeStyle = viewportStrokeColor;
-		ctx.lineWidth = 1.5;
-		ctx.strokeRect(
-			left + 0.5,
-			top + 0.5,
-			Math.max(1, rectW - 1),
-			Math.max(1, rectH - 1),
-		);
+		ctx.strokeStyle = viewportBorderColor;
+		ctx.lineWidth = 2.25;
+		if (isDash) {
+			const rectCorners: Array<[number, number]> = [
+				[left + 0.5, top + 0.5],
+				[left + 0.5 + Math.max(1, rectW - 1), top + 0.5],
+				[left + 0.5 + Math.max(1, rectW - 1), top + 0.5 + Math.max(1, rectH - 1)],
+				[left + 0.5, top + 0.5 + Math.max(1, rectH - 1)],
+			];
+			strokeSymmetricDashedPolygon(ctx, rectCorners, 4, 3);
+		} else {
+			ctx.strokeRect(
+				left + 0.5,
+				top + 0.5,
+				Math.max(1, rectW - 1),
+				Math.max(1, rectH - 1),
+			);
+		}
 	}, [
 		width,
 		height,
+		contentRect,
 		backgroundColor,
 		borderColor,
 		borderWidth,
@@ -296,7 +415,8 @@ export function OverviewMap({
 		source.width,
 		source.height,
 		viewportFillColor,
-		viewportStrokeColor,
+		viewportBorderColor,
+		viewportBorderStyle,
 	]);
 
 	const requestDraw = useCallback(() => {
@@ -317,11 +437,18 @@ export function OverviewMap({
 			const rect = canvas.getBoundingClientRect();
 			if (!rect.width || !rect.height) return null;
 
-			const nx = clamp((clientX - rect.left) / rect.width, 0, 1);
-			const ny = clamp((clientY - rect.top) / rect.height, 0, 1);
+			const scaleX = rect.width / width;
+			const scaleY = rect.height / height;
+			const cxPx = contentRect.x * scaleX;
+			const cyPx = contentRect.y * scaleY;
+			const cwPx = contentRect.w * scaleX;
+			const chPx = contentRect.h * scaleY;
+
+			const nx = clamp((clientX - rect.left - cxPx) / cwPx, 0, 1);
+			const ny = clamp((clientY - rect.top - cyPx) / chPx, 0, 1);
 			return [nx * source.width, ny * source.height];
 		},
-		[source.width, source.height],
+		[source.width, source.height, width, height, contentRect],
 	);
 
 	const recenterTo = useCallback(
@@ -429,8 +556,8 @@ export function OverviewMap({
 		}
 
 		const preview = document.createElement("canvas");
-		preview.width = Math.max(1, Math.round(width));
-		preview.height = Math.max(1, Math.round(height));
+		preview.width = Math.max(1, Math.round(contentRect.w));
+		preview.height = Math.max(1, Math.round(contentRect.h));
 		const ctx = preview.getContext("2d");
 		if (!ctx) {
 			return undefined;
@@ -507,8 +634,7 @@ export function OverviewMap({
 	}, [
 		source,
 		authToken,
-		width,
-		height,
+		contentRect,
 		backgroundColor,
 		showThumbnail,
 		maxThumbnailTiles,
@@ -542,21 +668,43 @@ export function OverviewMap({
 	);
 
 	return (
-		<canvas
-			ref={canvasRef}
-			className={className}
-			style={mergedStyle}
-			onPointerDown={handlePointerDown}
-			onPointerMove={handlePointerMove}
-			onPointerUp={handlePointerUp}
-			onPointerCancel={handlePointerUp}
-			onContextMenu={(event) => {
-				event.preventDefault();
-			}}
-			onWheel={(event) => {
-				event.preventDefault();
-				event.stopPropagation();
-			}}
-		/>
+		<div className={className} style={mergedStyle}>
+			<canvas
+				ref={canvasRef}
+				style={{
+					width: "100%",
+					height: "100%",
+					display: "block",
+					borderRadius: "inherit",
+				}}
+				onPointerDown={handlePointerDown}
+				onPointerMove={handlePointerMove}
+				onPointerUp={handlePointerUp}
+				onPointerCancel={handlePointerUp}
+				onContextMenu={(event) => {
+					event.preventDefault();
+				}}
+				onWheel={(event) => {
+					event.preventDefault();
+					event.stopPropagation();
+				}}
+			/>
+			{onClose && (
+				<button
+					type="button"
+					aria-label="Hide overview map"
+					onClick={(event) => {
+						event.stopPropagation();
+						onClose();
+					}}
+					style={closeButtonStyle
+						? {...closeButtonStyle as CSSProperties}
+						: { ...DEFAULT_CLOSE_BUTTON_STYLE as CSSProperties }
+					}
+				>
+					{closeIcon ?? "×"}
+				</button>
+			)}
+		</div>
 	);
 }
