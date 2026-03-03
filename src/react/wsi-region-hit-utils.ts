@@ -3,7 +3,7 @@ import type { WsiRegion } from "../wsi/types";
 import { clamp } from "../wsi/utils";
 import type { WsiTileRenderer } from "../wsi/wsi-tile-renderer";
 import { getTopAnchorFromPolygons, measureLabelTextWidth, mergeRegionLabelStyle } from "./draw-layer-label";
-import type { DrawCoordinate, RegionLabelStyle, RegionLabelStyleResolver } from "./draw-layer-types";
+import type { DrawCoordinate, RegionLabelAnchorMode, RegionLabelStyle, RegionLabelStyleResolver } from "./draw-layer-types";
 import { toDrawCoordinate } from "./draw-layer-utils";
 
 const REGION_CONTOUR_HIT_DISTANCE_PX = 6;
@@ -91,7 +91,7 @@ export function isScreenPointInsideLabel(
   return screenCoord[0] >= left && screenCoord[0] <= right && screenCoord[1] >= top && screenCoord[1] <= bottom;
 }
 
-export function prepareRegionHits(regions: WsiRegion[]): PreparedRegionHit[] {
+export function prepareRegionHits(regions: WsiRegion[], regionLabelAnchor: RegionLabelAnchorMode = "top-center"): PreparedRegionHit[] {
   const out: PreparedRegionHit[] = [];
   for (let i = 0; i < regions.length; i += 1) {
     const region = regions[i];
@@ -104,7 +104,7 @@ export function prepareRegionHits(regions: WsiRegion[]): PreparedRegionHit[] {
       regionId: resolveRegionId(region, i),
       polygons,
       label,
-      labelAnchor: label ? getTopAnchorFromPolygons(polygons) : null,
+      labelAnchor: label ? getTopAnchorFromPolygons(polygons, regionLabelAnchor) : null,
     });
   }
   return out;

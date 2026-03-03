@@ -28,6 +28,7 @@ import type {
   DrawResult,
   DrawTool,
   PatchDrawResult,
+  RegionLabelAnchorMode,
   RegionLabelStyle,
   RegionLabelStyleResolver,
   RegionStrokeStyle,
@@ -177,6 +178,7 @@ export interface WsiViewerCanvasProps {
   customLayers?: WsiCustomLayer[];
   patchRegions?: WsiRegion[];
   regionLabelStyle?: Partial<RegionLabelStyle>;
+  regionLabelAnchor?: RegionLabelAnchorMode;
   drawAreaTooltip?: DrawAreaTooltipOptions;
   autoLiftRegionLabelAtMaxZoom?: boolean;
   clampRegionLabelToViewport?: boolean;
@@ -240,6 +242,7 @@ export function WsiViewerCanvas({
   customLayers,
   patchRegions,
   regionLabelStyle,
+  regionLabelAnchor = "top-center",
   drawAreaTooltip,
   autoLiftRegionLabelAtMaxZoom = false,
   clampRegionLabelToViewport = true,
@@ -326,7 +329,7 @@ export function WsiViewerCanvas({
       coordinates,
     }));
   }, [safeRoiRegions, safeRoiPolygons]);
-  const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRoiRegions), [effectiveRoiRegions]);
+  const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRoiRegions, regionLabelAnchor), [effectiveRoiRegions, regionLabelAnchor]);
   const resolvedRegionLabelStyle = useMemo(() => resolveRegionLabelStyle(regionLabelStyle), [regionLabelStyle]);
 
   const applyRegionLabelAutoLiftOffset = useCallback((next: number) => {
@@ -1209,6 +1212,7 @@ export function WsiViewerCanvas({
           hoveredRegionId={hoveredRegionId}
           activeRegionId={activeRegionId}
           regionLabelStyle={regionLabelStyle}
+          regionLabelAnchor={regionLabelAnchor}
           drawAreaTooltip={drawAreaTooltip}
           autoLiftRegionLabelAtMaxZoom={autoLiftRegionLabelAtMaxZoom}
           clampRegionLabelToViewport={clampRegionLabelToViewport}

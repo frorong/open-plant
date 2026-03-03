@@ -97,6 +97,8 @@ export interface RegionLabelStyle {
   borderRadius: number;
 }
 
+export type RegionLabelAnchorMode = "top-center" | "top-left";
+
 export interface DrawAreaTooltipStyle {
   fontFamily: string;
   fontSize: number;
@@ -175,6 +177,7 @@ export interface DrawLayerProps {
   regionLabelStyle?: Partial<RegionLabelStyle>;
   drawAreaTooltip?: DrawAreaTooltipOptions;
   autoLiftRegionLabelAtMaxZoom?: boolean;
+  regionLabelAnchor?: RegionLabelAnchorMode;
   clampRegionLabelToViewport?: boolean;
   regionLabelAutoLiftOffsetPx?: number;
   invalidateRef?: MutableRefObject<(() => void) | null>;

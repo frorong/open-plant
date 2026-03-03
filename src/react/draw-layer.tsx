@@ -70,6 +70,7 @@ export type {
   DrawTool,
   PatchDrawResult,
   RegionLabelStyle,
+  RegionLabelAnchorMode,
   RegionLabelStyleContext,
   RegionLabelStyleResolver,
   RegionStrokeStyle,
@@ -134,6 +135,7 @@ export function DrawLayer({
   regionLabelStyle,
   drawAreaTooltip,
   autoLiftRegionLabelAtMaxZoom = false,
+  regionLabelAnchor = "top-center",
   clampRegionLabelToViewport = true,
   regionLabelAutoLiftOffsetPx,
   invalidateRef,
@@ -468,7 +470,7 @@ export function DrawLayer({
           : resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, projectorRef.current?.getZoomRange?.());
       for (const entry of preparedPersistedRegions) {
         if (!entry.region.label) continue;
-        const anchorWorld = getTopAnchorFromPolygons(entry.polygons);
+        const anchorWorld = getTopAnchorFromPolygons(entry.polygons, regionLabelAnchor);
         if (!anchorWorld) continue;
         const anchorScreen = toCoord(projectorRef.current?.worldToScreen(anchorWorld[0], anchorWorld[1]) ?? []);
         if (!anchorScreen) continue;
@@ -541,6 +543,7 @@ export function DrawLayer({
     resolvedLabelStyle,
     resolvedDrawAreaTooltipOptions,
     autoLiftRegionLabelAtMaxZoom,
+    regionLabelAnchor,
     clampRegionLabelToViewport,
     regionLabelAutoLiftOffsetPx,
     imageMpp,

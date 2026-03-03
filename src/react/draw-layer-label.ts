@@ -1,4 +1,4 @@
-import type { DrawAreaTooltipOptions, DrawAreaTooltipStyle, DrawCoordinate, RegionLabelStyle, ResolvedDrawAreaTooltipOptions } from "./draw-layer-types";
+import type { DrawAreaTooltipOptions, DrawAreaTooltipStyle, DrawCoordinate, RegionLabelAnchorMode, RegionLabelStyle, ResolvedDrawAreaTooltipOptions } from "./draw-layer-types";
 import {
   DEFAULT_DRAW_AREA_TOOLTIP_OFFSET,
   DEFAULT_DRAW_AREA_TOOLTIP_STYLE,
@@ -48,7 +48,7 @@ export function measureLabelTextWidth(label: string, labelStyle: { fontFamily: s
   return width;
 }
 
-export function getTopAnchor(coords: DrawCoordinate[]): DrawCoordinate | null {
+export function getTopAnchor(coords: DrawCoordinate[], anchorMode: RegionLabelAnchorMode = "top-center"): DrawCoordinate | null {
   if (!coords.length) return null;
 
   let minY = Infinity;
@@ -66,13 +66,16 @@ export function getTopAnchor(coords: DrawCoordinate[]): DrawCoordinate | null {
   }
 
   if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
-  return [(minX + maxX) * 0.5, minY];
+  if (anchorMode === "top-center") {
+    return [(minX + maxX) * 0.5, minY];
+  }
+  return [minX, minY];
 }
 
-export function getTopAnchorFromPolygons<T extends { outer: DrawCoordinate[] }>(polygons: T[]): DrawCoordinate | null {
+export function getTopAnchorFromPolygons<T extends { outer: DrawCoordinate[] }>(polygons: T[], anchorMode: RegionLabelAnchorMode = "top-center"): DrawCoordinate | null {
   let best: DrawCoordinate | null = null;
   for (const polygon of polygons) {
-    const anchor = getTopAnchor(polygon.outer);
+    const anchor = getTopAnchor(polygon.outer, anchorMode);
     if (!anchor) continue;
     if (!best || anchor[1] < best[1] || (anchor[1] === best[1] && anchor[0] < best[0])) {
       best = anchor;

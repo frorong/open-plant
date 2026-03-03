@@ -17,6 +17,7 @@ export type {
   DrawResult,
   DrawTool,
   PatchDrawResult,
+  RegionLabelAnchorMode,
   RegionLabelStyle,
   RegionLabelStyleContext,
   RegionLabelStyleResolver,
