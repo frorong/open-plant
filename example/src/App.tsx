@@ -1,21 +1,21 @@
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  buildTermPalette,
   type BrushOptions,
+  buildTermPalette,
   calcScaleLength,
   clamp,
   type DrawOverlayShape,
   type DrawResult,
   type DrawTool,
-  type PointClickEvent,
-  type PointHoverEvent,
   filterPointIndicesByPolygons,
   getWebGpuCapabilities,
   isSameViewState,
   normalizeImageInfo,
   type PatchDrawResult,
+  type PointClickEvent,
   type PointClipMode,
   type PointClipStatsEvent,
+  type PointHoverEvent,
   type RegionClickEvent,
   type RegionHoverEvent,
   type RegionLabelStyle,
@@ -113,6 +113,14 @@ const INITIAL_POINT_STATUS: PointStatus = {
   hasPositivityRank: false,
 };
 
+const DEFAULT_POINT_SIZE_STOPS = {
+  1: 0.5,
+  2: 0.6,
+  5: 0.7,
+  6: 0.8,
+  8: 1,
+} as const;
+
 function normalizeKey(value: string | null | undefined): string {
   return String(value || "")
     .trim()
@@ -208,6 +216,13 @@ export default function App() {
 
   const [pointStatus, setPointStatus] = useState<PointStatus>(INITIAL_POINT_STATUS);
   const [pointPayload, setPointPayload] = useState<WsiPointData | null>(null);
+  const [pointSizeStop1, setPointSizeStop1] = useState(DEFAULT_POINT_SIZE_STOPS[1]);
+  const [pointSizeStop2, setPointSizeStop2] = useState(DEFAULT_POINT_SIZE_STOPS[2]);
+  const [pointSizeStop5, setPointSizeStop5] = useState(DEFAULT_POINT_SIZE_STOPS[5]);
+  const [pointSizeStop6, setPointSizeStop6] = useState(DEFAULT_POINT_SIZE_STOPS[6]);
+  const [pointSizeStop8, setPointSizeStop8] = useState(DEFAULT_POINT_SIZE_STOPS[8]);
+  const [pointStrokeScale, setPointStrokeScale] = useState(1);
+  const [pointInnerBlackFill, setPointInnerBlackFill] = useState(false);
   const [drawTool, setDrawTool] = useState<DrawTool>("cursor");
   const [brushRadius, setBrushRadius] = useState(480);
   const [brushOpacity, setBrushOpacity] = useState(0.1);
@@ -247,13 +262,15 @@ export default function App() {
   }, [source]);
 
   const pointSizeByZoom = useMemo(
-    () => ({
-      1: 2.8,
-      6: 8.8,
-      10: 18.5,
-      12: 30,
-    }),
-    []
+    () =>
+      ({
+        1: pointSizeStop1,
+        2: pointSizeStop2,
+        5: pointSizeStop5,
+        6: pointSizeStop6,
+        8: pointSizeStop8,
+      }) as const,
+    [pointSizeStop1, pointSizeStop2, pointSizeStop5, pointSizeStop6, pointSizeStop8]
   );
 
   const handleViewStateChange = useCallback((next: WsiViewState) => {
@@ -644,14 +661,7 @@ export default function App() {
   const handlePointClick = useCallback((event: PointClickEvent) => {
     setLastPointClick(event);
     if (event.button !== 2) return;
-    window.alert(
-      [
-        "Cell Context",
-        `id: ${event.id ?? "-"}`,
-        `index: ${event.index}`,
-        `world: ${Math.round(event.pointCoordinate[0])}, ${Math.round(event.pointCoordinate[1])}`,
-      ].join("\n")
-    );
+    window.alert(["Cell Context", `id: ${event.id ?? "-"}`, `index: ${event.index}`, `world: ${Math.round(event.pointCoordinate[0])}, ${Math.round(event.pointCoordinate[1])}`].join("\n"));
   }, []);
 
   const maxZoom = source ? Math.max(1, Math.min(32, source.maxTierZoom + 4)) : 1;
@@ -678,6 +688,14 @@ export default function App() {
   const handleStampCircleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const next = Number(e.target.value);
     if (Number.isFinite(next) && next > 0) setStampCircleAreaMm2(next);
+  }, []);
+
+  const resetPointSizeStops = useCallback(() => {
+    setPointSizeStop1(DEFAULT_POINT_SIZE_STOPS[1]);
+    setPointSizeStop2(DEFAULT_POINT_SIZE_STOPS[2]);
+    setPointSizeStop5(DEFAULT_POINT_SIZE_STOPS[5]);
+    setPointSizeStop6(DEFAULT_POINT_SIZE_STOPS[6]);
+    setPointSizeStop8(DEFAULT_POINT_SIZE_STOPS[8]);
   }, []);
 
   const brushOptions = useMemo<BrushOptions>(
@@ -967,6 +985,107 @@ export default function App() {
             </button>
           </div>
 
+          <div className="subpanel point-size-panel">
+            <span className="subpanel-title">Point Size Stops</span>
+            <label className="point-stop">
+              z1
+              <input
+                className="stamp-input point-stop-input"
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={pointSizeStop1}
+                onChange={e => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next > 0) setPointSizeStop1(next);
+                }}
+              />
+            </label>
+            <label className="point-stop">
+              z2
+              <input
+                className="stamp-input point-stop-input"
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={pointSizeStop2}
+                onChange={e => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next > 0) setPointSizeStop2(next);
+                }}
+              />
+            </label>
+            <label className="point-stop">
+              z5
+              <input
+                className="stamp-input point-stop-input"
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={pointSizeStop5}
+                onChange={e => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next > 0) setPointSizeStop5(next);
+                }}
+              />
+            </label>
+            <label className="point-stop">
+              z6
+              <input
+                className="stamp-input point-stop-input"
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={pointSizeStop6}
+                onChange={e => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next > 0) setPointSizeStop6(next);
+                }}
+              />
+            </label>
+            <label className="point-stop">
+              z8
+              <input
+                className="stamp-input point-stop-input"
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={pointSizeStop8}
+                onChange={e => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next > 0) setPointSizeStop8(next);
+                }}
+              />
+            </label>
+            <button type="button" onClick={resetPointSizeStops}>
+              Reset Stops
+            </button>
+          </div>
+
+          <div className="subpanel point-stroke-panel">
+            <span className="subpanel-title">Point Stroke</span>
+            <label className="point-slider-wrap">
+              thickness
+              <input
+                className="point-slider"
+                type="range"
+                min={0.1}
+                max={3}
+                step={0.05}
+                value={pointStrokeScale}
+                onChange={e => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next) && next > 0) setPointStrokeScale(next);
+                }}
+              />
+            </label>
+            <span className="point-slider-value">{pointStrokeScale.toFixed(2)}x</span>
+            <label className="point-checkbox-wrap">
+              <input type="checkbox" checked={pointInnerBlackFill} onChange={e => setPointInnerBlackFill(e.target.checked)} />
+              inner black fill (opacity 0.1)
+            </label>
+          </div>
+
           <div className={`status ${error ? "error" : ""}`}>{error || `${imageSummary} | scale ${scaleSummary}`}</div>
 
           <div className={`status ${pointStatus.error ? "error" : ""}`}>
@@ -997,6 +1116,8 @@ export default function App() {
             pointData={pointPayload}
             pointPalette={termPalette.colors}
             pointSizeByZoom={pointSizeByZoom}
+            pointStrokeScale={pointStrokeScale}
+            pointInnerFillOpacity={pointInnerBlackFill ? 0.2 : 0}
             roiRegions={roiRegions}
             patchRegions={patchRegions}
             clipPointsToRois
@@ -1066,6 +1187,11 @@ export default function App() {
           stamp rect {stampRectangleAreaMm2}mm² | stamp circle {stampCircleAreaMm2}
           mm² | stamp rect px {stampRectanglePixelSize} | brush r {brushRadius}px | brush α {brushOpacity.toFixed(2)} | preview {brushEraserPreview ? "eraser" : "brush"} | label auto-lift{" "}
           {autoLiftRegionLabelAtMaxZoom ? "on" : "off"}
+          <br />
+          pointSizeByZoom z1:{pointSizeByZoom[1].toFixed(2)} z2:{pointSizeByZoom[2].toFixed(2)} z5:{pointSizeByZoom[5].toFixed(2)} z6:{pointSizeByZoom[6].toFixed(2)} z8:{pointSizeByZoom[8].toFixed(2)}
+          {" | "}
+          point stroke {pointStrokeScale.toFixed(2)}x{" | "}
+          inner fill black {pointInnerBlackFill ? "on (0.1)" : "off"}
           {clipStats ? (
             <>
               <br />

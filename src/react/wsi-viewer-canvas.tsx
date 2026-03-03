@@ -151,6 +151,7 @@ export interface WsiViewerCanvasProps {
   pointPalette?: Uint8Array | null;
   pointSizeByZoom?: PointSizeByZoom;
   pointStrokeScale?: number;
+  pointInnerFillOpacity?: number;
   minZoom?: number;
   maxZoom?: number;
   viewTransition?: WsiViewTransitionOptions;
@@ -212,6 +213,7 @@ export function WsiViewerCanvas({
   pointPalette = null,
   pointSizeByZoom,
   pointStrokeScale,
+  pointInnerFillOpacity,
   minZoom,
   maxZoom,
   viewTransition,
@@ -996,6 +998,7 @@ export function WsiViewerCanvas({
       ctrlDragRotate,
       pointSizeByZoom,
       pointStrokeScale,
+      pointInnerFillOpacity,
       minZoom,
       maxZoom,
       viewTransition,
@@ -1025,8 +1028,6 @@ export function WsiViewerCanvas({
     onContextRestored,
     authToken,
     ctrlDragRotate,
-    pointSizeByZoom,
-    pointStrokeScale,
     emitViewStateChange,
     shouldTrackCustomLayerViewState,
     syncRegionLabelAutoLiftTarget,
@@ -1077,6 +1078,12 @@ export function WsiViewerCanvas({
     if (!renderer) return;
     renderer.setPointStrokeScale(pointStrokeScale);
   }, [pointStrokeScale]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setPointInnerFillOpacity(pointInnerFillOpacity);
+  }, [pointInnerFillOpacity]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

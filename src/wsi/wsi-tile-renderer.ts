@@ -13,6 +13,7 @@ import {
   linearEasing,
   MAX_POINT_SIZE_PX,
   MIN_POINT_SIZE_PX,
+  normalizePointInnerFillOpacity,
   normalizePointSizeStops,
   normalizeStrokeScale,
   normalizeTransitionEasing,
@@ -101,6 +102,7 @@ export class WsiTileRenderer {
   private pointPaletteSize = 1;
   private pointSizeStops: PointSizeStop[] = clonePointSizeStops(DEFAULT_POINT_SIZE_STOPS);
   private pointStrokeScale = 1.0;
+  private pointInnerFillOpacity = 0;
   private imageColorSettings: NormalizedImageColorSettings = {
     brightness: 0,
     contrast: 0,
@@ -150,6 +152,7 @@ export class WsiTileRenderer {
         : DEFAULT_ROTATION_DRAG_SENSITIVITY;
     this.pointSizeStops = normalizePointSizeStops(options.pointSizeByZoom);
     this.pointStrokeScale = normalizeStrokeScale(options.pointStrokeScale);
+    this.pointInnerFillOpacity = normalizePointInnerFillOpacity(options.pointInnerFillOpacity);
     this.imageColorSettings = toNormalizedImageColorSettings(options.imageColorSettings);
     this.minZoomOverride = normalizeZoomOverride(options.minZoom);
     this.maxZoomOverride = normalizeZoomOverride(options.maxZoom);
@@ -373,6 +376,13 @@ export class WsiTileRenderer {
     this.requestRender();
   }
 
+  setPointInnerFillOpacity(opacity: number | null | undefined): void {
+    const next = normalizePointInnerFillOpacity(opacity);
+    if (this.pointInnerFillOpacity === next) return;
+    this.pointInnerFillOpacity = next;
+    this.requestRender();
+  }
+
   setImageColorSettings(settings: WsiImageColorSettings | null | undefined): void {
     const next = toNormalizedImageColorSettings(settings);
     const prev = this.imageColorSettings;
@@ -463,6 +473,7 @@ export class WsiTileRenderer {
       usePointIndices: this.usePointIndices,
       pointPaletteSize: this.pointPaletteSize,
       pointStrokeScale: this.pointStrokeScale,
+      pointInnerFillOpacity: this.pointInnerFillOpacity,
       pointSizePx: this.getPointSizeByZoom(),
       tileScheduler: this.tileScheduler,
       getVisibleTiles: () => getManagedVisibleTiles(this.camera, this.source),

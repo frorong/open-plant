@@ -16,6 +16,7 @@ export interface RenderFrameOptions {
   usePointIndices: boolean;
   pointPaletteSize: number;
   pointStrokeScale: number;
+  pointInnerFillOpacity: number;
   pointSizePx: number;
   tileScheduler: TileScheduler;
   getVisibleTiles: () => { tier: number; visible: ScheduledTile[] };
@@ -49,6 +50,7 @@ export function renderFrame(options: RenderFrameOptions): RenderFrameResult {
     usePointIndices,
     pointPaletteSize,
     pointStrokeScale,
+    pointInnerFillOpacity,
     pointSizePx,
     tileScheduler,
     getVisibleTiles,
@@ -131,6 +133,7 @@ export function renderFrame(options: RenderFrameOptions): RenderFrameResult {
     gl.uniformMatrix3fv(pointProgram.uCamera, false, camera.getMatrix());
     gl.uniform1f(pointProgram.uPointSize, pointSizePx);
     gl.uniform1f(pointProgram.uPointStrokeScale, pointStrokeScale);
+    gl.uniform1f(pointProgram.uPointInnerFillAlpha, pointInnerFillOpacity);
     gl.uniform1f(pointProgram.uPaletteSize, pointPaletteSize);
     gl.uniform1i(pointProgram.uPalette, 1);
     gl.activeTexture(gl.TEXTURE1);
