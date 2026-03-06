@@ -474,7 +474,7 @@ export class WsiTileRenderer {
       pointPaletteSize: this.pointPaletteSize,
       pointStrokeScale: this.pointStrokeScale,
       pointInnerFillOpacity: this.pointInnerFillOpacity,
-      pointSizePx: this.getPointSizeByZoom(),
+      pointSizePx: this.getPointSizeByZoom() * Math.max(1, window.devicePixelRatio || 1),
       tileScheduler: this.tileScheduler,
       getVisibleTiles: () => getManagedVisibleTiles(this.camera, this.source),
       getVisibleTilesForTier: tier => getManagedVisibleTilesForTier(this.camera, this.source, tier),
