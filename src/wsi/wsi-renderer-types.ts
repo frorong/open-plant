@@ -83,6 +83,8 @@ export interface WsiTileRendererOptions {
   onTileError?: (event: WsiTileErrorEvent) => void;
   onContextLost?: () => void;
   onContextRestored?: () => void;
+  zoomSnaps?: number[];
+  zoomSnapFitAsMin?: boolean;
 }
 
 export interface ViewAnimationState {
@@ -106,6 +108,11 @@ export interface InteractionState {
   pointerId: number | null;
   lastPointerX: number;
   lastPointerY: number;
+}
+
+export interface ZoomSnapState {
+  accumulatedDelta: number;
+  lastSnapTimeMs: number;
 }
 
 export interface InteractionConfig {

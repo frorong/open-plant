@@ -100,3 +100,34 @@ export function computeZoomByTarget(
     offsetY: nextCenterY - vp.height / (2 * nextZoom),
   };
 }
+
+export function computeZoomToTarget(
+  camera: OrthoCamera,
+  minZoom: number,
+  maxZoom: number,
+  targetZoom: number,
+  screenX: number,
+  screenY: number,
+): Partial<WsiViewState> | null {
+  const state = camera.getViewState();
+  const nextZoom = clamp(targetZoom, minZoom, maxZoom);
+  if (nextZoom === state.zoom) return null;
+
+  const [worldX, worldY] = camera.screenToWorld(screenX, screenY);
+  const vp = camera.getViewportSize();
+  const dx = screenX - vp.width * 0.5;
+  const dy = screenY - vp.height * 0.5;
+  const rad = toRadians(state.rotationDeg);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const worldDx = (dx / nextZoom) * cos - (dy / nextZoom) * sin;
+  const worldDy = (dx / nextZoom) * sin + (dy / nextZoom) * cos;
+  const nextCenterX = worldX - worldDx;
+  const nextCenterY = worldY - worldDy;
+
+  return {
+    zoom: nextZoom,
+    offsetX: nextCenterX - vp.width / (2 * nextZoom),
+    offsetY: nextCenterY - vp.height / (2 * nextZoom),
+  };
+}

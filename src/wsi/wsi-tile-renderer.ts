@@ -26,6 +26,7 @@ import type { PointBufferRuntime } from "./wsi-point-data";
 import { setPointData as setManagedPointData, setPointPalette as setManagedPointPalette } from "./wsi-point-data";
 import { renderFrame } from "./wsi-render-pass";
 import type {
+  Bounds,
   CachedTile,
   InteractionState,
   NormalizedImageColorSettings,
@@ -38,6 +39,7 @@ import type {
   WsiTileErrorEvent,
   WsiTileRendererOptions,
   WsiViewTransitionOptions,
+  ZoomSnapState,
 } from "./wsi-renderer-types";
 import { initPointProgram, initTileProgram } from "./wsi-shaders";
 import { handleTileLoaded as cacheTileLoaded } from "./wsi-tile-cache";
@@ -49,7 +51,8 @@ import {
   intersectsBounds as intersectsManagedBounds,
 } from "./wsi-tile-visibility";
 import { cancelViewAnimation as cancelManagedViewAnimation, startViewAnimation } from "./wsi-view-animation";
-import { computeFitToImageTarget, computeZoomByTarget, resolveTargetViewState as resolveManagedTargetViewState, resolveZoomBounds } from "./wsi-view-ops";
+import { computeFitToImageTarget, computeZoomByTarget, computeZoomToTarget, resolveTargetViewState as resolveManagedTargetViewState, resolveZoomBounds } from "./wsi-view-ops";
+import { normalizeZoomSnaps, resolveSnapTarget, startZoomPivotAnimation, SNAP_ZOOM_DURATION_MS, type ZoomPivotAnimationContext } from "./wsi-zoom-snap";
 
 export type { PointSizeByZoom, WsiTileErrorEvent, WsiTileRendererOptions, WsiTileSchedulerConfig, WsiViewTransitionOptions } from "./wsi-renderer-types";
 
@@ -112,6 +115,9 @@ export class WsiTileRenderer {
   private lastPointPalette: Uint8Array<ArrayBufferLike> | null = null;
   private zeroFillModes: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
   private cache = new Map<string, CachedTile>();
+  private zoomSnaps: number[] = [];
+  private zoomSnapFitAsMin = false;
+  private zoomSnapState: ZoomSnapState = { accumulatedDelta: 0, lastSnapTimeMs: 0 };
 
   private readonly boundPointerDown: (event: PointerEvent) => void;
   private readonly boundPointerMove: (event: PointerEvent) => void;
@@ -158,6 +164,8 @@ export class WsiTileRenderer {
     this.maxZoomOverride = normalizeZoomOverride(options.maxZoom);
     this.viewTransitionDurationMs = normalizeViewTransitionDuration(options.viewTransition?.duration);
     this.viewTransitionEasing = normalizeTransitionEasing(options.viewTransition?.easing);
+    this.zoomSnaps = normalizeZoomSnaps(options.zoomSnaps, this.source.mpp);
+    this.zoomSnapFitAsMin = Boolean(options.zoomSnapFitAsMin);
 
     const gl = canvas.getContext("webgl2", {
       alpha: false,
@@ -212,6 +220,9 @@ export class WsiTileRenderer {
       emitViewState: () => this.onViewStateChange?.(this.camera.getViewState()),
       requestRender: () => this.requestRender(),
       zoomBy: (factor, x, y) => this.zoomBy(factor, x, y),
+      getUseZoomSnaps: () => this.zoomSnaps.length > 0,
+      onSnapZoom: (direction, x, y) => this.handleSnapZoom(direction, x, y),
+      zoomSnapState: this.zoomSnapState,
     });
     this.boundPointerDown = inputHandlers.pointerDown;
     this.boundPointerMove = inputHandlers.pointerMove;
@@ -340,6 +351,10 @@ export class WsiTileRenderer {
     return { minZoom: this.minZoom, maxZoom: this.maxZoom };
   }
 
+  isViewAnimating(): boolean {
+    return this.viewAnimationState.animation !== null;
+  }
+
   setPointPalette(colors: Uint8Array | null | undefined): void {
     const nextRuntime = setManagedPointPalette(this.getPointBufferRuntime(), this.gl, this.pointProgram, this.contextLost, colors);
     this.applyPointBufferRuntime(nextRuntime);
@@ -426,6 +441,10 @@ export class WsiTileRenderer {
     return this.camera.getViewCorners();
   }
 
+  getViewBounds(): Bounds {
+    return getManagedViewBounds(this.camera);
+  }
+
   resetRotation(transition?: WsiViewTransitionOptions): void {
     const state = this.camera.getViewState();
     if (Math.abs(state.rotationDeg) < 1e-6) return;
@@ -453,6 +472,49 @@ export class WsiTileRenderer {
     const target = computeZoomByTarget(this.camera, this.minZoom, this.maxZoom, factor, screenX, screenY);
     if (!target) return;
     this.setViewState(target, transition);
+  }
+
+  zoomTo(zoom: number, screenX: number, screenY: number, transition?: WsiViewTransitionOptions): void {
+    const target = computeZoomToTarget(this.camera, this.minZoom, this.maxZoom, zoom, screenX, screenY);
+    if (!target) return;
+    this.setViewState(target, transition);
+  }
+
+  setZoomSnaps(magnifications: number[] | null | undefined, fitAsMin?: boolean): void {
+    this.zoomSnaps = normalizeZoomSnaps(magnifications, this.source.mpp);
+    this.zoomSnapFitAsMin = Boolean(fitAsMin);
+  }
+
+  private getZoomPivotAnimationContext(): ZoomPivotAnimationContext {
+    return {
+      camera: this.camera,
+      viewAnimationState: this.viewAnimationState,
+      minZoom: this.minZoom,
+      maxZoom: this.maxZoom,
+      cancelViewAnimation: () => this.cancelViewAnimation(),
+      clampViewState: () => clampManagedViewState(this.camera, this.source),
+      onViewStateChange: state => this.onViewStateChange?.(state),
+      requestRender: () => this.requestRender(),
+    };
+  }
+
+  private handleSnapZoom(direction: "in" | "out", screenX: number, screenY: number): void {
+    const validSnaps = this.zoomSnaps.filter(z => z >= this.minZoom && z <= this.maxZoom);
+    const result = resolveSnapTarget(validSnaps, this.camera.getViewState().zoom, direction, this.zoomSnapFitAsMin);
+    if (!result) return;
+
+    if (result.type === "fit") {
+      const rect = this.canvas.getBoundingClientRect();
+      const vw = Math.max(1, rect.width || 1);
+      const vh = Math.max(1, rect.height || 1);
+      const fitTarget = computeFitToImageTarget(this.source, vw, vh, this.minZoom, this.maxZoom);
+      this.fitZoom = fitTarget.fitZoom;
+      this.applyZoomBounds();
+      startZoomPivotAnimation(this.getZoomPivotAnimationContext(), fitTarget.target.zoom, screenX, screenY, SNAP_ZOOM_DURATION_MS);
+      return;
+    }
+
+    startZoomPivotAnimation(this.getZoomPivotAnimationContext(), result.zoom, screenX, screenY, SNAP_ZOOM_DURATION_MS);
   }
 
   render(): void {

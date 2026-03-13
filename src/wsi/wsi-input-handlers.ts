@@ -1,8 +1,8 @@
 import type { OrthoCamera } from "../core/ortho-camera";
-import { cancelDrag as cancelInteractionDrag, handleContextMenu, handleDoubleClick, handlePointerDown, handlePointerMove, handlePointerUp, handleWheel } from "./wsi-interaction";
-import type { RendererCanvasHandlers } from "./wsi-canvas-lifecycle";
-import type { InteractionState } from "./wsi-renderer-types";
 import type { WsiImageSource } from "./types";
+import type { RendererCanvasHandlers } from "./wsi-canvas-lifecycle";
+import { cancelDrag as cancelInteractionDrag, handleContextMenu, handleDoubleClick, handlePointerDown, handlePointerMove, handlePointerUp, handleWheel, handleWheelSnap } from "./wsi-interaction";
+import type { InteractionState, ZoomSnapState } from "./wsi-renderer-types";
 import { clampViewState } from "./wsi-tile-visibility";
 
 interface BaseInteractionOptions {
@@ -129,9 +129,14 @@ export interface CreateRendererInputHandlersOptions {
   emitViewState: () => void;
   requestRender: () => void;
   zoomBy: (factor: number, x: number, y: number) => void;
+  getUseZoomSnaps?: () => boolean;
+  onSnapZoom?: (direction: "in" | "out", x: number, y: number) => void;
+  zoomSnapState?: ZoomSnapState;
 }
 
-export function createRendererInputHandlers(options: CreateRendererInputHandlersOptions): Pick<RendererCanvasHandlers, "pointerDown" | "pointerMove" | "pointerUp" | "wheel" | "doubleClick" | "contextMenu"> {
+export function createRendererInputHandlers(
+  options: CreateRendererInputHandlersOptions
+): Pick<RendererCanvasHandlers, "pointerDown" | "pointerMove" | "pointerUp" | "wheel" | "doubleClick" | "contextMenu"> {
   return {
     pointerDown: (event: PointerEvent) =>
       onPointerDownWithLock({
@@ -163,13 +168,26 @@ export function createRendererInputHandlers(options: CreateRendererInputHandlers
         canvas: options.canvas,
         state: options.state,
       }),
-    wheel: (event: WheelEvent) =>
-      onWheelWithLock({
+    wheel: (event: WheelEvent) => {
+      if (options.getInteractionLocked()) {
+        event.preventDefault();
+        return;
+      }
+      if (options.getUseZoomSnaps?.() && options.onSnapZoom && options.zoomSnapState) {
+        handleWheelSnap({
+          event,
+          canvas: options.canvas,
+          snapState: options.zoomSnapState,
+          onSnapZoom: options.onSnapZoom,
+        });
+        return;
+      }
+      handleWheel({
         event,
-        interactionLocked: options.getInteractionLocked(),
         canvas: options.canvas,
         onZoomBy: options.zoomBy,
-      }),
+      });
+    },
     doubleClick: (event: MouseEvent) =>
       onDoubleClickWithLock({
         event,

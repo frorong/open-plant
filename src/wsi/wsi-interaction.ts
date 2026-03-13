@@ -1,5 +1,5 @@
 import { DEFAULT_ROTATION_DRAG_SENSITIVITY, toRadians } from "./wsi-normalize";
-import type { InteractionConfig, InteractionState } from "./wsi-renderer-types";
+import type { InteractionConfig, InteractionState, ZoomSnapState } from "./wsi-renderer-types";
 
 interface PointerMoveOptions {
   event: PointerEvent;
@@ -138,6 +138,43 @@ export function handleWheel(options: WheelOptions): void {
   const y = event.clientY - rect.top;
   const factor = event.deltaY < 0 ? 1.12 : 0.89;
   onZoomBy(factor, x, y);
+}
+
+interface WheelSnapOptions {
+  event: WheelEvent;
+  canvas: HTMLCanvasElement;
+  snapState: ZoomSnapState;
+  onSnapZoom: (direction: "in" | "out", x: number, y: number) => void;
+}
+
+const SNAP_DELTA_THRESHOLD = 4;
+const SNAP_COOLDOWN_MS = 300;
+
+export function handleWheelSnap(options: WheelSnapOptions): void {
+  const { event, canvas, snapState, onSnapZoom } = options;
+  event.preventDefault();
+
+  const now = performance.now();
+  if (now - snapState.lastSnapTimeMs < SNAP_COOLDOWN_MS) {
+    snapState.accumulatedDelta = 0;
+    return;
+  }
+
+  if (snapState.accumulatedDelta !== 0 && event.deltaY !== 0 && Math.sign(snapState.accumulatedDelta) !== Math.sign(event.deltaY)) {
+    snapState.accumulatedDelta = 0;
+  }
+  snapState.accumulatedDelta += event.deltaY;
+
+  if (Math.abs(snapState.accumulatedDelta) < SNAP_DELTA_THRESHOLD) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const direction: "in" | "out" = snapState.accumulatedDelta > 0 ? "out" : "in";
+
+  snapState.accumulatedDelta = 0;
+  snapState.lastSnapTimeMs = now;
+  onSnapZoom(direction, x, y);
 }
 
 export function handleDoubleClick(options: DoubleClickOptions): void {

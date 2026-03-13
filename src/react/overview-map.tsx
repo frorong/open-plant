@@ -70,7 +70,7 @@ const DEFAULT_OVERVIEW_MAP_OPTIONS: OverviewMapOptions = {
 	borderWidth: 0,
 	backgroundColor: "rgba(4, 10, 18, 0.88)",
 	borderColor: "rgba(230, 244, 255, 0.35)",
-	viewportBorderColor: "#171719",
+	viewportBorderColor: "rgba(255, 106, 61, 0.95)",
 	viewportBorderStyle: "dash",
 	viewportFillColor: "transparent",
 	interactive: true,
@@ -85,7 +85,7 @@ function strokeSymmetricDashedPolygon(
 	gapLen: number,
 ): void {
 	const len = points.length;
-	if (len !== 4) return;
+	if (len < 3) return;
 	if (dashLen <= 0 || gapLen <= 0) return;
 
 	for (let i = 0; i < len; i += 1) {
@@ -110,6 +110,118 @@ function strokeSymmetricDashedPolygon(
 
 	ctx.setLineDash([]);
 	ctx.lineDashOffset = 0;
+}
+
+function isSamePoint(
+	a: readonly [number, number],
+	b: readonly [number, number],
+	epsilon = 1e-4,
+): boolean {
+	return (
+		Math.abs(a[0] - b[0]) <= epsilon &&
+		Math.abs(a[1] - b[1]) <= epsilon
+	);
+}
+
+function compactPolygonPoints(
+	points: Array<[number, number]>,
+): Array<[number, number]> {
+	const compact: Array<[number, number]> = [];
+	for (const point of points) {
+		const prev = compact[compact.length - 1];
+		if (!prev || !isSamePoint(prev, point)) {
+			compact.push(point);
+		}
+	}
+	if (
+		compact.length > 1 &&
+		isSamePoint(compact[0], compact[compact.length - 1])
+	) {
+		compact.pop();
+	}
+	return compact;
+}
+
+function intersectAtX(
+	from: readonly [number, number],
+	to: readonly [number, number],
+	x: number,
+): [number, number] {
+	const dx = to[0] - from[0];
+	if (Math.abs(dx) < 1e-6) return [x, from[1]];
+	const t = (x - from[0]) / dx;
+	return [x, from[1] + (to[1] - from[1]) * t];
+}
+
+function intersectAtY(
+	from: readonly [number, number],
+	to: readonly [number, number],
+	y: number,
+): [number, number] {
+	const dy = to[1] - from[1];
+	if (Math.abs(dy) < 1e-6) return [from[0], y];
+	const t = (y - from[1]) / dy;
+	return [from[0] + (to[0] - from[0]) * t, y];
+}
+
+function clipPolygonToRect(
+	points: Array<[number, number]>,
+	minX: number,
+	minY: number,
+	maxX: number,
+	maxY: number,
+): Array<[number, number]> {
+	let output = compactPolygonPoints(points);
+	if (output.length < 3) return [];
+
+	const edges: Array<{
+		inside: (point: readonly [number, number]) => boolean;
+		intersect: (
+			from: readonly [number, number],
+			to: readonly [number, number],
+		) => [number, number];
+	}> = [
+		{
+			inside: (point) => point[0] >= minX,
+			intersect: (from, to) => intersectAtX(from, to, minX),
+		},
+		{
+			inside: (point) => point[0] <= maxX,
+			intersect: (from, to) => intersectAtX(from, to, maxX),
+		},
+		{
+			inside: (point) => point[1] >= minY,
+			intersect: (from, to) => intersectAtY(from, to, minY),
+		},
+		{
+			inside: (point) => point[1] <= maxY,
+			intersect: (from, to) => intersectAtY(from, to, maxY),
+		},
+	];
+
+	for (const edge of edges) {
+		if (output.length === 0) return [];
+		const input = output;
+		output = [];
+		let prev = input[input.length - 1];
+		let prevInside = edge.inside(prev);
+		for (const curr of input) {
+			const currInside = edge.inside(curr);
+			if (currInside) {
+				if (!prevInside) {
+					output.push(edge.intersect(prev, curr));
+				}
+				output.push(curr);
+			} else if (prevInside) {
+				output.push(edge.intersect(prev, curr));
+			}
+			prev = curr;
+			prevInside = currInside;
+		}
+		output = compactPolygonPoints(output);
+	}
+
+	return output.length >= 3 ? output : [];
 }
 
 function toPositiveNumber(
@@ -321,17 +433,6 @@ export function OverviewMap({
 		const projector = projectorRef.current;
 		const bounds = projector?.getViewBounds?.();
 		const corners = projector?.getViewCorners?.();
-		const safeBounds = isFiniteBounds(bounds)
-			? bounds
-			: isFiniteBounds(lastBoundsRef.current)
-				? lastBoundsRef.current
-				: null;
-		if (!safeBounds) return;
-		lastBoundsRef.current = safeBounds;
-
-		const sx = cw / Math.max(1, source.width);
-		const sy = ch / Math.max(1, source.height);
-
 		const safeCorners =
 			Array.isArray(corners) &&
 			corners.length >= 4 &&
@@ -344,6 +445,17 @@ export function OverviewMap({
 			)
 				? (corners as Array<[number, number]>)
 				: null;
+		const safeBounds = isFiniteBounds(bounds)
+			? bounds
+			: isFiniteBounds(lastBoundsRef.current)
+				? lastBoundsRef.current
+				: null;
+		if (isFiniteBounds(bounds)) {
+			lastBoundsRef.current = bounds;
+		}
+
+		const sx = cw / Math.max(1, source.width);
+		const sy = ch / Math.max(1, source.height);
 
 		const isDash = viewportBorderStyle === "dash";
 
@@ -351,30 +463,35 @@ export function OverviewMap({
 			const screenCorners: Array<[number, number]> = safeCorners.map(
 				(point) => [cx + point[0] * sx, cy + point[1] * sy],
 			);
+			const clippedCorners = clipPolygonToRect(
+				screenCorners,
+				cx,
+				cy,
+				cx + cw,
+				cy + ch,
+			);
 
-			ctx.save();
-			ctx.beginPath();
-			ctx.rect(cx, cy, cw, ch);
-			ctx.clip();
-
-			ctx.beginPath();
-			for (let i = 0; i < screenCorners.length; i += 1) {
-				if (i === 0) ctx.moveTo(screenCorners[i][0], screenCorners[i][1]);
-				else ctx.lineTo(screenCorners[i][0], screenCorners[i][1]);
+			if (clippedCorners.length >= 3) {
+				ctx.beginPath();
+				for (let i = 0; i < clippedCorners.length; i += 1) {
+					if (i === 0) ctx.moveTo(clippedCorners[i][0], clippedCorners[i][1]);
+					else ctx.lineTo(clippedCorners[i][0], clippedCorners[i][1]);
+				}
+				ctx.closePath();
+				ctx.fillStyle = viewportFillColor;
+				ctx.fill();
+				ctx.strokeStyle = viewportBorderColor;
+				ctx.lineWidth = 2.25;
+				if (isDash) {
+					strokeSymmetricDashedPolygon(ctx, clippedCorners, 4, 3);
+				} else {
+					ctx.stroke();
+				}
+				return;
 			}
-			ctx.closePath();
-			ctx.fillStyle = viewportFillColor;
-			ctx.fill();
+		}
 
-			ctx.strokeStyle = viewportBorderColor;
-			ctx.lineWidth = 2.25;
-			if (isDash) {
-				strokeSymmetricDashedPolygon(ctx, screenCorners, 4, 3);
-			} else {
-				ctx.stroke();
-			}
-
-			ctx.restore();
+		if (!safeBounds) {
 			return;
 		}
 

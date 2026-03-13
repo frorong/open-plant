@@ -236,6 +236,7 @@ export default function App() {
   const [clipMode, setClipMode] = useState<PointClipMode>("worker");
   const [clipStats, setClipStats] = useState<PointClipStatsEvent | null>(null);
   const [autoLiftRegionLabelAtMaxZoom, setAutoLiftRegionLabelAtMaxZoom] = useState(true);
+  const [enableZoomSnaps, setEnableZoomSnaps] = useState(true);
   const [webGpuCaps, setWebGpuCaps] = useState<WebGpuCapabilities | null>(null);
   const [lastDraw, setLastDraw] = useState<DrawResult | null>(null);
   const [roiRegions, setRoiRegions] = useState<WsiRegion[]>([]);
@@ -666,6 +667,13 @@ export default function App() {
 
   const maxZoom = source ? Math.max(1, Math.min(32, source.maxTierZoom + 4)) : 1;
 
+  const zoomSnaps = useMemo(() => {
+    if (!enableZoomSnaps || !source?.mpp || source.mpp <= 0) return undefined;
+    const scanMag = 10 / source.mpp;
+    const STANDARD_STEPS = [1.25, 2.5, 5, 10, 20, 40, 80, 100];
+    return STANDARD_STEPS.filter(m => m <= scanMag);
+  }, [enableZoomSnaps, source?.mpp]);
+
   const handleZoomIn = useCallback(() => {
     setViewState(prev => ({
       ...(prev || {}),
@@ -967,6 +975,9 @@ export default function App() {
             <button type="button" className={autoLiftRegionLabelAtMaxZoom ? "active" : ""} disabled={!source} onClick={() => setAutoLiftRegionLabelAtMaxZoom(prev => !prev)}>
               Label Auto Lift
             </button>
+            <button type="button" className={enableZoomSnaps ? "active" : ""} disabled={!source} onClick={() => setEnableZoomSnaps(prev => !prev)}>
+              Zoom Snap {enableZoomSnaps && zoomSnaps ? `(${zoomSnaps[0]}→${zoomSnaps[zoomSnaps.length - 1]}x)` : "Off"}
+            </button>
             <input className="label-input" type="text" value={labelInput} onChange={e => setLabelInput(e.target.value)} placeholder="Region label (optional)" />
             <button type="button" disabled={!source || (roiRegions.length === 0 && patchRegions.length === 0)} onClick={handleClearRoi}>
               Clear Regions
@@ -1140,6 +1151,8 @@ export default function App() {
             customLayers={customLayers}
             regionLabelStyle={regionLabelStyle}
             autoLiftRegionLabelAtMaxZoom={autoLiftRegionLabelAtMaxZoom}
+            zoomSnaps={zoomSnaps}
+            zoomSnapFitAsMin
             onPointerWorldMove={event => {
               if (event.coordinate) {
                 setPointerWorld([event.coordinate[0], event.coordinate[1]]);
@@ -1162,6 +1175,9 @@ export default function App() {
                 width: 220,
                 height: 140,
                 margin: 24,
+                viewportBorderStyle: "dash",
+                viewportBorderColor: "rgba(255, 106, 61, 0.95)",
+                viewportFillColor: "rgba(255, 106, 61, 0.08)",
               },
             }}
           />
@@ -1186,7 +1202,8 @@ export default function App() {
           <br />
           stamp rect {stampRectangleAreaMm2}mm² | stamp circle {stampCircleAreaMm2}
           mm² | stamp rect px {stampRectanglePixelSize} | brush r {brushRadius}px | brush α {brushOpacity.toFixed(2)} | preview {brushEraserPreview ? "eraser" : "brush"} | label auto-lift{" "}
-          {autoLiftRegionLabelAtMaxZoom ? "on" : "off"}
+          {autoLiftRegionLabelAtMaxZoom ? "on" : "off"} | zoom snap {enableZoomSnaps ? "on" : "off"}
+          {source?.mpp ? ` | mag ${((viewState?.zoom || 0) * 10 / source.mpp).toFixed(1)}x` : ""}
           <br />
           pointSizeByZoom z1:{pointSizeByZoom[1].toFixed(2)} z2:{pointSizeByZoom[2].toFixed(2)} z5:{pointSizeByZoom[5].toFixed(2)} z6:{pointSizeByZoom[6].toFixed(2)} z8:{pointSizeByZoom[8].toFixed(2)}
           {" | "}
