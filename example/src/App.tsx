@@ -216,11 +216,11 @@ export default function App() {
 
   const [pointStatus, setPointStatus] = useState<PointStatus>(INITIAL_POINT_STATUS);
   const [pointPayload, setPointPayload] = useState<WsiPointData | null>(null);
-  const [pointSizeStop1, setPointSizeStop1] = useState(DEFAULT_POINT_SIZE_STOPS[1]);
-  const [pointSizeStop2, setPointSizeStop2] = useState(DEFAULT_POINT_SIZE_STOPS[2]);
-  const [pointSizeStop5, setPointSizeStop5] = useState(DEFAULT_POINT_SIZE_STOPS[5]);
-  const [pointSizeStop6, setPointSizeStop6] = useState(DEFAULT_POINT_SIZE_STOPS[6]);
-  const [pointSizeStop8, setPointSizeStop8] = useState(DEFAULT_POINT_SIZE_STOPS[8]);
+  const [pointSizeStop1, setPointSizeStop1] = useState<number>(DEFAULT_POINT_SIZE_STOPS[1]);
+  const [pointSizeStop2, setPointSizeStop2] = useState<number>(DEFAULT_POINT_SIZE_STOPS[2]);
+  const [pointSizeStop5, setPointSizeStop5] = useState<number>(DEFAULT_POINT_SIZE_STOPS[5]);
+  const [pointSizeStop6, setPointSizeStop6] = useState<number>(DEFAULT_POINT_SIZE_STOPS[6]);
+  const [pointSizeStop8, setPointSizeStop8] = useState<number>(DEFAULT_POINT_SIZE_STOPS[8]);
   const [pointStrokeScale, setPointStrokeScale] = useState(1);
   const [pointInnerBlackFill, setPointInnerBlackFill] = useState(false);
   const [drawTool, setDrawTool] = useState<DrawTool>("cursor");
