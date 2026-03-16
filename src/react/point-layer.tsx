@@ -42,7 +42,7 @@ export const PointLayer = forwardRef<PointQueryHandle, PointLayerProps>(function
   },
   ref,
 ) {
-  const { rendererRef, source } = useViewerContext();
+  const { rendererRef, rendererSerial, source } = useViewerContext();
   const getCellByCoordinatesRef = useRef<((coordinate: DrawCoordinate) => PointHitEvent | null) | null>(null);
 
   const effectiveClipRegions = clipToRegions ?? EMPTY_REGIONS;
@@ -65,31 +65,31 @@ export const PointLayer = forwardRef<PointQueryHandle, PointLayerProps>(function
     const renderer = rendererRef.current;
     if (!renderer || !palette) return;
     renderer.setPointPalette(palette);
-  }, [rendererRef, palette]);
+  }, [rendererSerial, palette]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || sizeByZoom === undefined) return;
     renderer.setPointSizeByZoom(sizeByZoom);
-  }, [rendererRef, sizeByZoom]);
+  }, [rendererSerial, sizeByZoom]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || strokeScale === undefined) return;
     renderer.setPointStrokeScale(strokeScale);
-  }, [rendererRef, strokeScale]);
+  }, [rendererSerial, strokeScale]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || innerFillOpacity === undefined) return;
     renderer.setPointInnerFillOpacity(innerFillOpacity);
-  }, [rendererRef, innerFillOpacity]);
+  }, [rendererSerial, innerFillOpacity]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
     renderer.setPointData(renderPointData);
-  }, [rendererRef, renderPointData]);
+  }, [rendererSerial, renderPointData]);
 
   return null;
 });

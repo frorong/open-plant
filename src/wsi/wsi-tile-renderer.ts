@@ -52,7 +52,7 @@ import {
 } from "./wsi-tile-visibility";
 import { cancelViewAnimation as cancelManagedViewAnimation, startViewAnimation } from "./wsi-view-animation";
 import { computeFitToImageTarget, computeZoomByTarget, computeZoomToTarget, resolveTargetViewState as resolveManagedTargetViewState, resolveZoomBounds } from "./wsi-view-ops";
-import { normalizeZoomSnaps, resolveSnapTarget, startZoomPivotAnimation, SNAP_ZOOM_DURATION_MS, type ZoomPivotAnimationContext } from "./wsi-zoom-snap";
+import { normalizeZoomSnaps, resolveSnapTarget, SNAP_ZOOM_DURATION_MS, startZoomPivotAnimation, type ZoomPivotAnimationContext } from "./wsi-zoom-snap";
 
 export type { PointSizeByZoom, WsiTileErrorEvent, WsiTileRendererOptions, WsiTileSchedulerConfig, WsiViewTransitionOptions } from "./wsi-renderer-types";
 

@@ -1,19 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DrawingLayer,
   type DrawOverlayShape,
   getWebGpuCapabilities,
+  OverlayLayer,
+  OverviewMap,
+  type OverviewMapOptions,
+  PatchLayer,
   type PointClickEvent,
   type PointHoverEvent,
+  PointLayer,
   type RegionClickEvent,
   type RegionHoverEvent,
   type RegionLabelStyle,
+  RegionLayer,
   type RegionStrokeStyle,
   type RegionStyleContext,
   toBearerToken,
+  useViewerContext,
   type WebGpuCapabilities,
-  type WsiCustomLayer,
   type WsiRenderStats,
-  WsiViewerCanvas,
+  WsiViewer,
 } from "../../src";
 import { DrawToolbar } from "./components/DrawToolbar";
 import { PointControls } from "./components/PointControls";
@@ -27,6 +34,49 @@ import { usePointLoader } from "./hooks/usePointLoader";
 import { useViewerControls } from "./hooks/useViewerControls";
 import { DEFAULT_INFO_URL, DEFAULT_POINT_SIZE_STOPS } from "./utils/constants";
 import { getRegionTopCenter } from "./utils/region-utils";
+
+function PatchLabelOverlay({ patchRegions }: { patchRegions: { id?: string | number; coordinates: unknown }[] }) {
+  const { worldToScreen } = useViewerContext();
+  if (!patchRegions.length) return null;
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none" }}>
+      {patchRegions.map((region, index) => {
+        const anchor = getRegionTopCenter(region.coordinates as [number, number][]);
+        if (!anchor) return null;
+        const screen = worldToScreen(anchor[0], anchor[1]);
+        if (!screen) return null;
+        return (
+          <div
+            key={region.id ?? index}
+            style={{
+              position: "absolute",
+              transform: "translate(-50%, calc(-100% - 6px))",
+              left: `${screen[0]}px`,
+              top: `${screen[1]}px`,
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: "rgba(0, 16, 28, 0.9)",
+              color: "#8ad8ff",
+              border: "1px solid rgba(138, 216, 255, 0.85)",
+              fontSize: 11,
+              fontWeight: 700,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+            }}
+          >
+            PATCH {index + 1}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ViewerOverviewMap({ authToken, show, options }: { authToken: string; show: boolean; options?: Partial<OverviewMapOptions> }) {
+  const { rendererRef, source, overviewInvalidateRef } = useViewerContext();
+  if (!source || !show) return null;
+  return <OverviewMap source={source} projectorRef={rendererRef} authToken={authToken} options={options} invalidateRef={overviewInvalidateRef} />;
+}
 
 export default function App() {
   const [infoUrlInput, setInfoUrlInput] = useState(DEFAULT_INFO_URL);
@@ -103,8 +153,8 @@ export default function App() {
     setLastPointClick(null);
   }, []);
 
-	const drawResetRef = useRef<() => void>(Function.prototype as () => void);
-	const pointResetRef = useRef<() => void>(Function.prototype as () => void);
+  const drawResetRef = useRef<() => void>(Function.prototype as () => void);
+  const pointResetRef = useRef<() => void>(Function.prototype as () => void);
 
   const onResetAll = useCallback(() => {
     drawResetRef.current();
@@ -219,48 +269,14 @@ export default function App() {
     ];
   }, [source]);
 
-  const customLayers = useMemo<WsiCustomLayer[]>(() => {
-    if (!draw.patchRegions.length) return [];
-    return [
-      {
-        id: "patch-label-layer",
-        zIndex: 4,
-        pointerEvents: "none",
-        render: ({ worldToScreen }) => (
-          <>
-            {draw.patchRegions.map((region, index) => {
-              const anchor = getRegionTopCenter(region.coordinates as [number, number][]);
-              if (!anchor) return null;
-              const screen = worldToScreen(anchor[0], anchor[1]);
-              if (!screen) return null;
-              return (
-                <div
-                  key={region.id ?? index}
-                  style={{
-                    position: "absolute",
-                    transform: "translate(-50%, calc(-100% - 6px))",
-                    left: `${screen[0]}px`,
-                    top: `${screen[1]}px`,
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                    background: "rgba(0, 16, 28, 0.9)",
-                    color: "#8ad8ff",
-                    border: "1px solid rgba(138, 216, 255, 0.85)",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    lineHeight: 1.2,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  PATCH {index + 1}
-                </div>
-              );
-            })}
-          </>
-        ),
-      },
-    ];
-  }, [draw.patchRegions]);
+  const overviewMapOptions = useMemo(() => ({
+    width: 220,
+    height: 140,
+    margin: 24,
+    viewportBorderStyle: "dash" as const,
+    viewportBorderColor: "rgba(255, 106, 61, 0.95)",
+    viewportFillColor: "rgba(255, 106, 61, 0.08)",
+  }), []);
 
   return (
     <div className="app">
@@ -346,39 +362,17 @@ export default function App() {
 
       <div className="viewer-wrap">
         {source ? (
-          <WsiViewerCanvas
-            className="viewer-canvas"
+          <WsiViewer
             source={source}
             viewState={viewer.viewState}
             fitNonce={imageLoader.fitNonce}
             rotationResetNonce={viewer.rotationResetNonce}
             authToken={bearerToken}
             ctrlDragRotate={viewer.ctrlDragRotate}
-            pointData={pointData.pointPayload}
-            pointPalette={pointData.termPalette.colors}
-            pointSizeByZoom={pointSizeByZoom}
-            pointStrokeScale={pointStrokeScale}
-            pointInnerFillOpacity={pointInnerBlackFill ? 0.2 : 0}
-            roiRegions={draw.roiRegions}
-            patchRegions={draw.patchRegions}
-            clipPointsToRois
-            clipMode={viewer.clipMode}
-            onClipStats={viewer.setClipStats}
-            interactionLock={draw.drawTool !== "cursor"}
-            drawTool={draw.drawTool}
-            stampOptions={draw.stampOptions}
-            brushOptions={draw.brushOptions}
-            regionStrokeStyle={regionStrokeStyle}
-            regionStrokeHoverStyle={regionStrokeHoverStyle}
-            regionStrokeActiveStyle={regionStrokeActiveStyle}
-            patchStrokeStyle={patchStrokeStyle}
-            resolveRegionStrokeStyle={resolveRegionStrokeStyle}
-            overlayShapes={overlayShapes}
-            customLayers={customLayers}
-            regionLabelStyle={regionLabelStyle}
-            autoLiftRegionLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
             zoomSnaps={viewer.zoomSnaps}
             zoomSnapFitAsMin
+            onViewStateChange={viewer.handleViewStateChange}
+            onStats={setStats}
             onPointerWorldMove={event => {
               if (event.coordinate) {
                 setPointerWorld([event.coordinate[0], event.coordinate[1]]);
@@ -386,27 +380,46 @@ export default function App() {
                 setPointerWorld(null);
               }
             }}
-            onRegionHover={handleRegionHover}
-            onRegionClick={handleRegionClick}
-            onPointHover={handlePointHover}
-            onPointClick={handlePointClick}
-            onActiveRegionChange={handleActiveRegionChange}
-            onDrawComplete={draw.handleDrawComplete}
-            onPatchComplete={draw.handlePatchComplete}
-            onViewStateChange={viewer.handleViewStateChange}
-            onStats={setStats}
-            overviewMapConfig={{
-              show: viewer.showOverviewMap,
-              options: {
-                width: 220,
-                height: 140,
-                margin: 24,
-                viewportBorderStyle: "dash",
-                viewportBorderColor: "rgba(255, 106, 61, 0.95)",
-                viewportFillColor: "rgba(255, 106, 61, 0.08)",
-              },
-            }}
-          />
+            className="viewer-canvas"
+          >
+            <PointLayer
+              data={pointData.pointPayload}
+              palette={pointData.termPalette.colors}
+              sizeByZoom={pointSizeByZoom}
+              strokeScale={pointStrokeScale}
+              innerFillOpacity={pointInnerBlackFill ? 0.2 : 0}
+              clipEnabled
+              clipToRegions={draw.roiRegions}
+              clipMode={viewer.clipMode}
+              onClipStats={viewer.setClipStats}
+              onHover={handlePointHover}
+              onClick={handlePointClick}
+            />
+            <RegionLayer
+              regions={draw.roiRegions}
+              strokeStyle={regionStrokeStyle}
+              hoverStrokeStyle={regionStrokeHoverStyle}
+              activeStrokeStyle={regionStrokeActiveStyle}
+              resolveStrokeStyle={resolveRegionStrokeStyle}
+              labelStyle={regionLabelStyle}
+              autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
+              activeRegionId={activeRegionId}
+              onActiveChange={handleActiveRegionChange}
+              onHover={handleRegionHover}
+              onClick={handleRegionClick}
+            />
+            <DrawingLayer
+              tool={draw.drawTool}
+              stampOptions={draw.stampOptions}
+              brushOptions={draw.brushOptions}
+              onComplete={draw.handleDrawComplete}
+              onPatchComplete={draw.handlePatchComplete}
+            />
+            <OverlayLayer shapes={overlayShapes} />
+            <PatchLayer regions={draw.patchRegions} strokeStyle={patchStrokeStyle} />
+            <PatchLabelOverlay patchRegions={draw.patchRegions} />
+            <ViewerOverviewMap authToken={bearerToken} show={viewer.showOverviewMap} options={overviewMapOptions} />
+          </WsiViewer>
         ) : (
           <div className="empty">토큰 입력 후 Load를 누르면 뷰어가 표시됩니다.</div>
         )}

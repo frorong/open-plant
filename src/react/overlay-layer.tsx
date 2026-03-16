@@ -26,7 +26,7 @@ export function OverlayLayer({ shapes }: OverlayLayerProps): React.ReactElement 
       }
       return out;
     },
-    [rendererRef],
+    [],
   );
 
   const drawRef = useRef({ shapes, worldToScreenPoints, source });

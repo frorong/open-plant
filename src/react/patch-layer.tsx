@@ -47,7 +47,7 @@ export function PatchLayer({ regions, strokeStyle }: PatchLayerProps): React.Rea
       }
       return out;
     },
-    [rendererRef],
+    [],
   );
 
   const drawRef = useRef({ prepared, resolvedStrokeStyle, worldToScreenPoints });

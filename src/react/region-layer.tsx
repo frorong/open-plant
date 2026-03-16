@@ -70,7 +70,7 @@ export function RegionLayer({
   onHover,
   onClick,
 }: RegionLayerProps): React.ReactElement | null {
-  const { rendererRef, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, drawInvalidateRef } = useViewerContext();
+  const { rendererRef, rendererSerial, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, drawInvalidateRef } = useViewerContext();
 
   const safeRegions = regions ?? EMPTY_ROI_REGIONS;
   const safePolygons = polygons ?? EMPTY_ROI_POLYGONS;
@@ -134,7 +134,7 @@ export function RegionLayer({
     const renderer = rendererRef.current;
     if (!renderer) return;
     syncRegionLabelAutoLiftTarget(renderer.getViewState().zoom);
-  }, [rendererRef, syncRegionLabelAutoLiftTarget]);
+  }, [rendererSerial, syncRegionLabelAutoLiftTarget]);
 
   // clean up stale hover/active on regions change
   useEffect(() => {
@@ -163,7 +163,7 @@ export function RegionLayer({
       }
       return out;
     },
-    [rendererRef]
+    []
   );
 
   // --- register region polygon draw callback ---
