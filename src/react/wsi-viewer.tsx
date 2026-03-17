@@ -67,6 +67,7 @@ export function WsiViewer({
   style,
   children,
 }: WsiViewerProps): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WsiTileRenderer | null>(null);
@@ -286,9 +287,13 @@ export function WsiViewer({
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [source, handleRendererStats, authToken, ctrlDragRotate, emitViewStateChange]);
+  }, [source, handleRendererStats, ctrlDragRotate, emitViewStateChange]);
 
   // --- core renderer sync effects ---
+
+  useEffect(() => {
+    rendererRef.current?.setAuthToken(authToken);
+  }, [authToken]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -343,6 +348,7 @@ export function WsiViewer({
       rendererRef,
       rendererSerial,
       canvasRef,
+      containerRef,
       drawInvalidateRef,
       overviewInvalidateRef,
       worldToScreen,
@@ -369,18 +375,22 @@ export function WsiViewer({
       const insideImage = !!coord && coord[0] >= 0 && coord[1] >= 0 && !!source && coord[0] <= source.width && coord[1] <= source.height;
       cb({ coordinate: coord, clientX: e.clientX, clientY: e.clientY, insideImage });
     },
-    [screenToWorld, source],
+    [screenToWorld, source]
   );
 
   const handlePointerLeave = useCallback(() => {
     onPointerWorldMoveRef.current?.({ coordinate: null, clientX: -1, clientY: -1, insideImage: false });
   }, []);
 
-  const cursorStyle = isInteractionLocked() ? "crosshair" : "grab";
-
   return (
     <ViewerContextProvider value={contextValue}>
-      <div className={className} style={mergedStyle} onPointerMove={onPointerWorldMove ? handlePointerMove : undefined} onPointerLeave={onPointerWorldMove ? handlePointerLeave : undefined}>
+      <div
+        ref={containerRef}
+        className={className}
+        style={mergedStyle}
+        onPointerMove={onPointerWorldMove ? handlePointerMove : undefined}
+        onPointerLeave={onPointerWorldMove ? handlePointerLeave : undefined}
+      >
         <canvas
           ref={canvasRef}
           className="wsi-render-canvas"
@@ -392,7 +402,6 @@ export function WsiViewer({
             height: "100%",
             display: "block",
             touchAction: "none",
-            cursor: cursorStyle,
           }}
         />
         <canvas

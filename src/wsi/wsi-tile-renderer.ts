@@ -615,7 +615,6 @@ export class WsiTileRenderer {
     }
 
     this.resize();
-    this.requestRender();
     this.onContextRestored?.();
   }
 

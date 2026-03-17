@@ -1,5 +1,4 @@
-import { clamp } from "./utils";
-import { nowMs } from "./utils";
+import { clamp, nowMs } from "./utils";
 import type { ViewAnimationRuntimeState, ViewAnimationStartOptions } from "./wsi-renderer-types";
 
 export function cancelViewAnimation(state: ViewAnimationRuntimeState): void {

@@ -141,7 +141,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
         outColor = vec4(color.rgb * alpha, alpha);
       } else {
         float s = uPointStrokeScale;
-        float ringWidth = clamp(3.0 * s / max(1.0, uPointSize), 0.12 * s, 0.62 * s);
+        float ringWidth = s * mix(0.18, 0.35, smoothstep(3.0, 16.0, uPointSize));
         float innerRadius = 1.0 - ringWidth;
         float innerMask = smoothstep(innerRadius - aa, innerRadius + aa, r);
         float ringAlpha = outerMask * innerMask * color.a;

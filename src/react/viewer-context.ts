@@ -10,6 +10,7 @@ export interface ViewerContextValue {
   rendererRef: RefObject<WsiTileRenderer | null>;
   rendererSerial: number;
   canvasRef: RefObject<HTMLCanvasElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
   drawInvalidateRef: MutableRefObject<(() => void) | null>;
   overviewInvalidateRef: MutableRefObject<(() => void) | null>;
 

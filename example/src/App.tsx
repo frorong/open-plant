@@ -174,6 +174,11 @@ export default function App() {
 
   const handleRegionHover = useCallback((event: RegionHoverEvent) => {
     setHoveredRegionId(event?.regionId ?? null);
+    if (event.regionId) {
+      document.body.style.cursor = "pointer !important";
+    } else {
+      document.body.style.cursor = "default";
+    }
   }, []);
 
   const handleActiveRegionChange = useCallback((regionId: string | number | null) => {
@@ -269,14 +274,17 @@ export default function App() {
     ];
   }, [source]);
 
-  const overviewMapOptions = useMemo(() => ({
-    width: 220,
-    height: 140,
-    margin: 24,
-    viewportBorderStyle: "dash" as const,
-    viewportBorderColor: "rgba(255, 106, 61, 0.95)",
-    viewportFillColor: "rgba(255, 106, 61, 0.08)",
-  }), []);
+  const overviewMapOptions = useMemo(
+    () => ({
+      width: 220,
+      height: 140,
+      margin: 24,
+      viewportBorderStyle: "dash" as const,
+      viewportBorderColor: "rgba(255, 106, 61, 0.95)",
+      viewportFillColor: "rgba(255, 106, 61, 0.08)",
+    }),
+    []
+  );
 
   return (
     <div className="app">
@@ -408,13 +416,7 @@ export default function App() {
               onHover={handleRegionHover}
               onClick={handleRegionClick}
             />
-            <DrawingLayer
-              tool={draw.drawTool}
-              stampOptions={draw.stampOptions}
-              brushOptions={draw.brushOptions}
-              onComplete={draw.handleDrawComplete}
-              onPatchComplete={draw.handlePatchComplete}
-            />
+            <DrawingLayer tool={draw.drawTool} stampOptions={draw.stampOptions} brushOptions={draw.brushOptions} onComplete={draw.handleDrawComplete} onPatchComplete={draw.handlePatchComplete} />
             <OverlayLayer shapes={overlayShapes} />
             <PatchLayer regions={draw.patchRegions} strokeStyle={patchStrokeStyle} />
             <PatchLabelOverlay patchRegions={draw.patchRegions} />
