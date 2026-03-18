@@ -54,7 +54,6 @@ export type { WsiViewerProps } from "./react/wsi-viewer";
 // --- v1.4.0 Composition API ---
 export { WsiViewer } from "./react/wsi-viewer";
 export type {
-  OverviewMapConfig,
   PointClickEvent,
   PointClipStatsEvent,
   PointerWorldMoveEvent,
@@ -62,12 +61,7 @@ export type {
   PointHoverEvent,
   RegionClickEvent,
   RegionHoverEvent,
-  WsiCustomLayer,
-  WsiCustomLayerContext,
-  WsiViewerCanvasProps,
-} from "./react/wsi-viewer-canvas";
-/** @deprecated Use `WsiViewer` with layer composition instead. */
-export { WsiViewerCanvas } from "./react/wsi-viewer-canvas";
+} from "./react/wsi-viewer-canvas-types";
 export { DEFAULT_POINT_COLOR } from "./wsi/constants";
 export type { RawImagePayload, RawImsInfo, RawWsiTerm } from "./wsi/image-info";
 export { normalizeImageInfo, toTileUrl } from "./wsi/image-info";

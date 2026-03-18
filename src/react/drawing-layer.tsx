@@ -15,7 +15,7 @@ export interface DrawingLayerProps {
 }
 
 export function DrawingLayer({ tool = "cursor", stampOptions, brushOptions, fillColor, areaTooltip, onComplete, onPatchComplete, onBrushTap }: DrawingLayerProps): React.ReactElement | null {
-  const { source, rendererRef, setInteractionLock } = useViewerContext();
+  const { source, rendererRef, rendererSerial, setInteractionLock } = useViewerContext();
 
   const active = tool !== "cursor";
 
@@ -24,7 +24,7 @@ export function DrawingLayer({ tool = "cursor", stampOptions, brushOptions, fill
     return () => setInteractionLock("drawing-layer", false);
   }, [active, setInteractionLock]);
 
-  const viewStateSignal = useMemo(() => rendererRef.current?.getViewState(), [rendererRef]);
+  const viewStateSignal = useMemo(() => rendererRef.current?.getViewState(), [rendererSerial]);
 
   if (!source) return null;
 

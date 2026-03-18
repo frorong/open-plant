@@ -15,7 +15,7 @@ import { EMPTY_DASH, REGION_INTERACTION_SHADOW_COLOR, REGION_INTERACTION_SHADOW_
 import { drawPath, isSameRegionId, mergeStrokeStyle, normalizeDrawRegionPolygons, resolveStrokeStyle, toCoord } from "./draw-layer-utils";
 import { useRegionLabelAutoLift } from "./use-region-label-auto-lift";
 import { useViewerContext } from "./viewer-context";
-import { prepareRegionHits, resolveRegionId } from "./wsi-region-hit-utils";
+import { pickPreparedRegionAt, prepareRegionHits, resolveRegionId } from "./wsi-region-hit-utils";
 import type { RegionClickEvent, RegionHoverEvent } from "./wsi-viewer-canvas-types";
 
 export interface RegionLayerProps {
@@ -70,7 +70,7 @@ export function RegionLayer({
   onHover,
   onClick,
 }: RegionLayerProps): React.ReactElement | null {
-  const { rendererRef, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, drawInvalidateRef } = useViewerContext();
+  const { rendererRef, rendererSerial, canvasRef, containerRef, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, drawInvalidateRef, screenToWorld, worldToScreen, isInteractionLocked } = useViewerContext();
 
   const safeRegions = regions ?? EMPTY_ROI_REGIONS;
   const safePolygons = polygons ?? EMPTY_ROI_POLYGONS;
@@ -134,7 +134,7 @@ export function RegionLayer({
     const renderer = rendererRef.current;
     if (!renderer) return;
     syncRegionLabelAutoLiftTarget(renderer.getViewState().zoom);
-  }, [rendererRef, syncRegionLabelAutoLiftTarget]);
+  }, [rendererSerial, syncRegionLabelAutoLiftTarget]);
 
   // clean up stale hover/active on regions change
   useEffect(() => {
@@ -163,7 +163,7 @@ export function RegionLayer({
       }
       return out;
     },
-    [rendererRef]
+    []
   );
 
   // --- register region polygon draw callback ---
@@ -299,6 +299,129 @@ export function RegionLayer({
   useEffect(() => {
     requestOverlayRedraw();
   }, [preparedRegions, hoveredRegionId, activeRegionId, resolvedStrokeStyle, resolvedLabelStyle, regionLabelAutoLiftOffsetPx, requestOverlayRedraw]);
+
+  // --- pointer event handling for hover / click ---
+
+  const pointerHitRef = useRef({
+    preparedRegionHits,
+    resolvedLabelStyle,
+    labelStyleResolver,
+    regionLabelAutoLiftOffsetPx,
+    clampLabelToViewport,
+    onHover,
+    onClick,
+    commitActive,
+  });
+  pointerHitRef.current = {
+    preparedRegionHits,
+    resolvedLabelStyle,
+    labelStyleResolver,
+    regionLabelAutoLiftOffsetPx,
+    clampLabelToViewport,
+    onHover,
+    onClick,
+    commitActive,
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (isInteractionLocked()) return;
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+
+      const { preparedRegionHits: hits, resolvedLabelStyle: labelS, labelStyleResolver: resolver,
+        regionLabelAutoLiftOffsetPx: autoLiftPx, clampLabelToViewport: clampVp, onHover: hoverCb } = pointerHitRef.current;
+
+      const worldCoord = screenToWorld(e.clientX, e.clientY);
+      if (!worldCoord) return;
+
+      let nextId: string | number | null = null;
+      let hitResult: { region: WsiRegion; regionIndex: number; regionId: string | number } | null = null;
+
+      if (hits.length > 0) {
+        const screenCoord = worldToScreen(worldCoord[0], worldCoord[1]);
+        if (screenCoord) {
+          const rect = canvasRef.current?.getBoundingClientRect();
+          hitResult = pickPreparedRegionAt(
+            worldCoord, screenCoord, hits, renderer, labelS, resolver,
+            typeof autoLiftPx === "number" ? autoLiftPx : 0,
+            rect?.width ?? 0, rect?.height ?? 0, clampVp,
+          );
+          nextId = hitResult?.regionId ?? null;
+        }
+      }
+
+      const prevId = hoveredRegionIdRef.current;
+      if (String(prevId) === String(nextId)) return;
+
+      hoveredRegionIdRef.current = nextId;
+      setHoveredRegionId(nextId);
+      hoverCb?.({
+        region: hitResult?.region ?? null,
+        regionId: nextId,
+        regionIndex: hitResult?.regionIndex ?? -1,
+        coordinate: worldCoord,
+      });
+      requestOverlayRedraw();
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      if (isInteractionLocked()) return;
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+
+      const { preparedRegionHits: hits, resolvedLabelStyle: labelS, labelStyleResolver: resolver,
+        regionLabelAutoLiftOffsetPx: autoLiftPx, clampLabelToViewport: clampVp,
+        onClick: clickCb, commitActive: commit } = pointerHitRef.current;
+
+      if (hits.length === 0) return;
+
+      const worldCoord = screenToWorld(e.clientX, e.clientY);
+      if (!worldCoord) return;
+
+      const screenCoord = worldToScreen(worldCoord[0], worldCoord[1]);
+      if (!screenCoord) return;
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const hitResult = pickPreparedRegionAt(
+        worldCoord, screenCoord, hits, renderer, labelS, resolver,
+        typeof autoLiftPx === "number" ? autoLiftPx : 0,
+        rect?.width ?? 0, rect?.height ?? 0, clampVp,
+      );
+
+      const nextId = hitResult?.regionId ?? null;
+      commit(nextId);
+
+      if (hitResult && clickCb) {
+        clickCb({
+          region: hitResult.region,
+          regionId: hitResult.regionId,
+          regionIndex: hitResult.regionIndex,
+          coordinate: worldCoord,
+        });
+      }
+    };
+
+    const handlePointerLeave = () => {
+      if (hoveredRegionIdRef.current === null) return;
+      hoveredRegionIdRef.current = null;
+      setHoveredRegionId(null);
+      pointerHitRef.current.onHover?.({ region: null, regionId: null, regionIndex: -1, coordinate: null });
+      requestOverlayRedraw();
+    };
+
+    container.addEventListener("pointermove", handlePointerMove);
+    container.addEventListener("click", handleClick);
+    container.addEventListener("pointerleave", handlePointerLeave);
+    return () => {
+      container.removeEventListener("pointermove", handlePointerMove);
+      container.removeEventListener("click", handleClick);
+      container.removeEventListener("pointerleave", handlePointerLeave);
+    };
+  }, [containerRef, rendererRef, canvasRef, screenToWorld, worldToScreen, isInteractionLocked, requestOverlayRedraw]);
 
   return null;
 }

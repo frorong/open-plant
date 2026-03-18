@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WsiImageColorSettings, WsiImageSource, WsiRenderStats, WsiViewState } from "../wsi/types";
-import type { PointSizeByZoom, WsiTileErrorEvent, WsiViewTransitionOptions } from "../wsi/wsi-tile-renderer";
+import type { WsiTileErrorEvent, WsiViewTransitionOptions } from "../wsi/wsi-tile-renderer";
 import { WsiTileRenderer } from "../wsi/wsi-tile-renderer";
 import type { DrawCoordinate } from "./draw-layer-types";
 import { toDrawCoordinate } from "./draw-layer-utils";
@@ -26,9 +26,6 @@ export interface WsiViewerProps {
   viewTransition?: WsiViewTransitionOptions;
   zoomSnaps?: number[];
   zoomSnapFitAsMin?: boolean;
-  pointSizeByZoom?: PointSizeByZoom;
-  pointStrokeScale?: number;
-  pointInnerFillOpacity?: number;
   onPointerWorldMove?: (event: PointerWorldMoveEvent) => void;
   debugOverlay?: boolean;
   debugOverlayStyle?: CSSProperties;
@@ -63,9 +60,6 @@ export function WsiViewer({
   viewTransition,
   zoomSnaps,
   zoomSnapFitAsMin,
-  pointSizeByZoom,
-  pointStrokeScale,
-  pointInnerFillOpacity,
   onPointerWorldMove,
   debugOverlay = false,
   debugOverlayStyle,
@@ -73,6 +67,7 @@ export function WsiViewer({
   style,
   children,
 }: WsiViewerProps): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<WsiTileRenderer | null>(null);
@@ -88,6 +83,7 @@ export function WsiViewer({
   const onContextLostRef = useRef(onContextLost);
   const onContextRestoredRef = useRef(onContextRestored);
 
+  const [rendererSerial, setRendererSerial] = useState(0);
   const [debugStats, setDebugStats] = useState<WsiRenderStats | null>(null);
   const debugOverlayRef = useRef(debugOverlay);
 
@@ -275,9 +271,6 @@ export function WsiViewer({
       authToken,
       imageColorSettings,
       ctrlDragRotate,
-      pointSizeByZoom,
-      pointStrokeScale,
-      pointInnerFillOpacity,
       minZoom,
       maxZoom,
       viewTransition,
@@ -286,6 +279,7 @@ export function WsiViewer({
     });
 
     rendererRef.current = renderer;
+    setRendererSerial(s => s + 1);
     if (viewState) renderer.setViewState(viewState);
     renderer.setInteractionLock(interactionLocksRef.current.size > 0);
 
@@ -293,9 +287,13 @@ export function WsiViewer({
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [source, handleRendererStats, authToken, ctrlDragRotate, emitViewStateChange]);
+  }, [source, handleRendererStats, ctrlDragRotate, emitViewStateChange]);
 
   // --- core renderer sync effects ---
+
+  useEffect(() => {
+    rendererRef.current?.setAuthToken(authToken);
+  }, [authToken]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -348,7 +346,9 @@ export function WsiViewer({
     () => ({
       source,
       rendererRef,
+      rendererSerial,
       canvasRef,
+      containerRef,
       drawInvalidateRef,
       overviewInvalidateRef,
       worldToScreen,
@@ -359,7 +359,7 @@ export function WsiViewer({
       setInteractionLock,
       isInteractionLocked,
     }),
-    [source, worldToScreen, screenToWorld, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, setInteractionLock, isInteractionLocked]
+    [source, rendererSerial, worldToScreen, screenToWorld, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, setInteractionLock, isInteractionLocked]
   );
 
   const onPointerWorldMoveRef = useRef(onPointerWorldMove);
@@ -375,18 +375,22 @@ export function WsiViewer({
       const insideImage = !!coord && coord[0] >= 0 && coord[1] >= 0 && !!source && coord[0] <= source.width && coord[1] <= source.height;
       cb({ coordinate: coord, clientX: e.clientX, clientY: e.clientY, insideImage });
     },
-    [screenToWorld, source],
+    [screenToWorld, source]
   );
 
   const handlePointerLeave = useCallback(() => {
     onPointerWorldMoveRef.current?.({ coordinate: null, clientX: -1, clientY: -1, insideImage: false });
   }, []);
 
-  const cursorStyle = isInteractionLocked() ? "crosshair" : "grab";
-
   return (
     <ViewerContextProvider value={contextValue}>
-      <div className={className} style={mergedStyle} onPointerMove={onPointerWorldMove ? handlePointerMove : undefined} onPointerLeave={onPointerWorldMove ? handlePointerLeave : undefined}>
+      <div
+        ref={containerRef}
+        className={className}
+        style={mergedStyle}
+        onPointerMove={onPointerWorldMove ? handlePointerMove : undefined}
+        onPointerLeave={onPointerWorldMove ? handlePointerLeave : undefined}
+      >
         <canvas
           ref={canvasRef}
           className="wsi-render-canvas"
@@ -398,7 +402,6 @@ export function WsiViewer({
             height: "100%",
             display: "block",
             touchAction: "none",
-            cursor: cursorStyle,
           }}
         />
         <canvas

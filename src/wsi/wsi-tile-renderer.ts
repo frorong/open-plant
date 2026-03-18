@@ -52,7 +52,7 @@ import {
 } from "./wsi-tile-visibility";
 import { cancelViewAnimation as cancelManagedViewAnimation, startViewAnimation } from "./wsi-view-animation";
 import { computeFitToImageTarget, computeZoomByTarget, computeZoomToTarget, resolveTargetViewState as resolveManagedTargetViewState, resolveZoomBounds } from "./wsi-view-ops";
-import { normalizeZoomSnaps, resolveSnapTarget, startZoomPivotAnimation, SNAP_ZOOM_DURATION_MS, type ZoomPivotAnimationContext } from "./wsi-zoom-snap";
+import { normalizeZoomSnaps, resolveSnapTarget, SNAP_ZOOM_DURATION_MS, startZoomPivotAnimation, type ZoomPivotAnimationContext } from "./wsi-zoom-snap";
 
 export type { PointSizeByZoom, WsiTileErrorEvent, WsiTileRendererOptions, WsiTileSchedulerConfig, WsiViewTransitionOptions } from "./wsi-renderer-types";
 
@@ -70,6 +70,11 @@ export class WsiTileRenderer {
   private tileProgram: TileVertexProgram;
   private pointProgram: PointProgram;
   private readonly tileScheduler: TileScheduler;
+
+  private zoomStack: { cnt: number; direction: "in" | "out" | null } = {
+    cnt: 0,
+    direction: null,
+  };
 
   private authToken: string;
   private destroyed = false;
@@ -499,8 +504,25 @@ export class WsiTileRenderer {
   }
 
   private handleSnapZoom(direction: "in" | "out", screenX: number, screenY: number): void {
+    const ongoing = this.viewAnimationState.animation;
+    const baseZoom = ongoing ? ongoing.to.zoom : this.camera.getViewState().zoom;
+
     const validSnaps = this.zoomSnaps.filter(z => z >= this.minZoom && z <= this.maxZoom);
-    const result = resolveSnapTarget(validSnaps, this.camera.getViewState().zoom, direction, this.zoomSnapFitAsMin);
+
+    const zoomStack = this.zoomStack;
+
+    if (zoomStack.cnt > 0 && validSnaps.length - 1 === zoomStack.cnt && zoomStack.direction === direction) {
+      return;
+    }
+
+    if (zoomStack.direction !== direction) {
+      zoomStack.cnt = 0;
+      zoomStack.direction = direction;
+    }
+
+    zoomStack.cnt += 1;
+
+    const result = resolveSnapTarget(validSnaps, baseZoom, direction, this.zoomSnapFitAsMin);
     if (!result) return;
 
     if (result.type === "fit") {
@@ -615,7 +637,6 @@ export class WsiTileRenderer {
     }
 
     this.resize();
-    this.requestRender();
     this.onContextRestored?.();
   }
 

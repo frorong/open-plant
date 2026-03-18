@@ -8,7 +8,9 @@ export type OverlayDrawFn = (ctx: CanvasRenderingContext2D, width: number, heigh
 export interface ViewerContextValue {
   source: WsiImageSource | null;
   rendererRef: RefObject<WsiTileRenderer | null>;
+  rendererSerial: number;
   canvasRef: RefObject<HTMLCanvasElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
   drawInvalidateRef: MutableRefObject<(() => void) | null>;
   overviewInvalidateRef: MutableRefObject<(() => void) | null>;
 
