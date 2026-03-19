@@ -23,6 +23,7 @@ export interface RenderFrameOptions {
   getVisibleTilesForTier: (tier: number) => ScheduledTile[];
   getViewBounds: () => Bounds;
   intersectsBounds: (a: Bounds, b: Bounds) => boolean;
+  activatedCellId: number | null;
 }
 
 export interface RenderFrameResult {
@@ -57,6 +58,7 @@ export function renderFrame(options: RenderFrameOptions): RenderFrameResult {
     getVisibleTilesForTier,
     getViewBounds,
     intersectsBounds,
+    activatedCellId,
   } = options;
 
   gl.clearColor(0.03, 0.06, 0.1, 1);
@@ -135,6 +137,7 @@ export function renderFrame(options: RenderFrameOptions): RenderFrameResult {
     gl.uniform1f(pointProgram.uPointStrokeScale, pointStrokeScale);
     gl.uniform1f(pointProgram.uPointInnerFillAlpha, pointInnerFillOpacity);
     gl.uniform1f(pointProgram.uPaletteSize, pointPaletteSize);
+    gl.uniform1i(pointProgram.uActivatedCellId, activatedCellId ?? -1);
     gl.uniform1i(pointProgram.uPalette, 1);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, pointProgram.paletteTexture);
@@ -145,6 +148,7 @@ export function renderFrame(options: RenderFrameOptions): RenderFrameResult {
     }
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.bindVertexArray(null);
+
     renderedPoints = pointCount;
   }
 

@@ -391,6 +391,7 @@ export default function App() {
             className="viewer-canvas"
           >
             <PointLayer
+              isActiveHover
               data={pointData.pointPayload}
               palette={pointData.termPalette.colors}
               sizeByZoom={pointSizeByZoom}

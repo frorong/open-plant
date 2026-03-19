@@ -87,16 +87,20 @@ export function setPointData(runtime: PointBufferRuntime, gl: WebGL2RenderingCon
   }
 
   const pointFillModes = points.fillModes instanceof Uint8Array ? points.fillModes : null;
+  const pointIds = points.ids instanceof Uint32Array ? points.ids : null;
   const hasFillModes = pointFillModes !== null;
-  const safeCount = Math.max(0, Math.min(points.count, Math.floor(points.positions.length / 2), points.paletteIndices.length, hasFillModes ? pointFillModes.length : Number.MAX_SAFE_INTEGER));
+  const hasIds = pointIds !== null;
+  const safeCount = Math.max(0, Math.min(points.count, Math.floor(points.positions.length / 2), points.paletteIndices.length, hasFillModes ? pointFillModes.length : Number.MAX_SAFE_INTEGER, hasIds ? pointIds.length : Number.MAX_SAFE_INTEGER));
   const nextPositions = points.positions.subarray(0, safeCount * 2);
   const nextPaletteIndices = points.paletteIndices.subarray(0, safeCount);
   const nextFillModes = hasFillModes ? pointFillModes.subarray(0, safeCount) : undefined;
+  const nextIds = hasIds ? pointIds.subarray(0, safeCount) : undefined;
   const hasDrawIndices = points.drawIndices instanceof Uint32Array;
   const nextDrawIndices = hasDrawIndices ? sanitizeDrawIndices(points.drawIndices as Uint32Array, safeCount) : null;
 
   const prev = runtime.lastPointData;
   const prevHasFillModes = prev?.fillModes instanceof Uint8Array;
+  const prevHasIds = prev?.ids instanceof Uint32Array;
   const geometryChanged =
     runtime.pointBuffersDirty ||
     !prev ||
@@ -104,7 +108,9 @@ export function setPointData(runtime: PointBufferRuntime, gl: WebGL2RenderingCon
     !isSameArrayView(prev.positions, nextPositions) ||
     !isSameArrayView(prev.paletteIndices, nextPaletteIndices) ||
     prevHasFillModes !== hasFillModes ||
-    (hasFillModes && (!prev?.fillModes || !isSameArrayView(prev.fillModes, nextFillModes)));
+    (hasFillModes && (!prev?.fillModes || !isSameArrayView(prev.fillModes, nextFillModes))) ||
+    prevHasIds !== hasIds ||
+    (hasIds && (!prev?.ids || !isSameArrayView(prev.ids, nextIds)));
   const drawIndicesChanged = runtime.pointBuffersDirty || (hasDrawIndices && (!prev?.drawIndices || !isSameArrayView(prev.drawIndices, nextDrawIndices))) || (!hasDrawIndices && !!prev?.drawIndices);
 
   const nextRuntime: PointBufferRuntime = {
@@ -114,6 +120,7 @@ export function setPointData(runtime: PointBufferRuntime, gl: WebGL2RenderingCon
       positions: nextPositions,
       paletteIndices: nextPaletteIndices,
       fillModes: nextFillModes,
+      ids: nextIds,
       drawIndices: hasDrawIndices ? (nextDrawIndices ?? undefined) : undefined,
     },
   };
@@ -137,6 +144,10 @@ export function setPointData(runtime: PointBufferRuntime, gl: WebGL2RenderingCon
     const zeroFillModes = getZeroFillModes(nextRuntime.zeroFillModes, safeCount);
     gl.bindBuffer(gl.ARRAY_BUFFER, pointProgram.fillModeBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, currentPointData.fillModes ?? zeroFillModes, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, pointProgram.idBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, currentPointData.ids ?? new Uint32Array(safeCount), gl.STATIC_DRAW);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     nextRuntime.zeroFillModes = zeroFillModes;
   }

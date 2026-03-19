@@ -30,6 +30,7 @@ export interface PointProgram {
   posBuffer: WebGLBuffer;
   termBuffer: WebGLBuffer;
   fillModeBuffer: WebGLBuffer;
+  idBuffer: WebGLBuffer;
   indexBuffer: WebGLBuffer;
   paletteTexture: WebGLTexture;
   uCamera: WebGLUniformLocation;
@@ -38,6 +39,7 @@ export interface PointProgram {
   uPaletteSize: WebGLUniformLocation;
   uPointStrokeScale: WebGLUniformLocation;
   uPointInnerFillAlpha: WebGLUniformLocation;
+  uActivatedCellId: WebGLUniformLocation;
 }
 
 export interface PointSizeStop {

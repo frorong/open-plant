@@ -194,7 +194,7 @@ button.active {
 }
 
 .viewer-canvas > canvas.wsi-render-canvas {
-  cursor: grab;
+  /* cursor: grab; */
 }
 
 .viewer-canvas > canvas.dragging {

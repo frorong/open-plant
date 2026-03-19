@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { PointClipMode } from "../wsi/point-clip-worker-client";
 import type { WsiPointData, WsiRegion } from "../wsi/types";
 import type { PointSizeByZoom } from "../wsi/wsi-tile-renderer";
@@ -20,6 +20,7 @@ export interface PointLayerProps {
   onClipStats?: (event: PointClipStatsEvent) => void;
   onHover?: (event: PointHoverEvent) => void;
   onClick?: (event: PointClickEvent) => void;
+  isActiveHover?: boolean;
 }
 
 export interface PointQueryHandle {
@@ -27,37 +28,17 @@ export interface PointQueryHandle {
 }
 
 export const PointLayer = forwardRef<PointQueryHandle, PointLayerProps>(function PointLayer(
-  {
-    data = null,
-    palette = null,
-    sizeByZoom,
-    strokeScale,
-    innerFillOpacity,
-    clipEnabled = false,
-    clipToRegions,
-    clipMode = "worker",
-    onClipStats,
-    onHover,
-    onClick,
-  },
-  ref,
+  { data = null, palette = null, sizeByZoom, strokeScale, innerFillOpacity, clipEnabled = false, clipToRegions, clipMode = "worker", onClipStats, onHover, onClick, isActiveHover = false },
+  ref
 ) {
-  const { rendererRef, rendererSerial, source } = useViewerContext();
+  const { rendererRef, rendererSerial, source, containerRef, isInteractionLocked, screenToWorld } = useViewerContext();
   const getCellByCoordinatesRef = useRef<((coordinate: DrawCoordinate) => PointHitEvent | null) | null>(null);
 
   const effectiveClipRegions = clipToRegions ?? EMPTY_REGIONS;
 
   const renderPointData = usePointClipping(clipEnabled, clipMode, data, effectiveClipRegions, onClipStats);
 
-  const { getCellByCoordinates } = usePointHitTest(
-    renderPointData,
-    source,
-    onHover,
-    onClick,
-    getCellByCoordinatesRef,
-    "cursor",
-    rendererRef,
-  );
+  const { getCellByCoordinates } = usePointHitTest(renderPointData, source, onHover, onClick, getCellByCoordinatesRef, "cursor", rendererRef);
 
   useImperativeHandle(ref, () => ({ queryAt: getCellByCoordinates }), [getCellByCoordinates]);
 
@@ -90,6 +71,27 @@ export const PointLayer = forwardRef<PointQueryHandle, PointLayerProps>(function
     if (!renderer) return;
     renderer.setPointData(renderPointData);
   }, [rendererSerial, renderPointData]);
+
+  useEffect(() => {
+    if (!isActiveHover) return;
+    const container = containerRef.current;
+
+    if (!container) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (isInteractionLocked()) return;
+      const worldCoord = screenToWorld(e.clientX, e.clientY);
+      if (!worldCoord) return;
+      const cell = getCellByCoordinates(worldCoord);
+      if (!cell) {
+        rendererRef.current?.setActivatedCellId(null);
+        return;
+      }
+      rendererRef.current?.setActivatedCellId(cell.id);
+    };
+
+    container.addEventListener("pointermove", handlePointerMove);
+  }, [rendererSerial, isActiveHover]);
 
   return null;
 });

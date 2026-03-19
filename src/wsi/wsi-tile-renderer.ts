@@ -118,6 +118,7 @@ export class WsiTileRenderer {
   private zoomSnaps: number[] = [];
   private zoomSnapFitAsMin = false;
   private zoomSnapState: ZoomSnapState = { accumulatedDelta: 0, lastSnapTimeMs: 0, blockedDirection: null };
+  private activatedCellId: number | null = null;
 
   private readonly boundPointerDown: (event: PointerEvent) => void;
   private readonly boundPointerMove: (event: PointerEvent) => void;
@@ -343,6 +344,12 @@ export class WsiTileRenderer {
     this.startViewAnimation(target, durationMs, easing);
   }
 
+  setActivatedCellId(id: number | null): void {
+    if (this.activatedCellId === id) return;
+    this.activatedCellId = id;
+    this.requestRender();
+  }
+
   getViewState(): WsiViewState {
     return this.camera.getViewState();
   }
@@ -522,8 +529,7 @@ export class WsiTileRenderer {
     const epsilon = Math.max(Math.abs(targetZoom) * 0.005, 1e-8);
 
     if (ongoing) {
-      const ongoingDirection: "in" | "out" | null =
-        ongoing.to.zoom > ongoing.from.zoom + epsilon ? "in" : ongoing.to.zoom < ongoing.from.zoom - epsilon ? "out" : null;
+      const ongoingDirection: "in" | "out" | null = ongoing.to.zoom > ongoing.from.zoom + epsilon ? "in" : ongoing.to.zoom < ongoing.from.zoom - epsilon ? "out" : null;
       if (ongoingDirection === direction && Math.abs(ongoing.to.zoom - targetZoom) <= epsilon) {
         return false;
       }
@@ -560,6 +566,7 @@ export class WsiTileRenderer {
       getVisibleTilesForTier: tier => getManagedVisibleTilesForTier(this.camera, this.source, tier),
       getViewBounds: () => getManagedViewBounds(this.camera),
       intersectsBounds: intersectsManagedBounds,
+      activatedCellId: this.activatedCellId,
     });
     if (this.onStats) {
       const schedulerStats = this.tileScheduler.getSnapshot();

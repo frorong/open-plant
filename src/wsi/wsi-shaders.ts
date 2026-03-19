@@ -101,22 +101,29 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     in vec2 aPosition;
     in uint aTerm;
     in uint aFillMode;
+    in uint aId;
     uniform mat3 uCamera;
     uniform float uPointSize;
+    uniform int uActivatedCellId;
     flat out uint vTerm;
     flat out uint vFillMode;
+    flat out uint vActivated;
     void main() {
       vec3 clip = uCamera * vec3(aPosition, 1.0);
       gl_Position = vec4(clip.xy, 0.0, 1.0);
-      gl_PointSize = uPointSize;
+      bool isActivated = uActivatedCellId >= 0 && aId == uint(uActivatedCellId);
+      gl_PointSize = isActivated ? uPointSize * 2.5 : uPointSize;
       vTerm = aTerm;
       vFillMode = aFillMode;
+      vActivated = isActivated ? 1u : 0u;
     }`;
 
   const pointFragment = `#version 300 es
     precision highp float;
     flat in uint vTerm;
     flat in uint vFillMode;
+    flat in uint vActivated;
+    uniform int uActivatedCellId;
     uniform sampler2D uPalette;
     uniform float uPaletteSize;
     uniform float uPointSize;
@@ -126,7 +133,8 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     void main() {
       vec2 pc = gl_PointCoord * 2.0 - 1.0;
       float r = length(pc);
-      if (r > 1.0) discard;
+      bool activated = vActivated != 0u;
+      if (r > (activated ? 1.4 : 1.0)) discard;
 
       float idx = clamp(float(vTerm), 0.0, max(0.0, uPaletteSize - 1.0));
       vec2 uv = vec2((idx + 0.5) / uPaletteSize, 0.5);
@@ -135,21 +143,26 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
 
       float aa = 1.5 / max(1.0, uPointSize);
       float outerMask = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, r);
+
+      float glowAlpha = 0.0;
+      if (activated) {
+        glowAlpha = exp(-5.0 * max(0.0, r - 0.7)) * 0.6 * color.a;
+      }
+
       if (vFillMode != 0u) {
-        float alpha = outerMask * color.a;
+        float alpha = outerMask * color.a + glowAlpha;
         if (alpha <= 0.001) discard;
         outColor = vec4(color.rgb * alpha, alpha);
       } else {
-        float s = uPointStrokeScale;
+        float s = activated ? uPointStrokeScale * 2.0 : uPointStrokeScale;
         float ringWidth = s * mix(0.18, 0.35, smoothstep(3.0, 16.0, uPointSize));
         float innerRadius = 1.0 - ringWidth;
         float innerMask = smoothstep(innerRadius - aa, innerRadius + aa, r);
         float ringAlpha = outerMask * innerMask * color.a;
         float fillAlpha = outerMask * (1.0 - innerMask) * clamp(uPointInnerFillAlpha, 0.0, 1.0);
-        float alpha = ringAlpha + fillAlpha;
+        float alpha = ringAlpha + fillAlpha + glowAlpha;
         if (alpha <= 0.001) discard;
-        // Premultiplied alpha output: inner fill is black, so it only contributes alpha.
-        outColor = vec4(color.rgb * ringAlpha, alpha);
+        outColor = vec4(color.rgb * (ringAlpha + glowAlpha), alpha);
       }
     }`;
 
@@ -160,14 +173,15 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
   const uPointInnerFillAlpha = requireUniformLocation(gl, program, "uPointInnerFillAlpha");
   const uPalette = requireUniformLocation(gl, program, "uPalette");
   const uPaletteSize = requireUniformLocation(gl, program, "uPaletteSize");
-
+  const uActivatedCellId = requireUniformLocation(gl, program, "uActivatedCellId");
   const vao = gl.createVertexArray();
   const posBuffer = gl.createBuffer();
   const termBuffer = gl.createBuffer();
   const fillModeBuffer = gl.createBuffer();
+  const idBuffer = gl.createBuffer();
   const indexBuffer = gl.createBuffer();
   const paletteTexture = gl.createTexture();
-  if (!vao || !posBuffer || !termBuffer || !fillModeBuffer || !indexBuffer || !paletteTexture) {
+  if (!vao || !posBuffer || !termBuffer || !fillModeBuffer || !idBuffer || !indexBuffer || !paletteTexture) {
     throw new Error("point buffer allocation failed");
   }
 
@@ -200,6 +214,15 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
   gl.enableVertexAttribArray(fillModeLoc);
   gl.vertexAttribIPointer(fillModeLoc, 1, gl.UNSIGNED_BYTE, 0, 0);
 
+  gl.bindBuffer(gl.ARRAY_BUFFER, idBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
+  const idLoc = gl.getAttribLocation(program, "aId");
+  if (idLoc < 0) {
+    throw new Error("point id attribute not found");
+  }
+  gl.enableVertexAttribArray(idLoc);
+  gl.vertexAttribIPointer(idLoc, 1, gl.UNSIGNED_INT, 0, 0);
+
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
 
@@ -221,6 +244,8 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     posBuffer,
     termBuffer,
     fillModeBuffer,
+    idBuffer,
+    uActivatedCellId,
     indexBuffer,
     paletteTexture,
     uCamera,
