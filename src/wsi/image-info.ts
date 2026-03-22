@@ -17,6 +17,7 @@ export interface RawWsiTerm {
 
 export interface RawImagePayload {
   _id?: string | null;
+  id?: string | null;
   name?: string | null;
   width?: number | null;
   height?: number | null;
@@ -26,6 +27,7 @@ export interface RawImagePayload {
   mpp?: number | null;
   imsInfo?: RawImsInfo | null;
   terms?: RawWsiTerm[] | null;
+  tileUrlBuilder?: (tier: number, x: number, y: number, tilePath: string, tileBaseUrl: string) => string;
 }
 
 function trimTrailingSlash(value: string): string {
@@ -93,10 +95,11 @@ export function normalizeImageInfo(raw: RawImagePayload, tileBaseUrl: string): W
 
   const normalizedPath = ensureLeadingSlash(tilePath);
   const imsTileRoot = joinImsTileRoot(tileBaseUrl);
-  const tileUrlBuilder = isIms ? (tier: number, x: number, y: number): string => `${imsTileRoot}${normalizedPath}/${tier}/${y}_${x}.webp` : undefined;
+  const tileUrlBuilder = raw?.tileUrlBuilder
+    ?? (isIms ? (tier: number, x: number, y: number): string => `${imsTileRoot}${normalizedPath}/${tier}/${y}_${x}.webp` : undefined);
 
   return {
-    id: raw?._id || "unknown",
+    id: raw?._id || raw?.id || "unknown",
     name: raw?.name || "unknown",
     width,
     height,
@@ -112,7 +115,7 @@ export function normalizeImageInfo(raw: RawImagePayload, tileBaseUrl: string): W
 
 export function toTileUrl(source: Pick<WsiImageSource, "tilePath" | "tileBaseUrl" | "tileUrlBuilder">, tier: number, x: number, y: number): string {
   if (source.tileUrlBuilder) {
-    return source.tileUrlBuilder(tier, x, y);
+    return source.tileUrlBuilder(tier, x, y, source.tilePath, source.tileBaseUrl);
   }
   const normalizedPath = ensureLeadingSlash(source.tilePath);
   return `${source.tileBaseUrl}${normalizedPath}/${tier}/${y}_${x}.webp`;

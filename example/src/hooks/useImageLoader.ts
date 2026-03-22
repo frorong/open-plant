@@ -62,7 +62,13 @@ export function useImageLoader(
 					return response.json() as Promise<Record<string, unknown>>;
 				})
 				.then(raw => {
-					const nextSource = normalizeImageInfo(raw, `${S3_BASE_URL}/ims`);
+					const nextSource = normalizeImageInfo({
+						...raw,
+						tileUrlBuilder: (tier, x, y, tilePath, tileBaseUrl) => {
+							const p = tilePath.startsWith("/") ? tilePath : `/${tilePath}`;
+							return `${tileBaseUrl}${p}/${tier}/${y}_${x}.webp`;
+						},
+					}, `${S3_BASE_URL}/ims`);
 					setSource(nextSource);
 					setPointZstUrl(raw?.mvtPath ? String(raw.mvtPath) : "");
 					setFitNonce(prev => prev + 1);
