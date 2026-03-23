@@ -76,6 +76,7 @@ export function WsiViewer({
   const drawCallbacksRef = useRef<DrawCallbackEntry[]>(EMPTY_DRAW_CALLBACKS);
   const overlayPendingRef = useRef(false);
   const interactionLocksRef = useRef<Set<string>>(new Set());
+  const viewStateListenersRef = useRef<Set<(state: WsiViewState) => void>>(new Set());
 
   const onViewStateChangeRef = useRef(onViewStateChange);
   const onStatsRef = useRef(onStats);
@@ -238,11 +239,25 @@ export function WsiViewer({
     return [x, y];
   }, []);
 
+  const registerViewStateListener = useCallback((listener: (state: WsiViewState) => void) => {
+    viewStateListenersRef.current.add(listener);
+    return () => {
+      viewStateListenersRef.current.delete(listener);
+    };
+  }, []);
+
   // --- viewState change propagation ---
 
   const emitViewStateChange = useCallback(
     (next: WsiViewState): void => {
       onViewStateChangeRef.current?.(next);
+      const listeners = viewStateListenersRef.current;
+      if (listeners.size > 0) {
+        const snapshot = Array.from(listeners);
+        for (let i = 0; i < snapshot.length; i += 1) {
+          snapshot[i](next);
+        }
+      }
       drawInvalidateRef.current?.();
       overviewInvalidateRef.current?.();
       requestOverlayRedraw();
@@ -356,10 +371,11 @@ export function WsiViewer({
       registerDrawCallback,
       unregisterDrawCallback,
       requestOverlayRedraw,
+      registerViewStateListener,
       setInteractionLock,
       isInteractionLocked,
     }),
-    [source, rendererSerial, worldToScreen, screenToWorld, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, setInteractionLock, isInteractionLocked]
+    [source, rendererSerial, worldToScreen, screenToWorld, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, registerViewStateListener, setInteractionLock, isInteractionLocked]
   );
 
   const onPointerWorldMoveRef = useRef(onPointerWorldMove);

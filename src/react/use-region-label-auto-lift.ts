@@ -93,7 +93,7 @@ export function useRegionLabelAutoLift(
         animateRegionLabelAutoLiftTo(0);
         return;
       }
-      const target = resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, renderer.getZoomRange());
+      const target = resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, renderer.getZoomRange(), renderer.getRegionLabelAutoLiftCapZoom());
       animateRegionLabelAutoLiftTo(target);
     },
     [autoLiftRegionLabelAtMaxZoom, animateRegionLabelAutoLiftTo],

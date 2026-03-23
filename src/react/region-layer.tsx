@@ -70,7 +70,7 @@ export function RegionLayer({
   onHover,
   onClick,
 }: RegionLayerProps): React.ReactElement | null {
-  const { rendererRef, rendererSerial, canvasRef, containerRef, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, drawInvalidateRef, screenToWorld, worldToScreen, isInteractionLocked } = useViewerContext();
+  const { rendererRef, rendererSerial, canvasRef, containerRef, registerDrawCallback, unregisterDrawCallback, requestOverlayRedraw, drawInvalidateRef, registerViewStateListener, screenToWorld, worldToScreen, isInteractionLocked } = useViewerContext();
 
   const safeRegions = regions ?? EMPTY_ROI_REGIONS;
   const safePolygons = polygons ?? EMPTY_ROI_POLYGONS;
@@ -129,12 +129,15 @@ export function RegionLayer({
 
   const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRegions, labelAnchor), [effectiveRegions, labelAnchor]);
 
-  // sync min/max zoom for label auto-lift
+  // sync label auto-lift target when zoom changes (rendererSerial: new renderer instance)
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
     syncRegionLabelAutoLiftTarget(renderer.getViewState().zoom);
-  }, [rendererSerial, syncRegionLabelAutoLiftTarget]);
+    return registerViewStateListener(next => {
+      syncRegionLabelAutoLiftTarget(next.zoom);
+    });
+  }, [rendererSerial, registerViewStateListener, syncRegionLabelAutoLiftTarget]);
 
   // clean up stale hover/active on regions change
   useEffect(() => {
@@ -274,7 +277,9 @@ export function RegionLayer({
 
       const zoom = Math.max(1e-6, rRef.current?.getViewState?.().zoom ?? 1);
       const labelAutoLiftOffset =
-        typeof autoLiftPx === "number" && Number.isFinite(autoLiftPx) ? Math.max(0, autoLiftPx) : resolveRegionLabelAutoLiftOffsetPx(autoLift, zoom, rRef.current?.getZoomRange?.());
+        typeof autoLiftPx === "number" && Number.isFinite(autoLiftPx)
+          ? Math.max(0, autoLiftPx)
+          : resolveRegionLabelAutoLiftOffsetPx(autoLift, zoom, rRef.current?.getZoomRange?.(), rRef.current?.getRegionLabelAutoLiftCapZoom?.());
 
       for (const entry of prep) {
         if (!entry.region.label) continue;

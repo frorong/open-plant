@@ -143,6 +143,7 @@ export interface DrawProjector {
   worldToScreen(worldX: number, worldY: number): DrawCoordinate | number[];
   getViewState?: () => { zoom: number; rotationDeg?: number };
   getZoomRange?: () => { minZoom: number; maxZoom: number };
+  getRegionLabelAutoLiftCapZoom?: () => number;
   zoomBy?: (factor: number, screenX: number, screenY: number) => void;
 }
 

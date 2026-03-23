@@ -467,7 +467,12 @@ export function DrawLayer({
       const labelAutoLiftOffset =
         typeof regionLabelAutoLiftOffsetPx === "number" && Number.isFinite(regionLabelAutoLiftOffsetPx)
           ? Math.max(0, regionLabelAutoLiftOffsetPx)
-          : resolveRegionLabelAutoLiftOffsetPx(autoLiftRegionLabelAtMaxZoom, zoom, projectorRef.current?.getZoomRange?.());
+          : resolveRegionLabelAutoLiftOffsetPx(
+              autoLiftRegionLabelAtMaxZoom,
+              zoom,
+              projectorRef.current?.getZoomRange?.(),
+              projectorRef.current?.getRegionLabelAutoLiftCapZoom?.(),
+            );
       for (const entry of preparedPersistedRegions) {
         if (!entry.region.label) continue;
         const anchorWorld = getTopAnchorFromPolygons(entry.polygons, regionLabelAnchor);

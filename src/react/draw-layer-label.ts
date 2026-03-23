@@ -123,7 +123,12 @@ export function mergeRegionLabelStyle(base: RegionLabelStyle, override: Partial<
   });
 }
 
-export function resolveRegionLabelAutoLiftOffsetPx(enabled: boolean | undefined, zoom: number, zoomRange: { minZoom: number; maxZoom: number } | null | undefined): number {
+export function resolveRegionLabelAutoLiftOffsetPx(
+  enabled: boolean | undefined,
+  zoom: number,
+  zoomRange: { minZoom: number; maxZoom: number } | null | undefined,
+  liftCapZoom?: number | null | undefined,
+): number {
   if (!enabled) return 0;
   if (!zoomRange) return 0;
 
@@ -133,7 +138,13 @@ export function resolveRegionLabelAutoLiftOffsetPx(enabled: boolean | undefined,
 
   if (maxZoom - minZoom <= REGION_LABEL_AUTO_LIFT_MAX_EPSILON) return 0;
   if (!Number.isFinite(zoom)) return 0;
-  return zoom >= maxZoom - REGION_LABEL_AUTO_LIFT_MAX_EPSILON ? REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX : 0;
+
+  let cap = maxZoom;
+  if (liftCapZoom != null && Number.isFinite(liftCapZoom)) {
+    cap = clamp(liftCapZoom, minZoom, maxZoom);
+  }
+  const tol = Math.max(REGION_LABEL_AUTO_LIFT_MAX_EPSILON, Math.abs(cap) * 1e-9);
+  return zoom >= cap - tol ? REGION_LABEL_AUTO_LIFT_MAX_OFFSET_PX : 0;
 }
 
 function resolveDrawAreaTooltipStyle(style: Partial<DrawAreaTooltipStyle> | undefined): DrawAreaTooltipStyle {

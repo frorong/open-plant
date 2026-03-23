@@ -351,6 +351,14 @@ export class WsiTileRenderer {
     return { minZoom: this.minZoom, maxZoom: this.maxZoom };
   }
 
+  getRegionLabelAutoLiftCapZoom(): number {
+    const valid = this.zoomSnaps.filter(z => z >= this.minZoom && z <= this.maxZoom);
+    if (valid.length > 0) {
+      return valid[valid.length - 1];
+    }
+    return this.maxZoom;
+  }
+
   isViewAnimating(): boolean {
     return this.viewAnimationState.animation !== null;
   }

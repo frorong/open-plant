@@ -1,5 +1,5 @@
 import { createContext, type MutableRefObject, type RefObject, useContext } from "react";
-import type { WsiImageSource } from "../wsi/types";
+import type { WsiImageSource, WsiViewState } from "../wsi/types";
 import type { WsiTileRenderer } from "../wsi/wsi-tile-renderer";
 import type { DrawCoordinate } from "./draw-layer-types";
 
@@ -20,6 +20,8 @@ export interface ViewerContextValue {
   registerDrawCallback: (id: string, priority: number, draw: OverlayDrawFn) => void;
   unregisterDrawCallback: (id: string) => void;
   requestOverlayRedraw: () => void;
+
+  registerViewStateListener: (listener: (state: WsiViewState) => void) => () => void;
 
   setInteractionLock: (id: string, locked: boolean) => void;
   isInteractionLocked: () => boolean;
