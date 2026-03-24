@@ -64,6 +64,7 @@
     │  ├─ Tile pass
     │  └─ Point pass (PointLayer registers data)
     ├─ 2D Overlay Canvas (shared draw registry)
+    │  ├─ HeatmapLayer draws (priority 5)
     │  ├─ RegionLayer draws (priority 10)
     │  ├─ PatchLayer draws (priority 20)
     │  ├─ OverlayLayer draws (priority 30)
@@ -72,8 +73,11 @@
     └─ OverviewMap (optional child)</code></pre>
             <p>
               Each layer component calls <code>registerDrawCallback(id, priority, fn)</code> to paint into the shared overlay canvas.
-              No extra canvases are created per layer. <code>WsiViewer</code> dispatches draw callbacks in priority order within a single
+              <code>WsiViewer</code> keeps the on-screen surface to one WebGL canvas plus one shared overlay canvas, and dispatches draw callbacks in priority order within a single
               <code>requestAnimationFrame</code> pass.
+            </p>
+            <p>
+              <code>HeatmapLayer</code> uses the same registry with a lower default priority so hotspot density stays above tiles and below ROI contours/labels.
             </p>
             <h3>Removed in v1.4.4 — <code>WsiViewerCanvas</code></h3>
             <p>

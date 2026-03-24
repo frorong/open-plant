@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `HeatmapLayer`: hotspot/density overlay for `WsiViewer` composition API.
+  - `HeatmapPointData` typed input (`count`, `positions`, optional `weights`).
+  - `scaleMode: "screen" | "fixed-zoom"` with optional `fixedZoom`.
+  - ROI clip support via `clipToRegions`.
+  - Visibility, opacity, gradient, blur/radius, z-index, render stats callback, and `maxRenderedPoints` CPU draw cap.
+
+### Docs
+- Updated README and EN/KO API/architecture docs for `HeatmapLayer`.
+- Example app now demonstrates hotspot toggle + fixed-zoom lock behavior.
+
 ## [1.4.0] - 2026-03-16
 
 ### Added

@@ -64,6 +64,7 @@
     │  ├─ Tile pass
     │  └─ Point pass (PointLayer가 데이터 등록)
     ├─ 2D Overlay Canvas (공유 draw registry)
+    │  ├─ HeatmapLayer draws (priority 5)
     │  ├─ RegionLayer draws (priority 10)
     │  ├─ PatchLayer draws (priority 20)
     │  ├─ OverlayLayer draws (priority 30)
@@ -72,8 +73,11 @@
     └─ OverviewMap (선택적 자식)</code></pre>
             <p>
               각 레이어 컴포넌트는 <code>registerDrawCallback(id, priority, fn)</code>으로 공유 오버레이 캔버스에 그립니다.
-              레이어당 추가 캔버스가 생성되지 않으며, <code>WsiViewer</code>가 단일 <code>requestAnimationFrame</code> 패스에서
+              <code>WsiViewer</code>는 화면에 WebGL 캔버스 1개와 공유 오버레이 캔버스 1개만 유지하고, 단일 <code>requestAnimationFrame</code> 패스에서
               priority 순서로 draw 콜백을 디스패치합니다.
+            </p>
+            <p>
+              <code>HeatmapLayer</code>는 더 낮은 기본 priority를 사용하므로 hotspot density가 타일 위에 놓이되 ROI contour/label 아래에 유지됩니다.
             </p>
             <h3>v1.4.4 제거 — <code>WsiViewerCanvas</code></h3>
             <p>

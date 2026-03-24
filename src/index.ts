@@ -37,6 +37,9 @@ export {
 } from "./react/draw-layer";
 export type { DrawingLayerProps } from "./react/drawing-layer";
 export { DrawingLayer } from "./react/drawing-layer";
+export type { HeatmapKernelScaleMode, HeatmapLayerProps, HeatmapLayerStats, HeatmapPointData } from "./react/heatmap-layer";
+export { HeatmapLayer } from "./react/heatmap-layer";
+export { __heatmapLayerInternals } from "./react/heatmap-layer";
 export type { OverlayLayerProps } from "./react/overlay-layer";
 export { OverlayLayer } from "./react/overlay-layer";
 export type { OverviewMapOptions, OverviewMapPosition, ViewportBorderStyle } from "./react/overview-map";

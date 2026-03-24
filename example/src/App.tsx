@@ -3,6 +3,7 @@ import {
   DrawingLayer,
   type DrawOverlayShape,
   getWebGpuCapabilities,
+  HeatmapLayer,
   OverlayLayer,
   OverviewMap,
   type OverviewMapOptions,
@@ -78,6 +79,34 @@ function ViewerOverviewMap({ authToken, show, options }: { authToken: string; sh
   return <OverviewMap source={source} projectorRef={rendererRef} authToken={authToken} options={options} invalidateRef={overviewInvalidateRef} />;
 }
 
+function resolvePositivePaletteIndex(terms: { termId?: string | null; termName?: string | null }[] | undefined, termToPaletteIndex: Map<string, number>): number {
+  if (!Array.isArray(terms) || terms.length === 0) {
+    return 0;
+  }
+
+  let fallback = 0;
+  for (let i = 0; i < terms.length; i += 1) {
+    const term = terms[i];
+    const paletteIndex = termToPaletteIndex.get(String(term?.termId ?? "")) ?? 0;
+    if (!paletteIndex) continue;
+
+    const termId = String(term?.termId ?? "")
+      .trim()
+      .toLowerCase();
+    const termName = String(term?.termName ?? "")
+      .trim()
+      .toLowerCase();
+    if (!fallback && (termName.includes("positive") || termId === "positive" || termId === "pos" || termId === "4" || termId === "p")) {
+      fallback = paletteIndex;
+    }
+    if (termName === "positive" || termName === "ki-67 positive") {
+      return paletteIndex;
+    }
+  }
+
+  return fallback;
+}
+
 export default function App() {
   const [infoUrlInput, setInfoUrlInput] = useState(DEFAULT_INFO_URL);
   const [tokenInput, setTokenInput] = useState(() => localStorage.getItem("open-plant-token") ?? "");
@@ -125,6 +154,11 @@ export default function App() {
     [pointSizeStop1, pointSizeStop2, pointSizeStop5, pointSizeStop6, pointSizeStop8]
   );
 
+  const [showHeatmap, setShowHeatmap] = useState(true);
+  const [heatmapFixedZoom, setHeatmapFixedZoom] = useState<number | undefined>(undefined);
+  const [heatmapScaleMode, setHeatmapScaleMode] = useState<"screen" | "fixed-zoom">("fixed-zoom");
+  const heatmapInitSourceRef = useRef<string>("");
+
   const resetPointSizeStops = useCallback(() => {
     setPointSizeStop1(DEFAULT_POINT_SIZE_STOPS[1]);
     setPointSizeStop2(DEFAULT_POINT_SIZE_STOPS[2]);
@@ -168,6 +202,32 @@ export default function App() {
   const pointData = usePointLoader(source, imageLoader.pointZstUrl, bearerToken);
   const draw = useDrawState(source, pointData.pointPayload);
   const viewer = useViewerControls(source);
+  const currentHeatmapZoom = useMemo(() => {
+    if (!source) return undefined;
+    const rawZoom = viewer.viewState?.zoom;
+    if (typeof rawZoom !== "number" || !Number.isFinite(rawZoom) || rawZoom <= 0) {
+      return undefined;
+    }
+    return source.maxTierZoom + Math.log2(Math.max(1e-6, rawZoom));
+  }, [source, viewer.viewState?.zoom]);
+  const hasCurrentHeatmapZoom = typeof currentHeatmapZoom === "number" && Number.isFinite(currentHeatmapZoom);
+
+  useEffect(() => {
+    if (!source || !pointData.pointPayload) {
+      setHeatmapFixedZoom(undefined);
+      heatmapInitSourceRef.current = "";
+      return;
+    }
+    if (hasCurrentHeatmapZoom && currentHeatmapZoom !== undefined && heatmapInitSourceRef.current !== source.id) {
+      setHeatmapFixedZoom(currentHeatmapZoom);
+      setHeatmapScaleMode("fixed-zoom");
+      heatmapInitSourceRef.current = source.id;
+      return;
+    }
+    if (heatmapScaleMode === "fixed-zoom" && heatmapFixedZoom === undefined && hasCurrentHeatmapZoom && currentHeatmapZoom !== undefined) {
+      setHeatmapFixedZoom(currentHeatmapZoom);
+    }
+  }, [source, pointData.pointPayload, heatmapFixedZoom, heatmapScaleMode, hasCurrentHeatmapZoom, currentHeatmapZoom]);
 
   drawResetRef.current = draw.reset;
   pointResetRef.current = pointData.reset;
@@ -286,6 +346,51 @@ export default function App() {
     []
   );
 
+  const positivePaletteIndex = useMemo(() => resolvePositivePaletteIndex(source?.terms, pointData.termPalette.termToPaletteIndex), [source, pointData.termPalette.termToPaletteIndex]);
+
+  const positiveHeatmapData = useMemo(() => {
+    const payload = pointData.pointPayload;
+    if (!payload || positivePaletteIndex <= 0) {
+      return null;
+    }
+
+    const safeCount = Math.max(0, Math.min(payload.count ?? 0, Math.floor(payload.positions.length / 2), payload.paletteIndices.length));
+    if (safeCount <= 0) {
+      return null;
+    }
+
+    let positiveCount = 0;
+    for (let i = 0; i < safeCount; i += 1) {
+      if (payload.paletteIndices[i] === positivePaletteIndex) {
+        positiveCount += 1;
+      }
+    }
+
+    if (positiveCount === 0) {
+      return null;
+    }
+
+    const positions = new Float32Array(positiveCount * 2);
+    let cursor = 0;
+
+    for (let i = 0; i < safeCount; i += 1) {
+      if (payload.paletteIndices[i] !== positivePaletteIndex) {
+        continue;
+      }
+
+      positions[cursor * 2] = payload.positions[i * 2];
+      positions[cursor * 2 + 1] = payload.positions[i * 2 + 1];
+      cursor += 1;
+    }
+
+    return {
+      count: cursor,
+      positions: positions.subarray(0, cursor * 2),
+    };
+  }, [pointData.pointPayload, positivePaletteIndex]);
+
+  const heatmapMode = heatmapScaleMode;
+
   return (
     <div className="app">
       <div className="topbar">
@@ -370,58 +475,138 @@ export default function App() {
 
       <div className="viewer-wrap">
         {source ? (
-          <WsiViewer
-            source={source}
-            viewState={viewer.viewState}
-            fitNonce={imageLoader.fitNonce}
-            rotationResetNonce={viewer.rotationResetNonce}
-            authToken={bearerToken}
-            ctrlDragRotate={viewer.ctrlDragRotate}
-            zoomSnaps={viewer.zoomSnaps}
-            zoomSnapFitAsMin
-            onViewStateChange={viewer.handleViewStateChange}
-            onStats={setStats}
-            onPointerWorldMove={event => {
-              if (event.coordinate) {
-                setPointerWorld([event.coordinate[0], event.coordinate[1]]);
-              } else {
-                setPointerWorld(null);
-              }
-            }}
-            className="viewer-canvas"
-          >
-            <PointLayer
-              data={pointData.pointPayload}
-              palette={pointData.termPalette.colors}
-              sizeByZoom={pointSizeByZoom}
-              strokeScale={pointStrokeScale}
-              innerFillOpacity={pointInnerBlackFill ? 0.2 : 0}
-              clipEnabled
-              clipToRegions={draw.roiRegions}
-              clipMode={viewer.clipMode}
-              onClipStats={viewer.setClipStats}
-              onHover={handlePointHover}
-              onClick={handlePointClick}
-            />
-            <RegionLayer
-              regions={draw.roiRegions}
-              strokeStyle={regionStrokeStyle}
-              hoverStrokeStyle={regionStrokeHoverStyle}
-              activeStrokeStyle={regionStrokeActiveStyle}
-              resolveStrokeStyle={resolveRegionStrokeStyle}
-              labelStyle={regionLabelStyle}
-              autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
-              activeRegionId={activeRegionId}
-              onActiveChange={handleActiveRegionChange}
-              onHover={handleRegionHover}
-              onClick={handleRegionClick}
-            />
-            <DrawingLayer tool={draw.drawTool} stampOptions={draw.stampOptions} brushOptions={draw.brushOptions} onComplete={draw.handleDrawComplete} onPatchComplete={draw.handlePatchComplete} />
-            <OverlayLayer shapes={overlayShapes} />
-            <PatchLayer regions={draw.patchRegions} strokeStyle={patchStrokeStyle} />
-            <PatchLabelOverlay patchRegions={draw.patchRegions} />
-            <ViewerOverviewMap authToken={bearerToken} show={viewer.showOverviewMap} options={overviewMapOptions} />
-          </WsiViewer>
+          <>
+            <WsiViewer
+              source={source}
+              viewState={viewer.viewState}
+              fitNonce={imageLoader.fitNonce}
+              rotationResetNonce={viewer.rotationResetNonce}
+              authToken={bearerToken}
+              ctrlDragRotate={viewer.ctrlDragRotate}
+              zoomSnaps={viewer.zoomSnaps}
+              zoomSnapFitAsMin
+              onViewStateChange={viewer.handleViewStateChange}
+              onStats={setStats}
+              onPointerWorldMove={event => {
+                if (event.coordinate) {
+                  setPointerWorld([event.coordinate[0], event.coordinate[1]]);
+                } else {
+                  setPointerWorld(null);
+                }
+              }}
+              className="viewer-canvas"
+            >
+              <PointLayer
+                data={pointData.pointPayload}
+                palette={pointData.termPalette.colors}
+                sizeByZoom={pointSizeByZoom}
+                strokeScale={pointStrokeScale}
+                innerFillOpacity={pointInnerBlackFill ? 0.2 : 0}
+                clipEnabled
+                clipToRegions={draw.roiRegions}
+                clipMode={viewer.clipMode}
+                onClipStats={viewer.setClipStats}
+                onHover={handlePointHover}
+                onClick={handlePointClick}
+              />
+              <HeatmapLayer
+                data={positiveHeatmapData}
+                visible={showHeatmap}
+                opacity={0.62}
+                radius={1}
+                blur={2}
+                gradient={["#00000000", "#3876FF", "#4CDDDD", "#FFE75C", "#FF8434", "#FF3434"]}
+                scaleMode={heatmapMode}
+                fixedZoom={heatmapFixedZoom}
+                maxRenderedPoints={28_000}
+              />
+              <RegionLayer
+                regions={draw.roiRegions}
+                strokeStyle={regionStrokeStyle}
+                hoverStrokeStyle={regionStrokeHoverStyle}
+                activeStrokeStyle={regionStrokeActiveStyle}
+                resolveStrokeStyle={resolveRegionStrokeStyle}
+                labelStyle={regionLabelStyle}
+                autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
+                activeRegionId={activeRegionId}
+                onActiveChange={handleActiveRegionChange}
+                onHover={handleRegionHover}
+                onClick={handleRegionClick}
+              />
+              <DrawingLayer tool={draw.drawTool} stampOptions={draw.stampOptions} brushOptions={draw.brushOptions} onComplete={draw.handleDrawComplete} onPatchComplete={draw.handlePatchComplete} />
+              <OverlayLayer shapes={overlayShapes} />
+              <PatchLayer regions={draw.patchRegions} strokeStyle={patchStrokeStyle} />
+              <PatchLabelOverlay patchRegions={draw.patchRegions} />
+              <ViewerOverviewMap authToken={bearerToken} show={viewer.showOverviewMap} options={overviewMapOptions} />
+            </WsiViewer>
+            <div
+              style={{
+                position: "absolute",
+                top: 14,
+                right: 16,
+                zIndex: 5,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "rgba(7, 12, 19, 0.86)",
+                border: "1px solid rgba(120, 200, 255, 0.24)",
+                color: "#dcecff",
+                display: "grid",
+                gap: 8,
+                minWidth: 220,
+                boxShadow: "0 12px 26px rgba(0, 0, 0, 0.32)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em" }}>HEATMAP</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <input type="checkbox" checked={showHeatmap} onChange={event => setShowHeatmap(event.target.checked)} disabled={!positiveHeatmapData} />
+                hotspot overlay
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={heatmapScaleMode === "fixed-zoom"}
+                  onChange={event => {
+                    if (!event.target.checked) {
+                      setHeatmapScaleMode("screen");
+                      return;
+                    }
+                    if (!hasCurrentHeatmapZoom || currentHeatmapZoom === undefined) return;
+                    setHeatmapFixedZoom(currentHeatmapZoom);
+                    setHeatmapScaleMode("fixed-zoom");
+                  }}
+                  disabled={!positiveHeatmapData || !hasCurrentHeatmapZoom}
+                />
+                fixed-zoom kernel
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!hasCurrentHeatmapZoom || currentHeatmapZoom === undefined) return;
+                  setHeatmapFixedZoom(currentHeatmapZoom);
+                  setHeatmapScaleMode("fixed-zoom");
+                }}
+                disabled={!positiveHeatmapData || !hasCurrentHeatmapZoom}
+                style={{
+                  border: "1px solid rgba(120, 200, 255, 0.3)",
+                  background: "rgba(24, 38, 56, 0.88)",
+                  color: "#dcecff",
+                  borderRadius: 8,
+                  padding: "6px 8px",
+                  fontSize: 12,
+                  textAlign: "left",
+                  cursor: positiveHeatmapData ? "pointer" : "default",
+                }}
+              >
+                현재 줌으로 잠금
+              </button>
+              <div style={{ fontSize: 11, opacity: 0.82, lineHeight: 1.35 }}>
+                positive heatmap pts: {positiveHeatmapData?.count ?? 0}
+                <br />
+                mode: {heatmapMode}
+                {heatmapScaleMode === "fixed-zoom" && heatmapFixedZoom !== undefined ? ` @ z${heatmapFixedZoom.toFixed(2)}` : ""}
+              </div>
+            </div>
+          </>
         ) : (
           <div className="empty">토큰 입력 후 Load를 누르면 뷰어가 표시됩니다.</div>
         )}

@@ -37,6 +37,7 @@
           <h2>API</h2>
           <a href="#composition-api">WsiViewer (v1.4.4)</a>
           <a href="#point-layer">PointLayer</a>
+          <a href="#heatmap-layer">HeatmapLayer</a>
           <a href="#region-layer">RegionLayer</a>
           <a href="#drawing-layer">DrawingLayer</a>
           <a href="#patch-layer">PatchLayer</a>
@@ -93,11 +94,11 @@
                 <tr><td><code>debugOverlayStyle</code></td><td><code>CSSProperties</code></td><td>디버그 HUD 스타일 override.</td></tr>
                 <tr><td><code>className</code></td><td><code>string</code></td><td>루트 컨테이너 클래스.</td></tr>
                 <tr><td><code>style</code></td><td><code>CSSProperties</code></td><td>루트 컨테이너 스타일.</td></tr>
-                <tr><td><code>children</code></td><td><code>ReactNode</code></td><td>레이어 컴포넌트 (PointLayer, RegionLayer 등).</td></tr>
+                <tr><td><code>children</code></td><td><code>ReactNode</code></td><td>레이어 컴포넌트 (PointLayer, HeatmapLayer, RegionLayer 등).</td></tr>
               </tbody>
             </table>
             <div class="callout">
-              <code>WsiViewer</code>는 캔버스를 정확히 2개(WebGL + 2D 오버레이)만 생성합니다. 모든 레이어 컴포넌트는 <code>ViewerContext</code>를 통해 이 공유 캔버스에 그립니다 — 레이어당 추가 캔버스 없음.
+              <code>WsiViewer</code>는 화면에 보이는 캔버스를 정확히 2개(WebGL + 2D 오버레이)만 생성합니다. 레이어 컴포넌트는 이 공유 캔버스에 그리며, 필요하면 내부적으로 offscreen 캐시를 유지할 수 있습니다.
             </div>
           </section>
 
@@ -120,6 +121,31 @@
                 <tr><td><code>ref</code></td><td><code>Ref&lt;PointQueryHandle&gt;</code></td><td>imperative handle — <code>queryAt(coordinate)</code>로 hit-test.</td></tr>
               </tbody>
             </table>
+          </section>
+
+          <section class="panel reveal" id="heatmap-layer">
+            <h2>`HeatmapLayer` Props</h2>
+            <table>
+              <thead><tr><th>이름</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td><code>data</code></td><td><code>HeatmapPointData | null</code></td><td>typed hotspot 입력. 형태: <code>{ count, positions, weights? }</code>.</td></tr>
+                <tr><td><code>visible</code></td><td><code>boolean</code></td><td>독립 show/hide 토글. 기본값 <code>true</code>.</td></tr>
+                <tr><td><code>opacity</code></td><td><code>number</code></td><td>레이어 불투명도 <code>0..1</code>. 기본값 <code>0.9</code>.</td></tr>
+                <tr><td><code>radius</code></td><td><code>number</code></td><td>커널 core 반경(CSS px). 기본값 <code>4</code>.</td></tr>
+                <tr><td><code>blur</code></td><td><code>number</code></td><td>커널 blur 크기(CSS px). 기본값 <code>2</code>.</td></tr>
+                <tr><td><code>gradient</code></td><td><code>readonly string[]</code></td><td>colorization에 쓰는 색상 stop 배열.</td></tr>
+                <tr><td><code>backgroundColor</code></td><td><code>string | null</code></td><td>선택적 배경 fill. 기본값 <code>null</code>.</td></tr>
+                <tr><td><code>scaleMode</code></td><td><code>"screen" | "fixed-zoom"</code></td><td><code>screen</code>은 현재 화면 기준으로 heatmap state를 계산하고, <code>fixed-zoom</code>은 선택한 continuous zoom 기준으로 외형을 잠급니다.</td></tr>
+                <tr><td><code>fixedZoom</code></td><td><code>number</code></td><td><code>fixed-zoom</code> 모드의 continuous zoom 기준값 (<code>source.maxTierZoom + log2(viewState.zoom)</code>).</td></tr>
+                <tr><td><code>clipToRegions</code></td><td><code>WsiRegion[]</code></td><td>선택적 ROI point filter + overlay mask.</td></tr>
+                <tr><td><code>maxRenderedPoints</code></td><td><code>number</code></td><td>visible bin budget. 기본값 <code>24000</code>.</td></tr>
+                <tr><td><code>zIndex</code></td><td><code>number</code></td><td>오버레이 draw priority. 기본값 <code>5</code>.</td></tr>
+                <tr><td><code>onStats</code></td><td><code>(stats) =&gt; void</code></td><td>point count, visible count, render time 콜백.</td></tr>
+              </tbody>
+            </table>
+            <div class="callout">
+              현재 구현은 offscreen WebGL2 누적/컬러라이즈 후 공유 오버레이 캔버스에 합성합니다. pan/zoom/rotation/resize에 정렬되며, point hit-test가 아닌 hotspot overview 용도에 맞춰져 있습니다. WebGL2 초기화에 실패하면 warning을 남기고 heatmap 렌더를 건너뜁니다.
+            </div>
           </section>
 
           <section class="panel reveal" id="region-layer">
