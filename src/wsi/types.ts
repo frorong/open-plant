@@ -1,7 +1,7 @@
-export interface WsiTerm {
-  termId: string;
-  termName: string;
-  termColor: string;
+export interface WsiClass {
+  classId: string;
+  className: string;
+  classColor: string;
 }
 
 export interface WsiImageSource {
@@ -14,7 +14,6 @@ export interface WsiImageSource {
   maxTierZoom: number;
   tilePath: string;
   tileBaseUrl: string;
-  terms: WsiTerm[];
   tileUrlBuilder?: (tier: number, x: number, y: number, tilePath: string, tileBaseUrl: string) => string;
 }
 
@@ -70,7 +69,7 @@ export interface WsiRegion {
   label?: string;
 }
 
-export interface TermPalette {
+export interface ClassPalette {
   colors: Uint8Array;
-  termToPaletteIndex: Map<string, number>;
+  classToPaletteIndex: Map<string, number>;
 }

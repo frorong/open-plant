@@ -55,8 +55,8 @@ test("computeRoiPointGroups: respects drawIndices bridge input", () => {
   assert.equal(stats.unmatchedPointCount, 1);
   assert.equal(stats.groups.length, 1);
   assert.equal(stats.groups[0].totalCount, 1);
-  assert.equal(stats.groups[0].termCounts[0].paletteIndex, 3);
-  assert.equal(stats.groups[0].termCounts[0].count, 1);
+  assert.equal(stats.groups[0].classCounts[0].paletteIndex, 3);
+  assert.equal(stats.groups[0].classCounts[0].count, 1);
 });
 
 test("computeRoiPointGroups: excludes points inside polygon holes", () => {
@@ -160,7 +160,7 @@ test("computeRoiPointGroups: prefers the smallest containing region when regions
 
   const groupById = new Map(stats.groups.map(group => [group.regionId, group]));
   assert.equal(groupById.get("large")?.totalCount, 1);
-  assert.equal(groupById.get("large")?.termCounts[0]?.paletteIndex, 6);
+  assert.equal(groupById.get("large")?.classCounts[0]?.paletteIndex, 6);
   assert.equal(groupById.get("small")?.totalCount, 1);
-  assert.equal(groupById.get("small")?.termCounts[0]?.paletteIndex, 5);
+  assert.equal(groupById.get("small")?.classCounts[0]?.paletteIndex, 5);
 });

@@ -1,10 +1,10 @@
 export interface LoadedPointData {
 	count: number;
-	termTable: string[];
+	classTable: string[];
 	hasNt: boolean;
 	hasPositivityRank: boolean;
 	positions: Float32Array;
-	localTermIndex: Uint16Array;
+	localClassIndex: Uint16Array;
 }
 
 interface LoadPointsFromZstOptions {

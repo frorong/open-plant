@@ -12,11 +12,11 @@ function createPointData(count) {
     seed = (1664525 * seed + 1013904223) >>> 0;
     const y = seed % 10_000;
     seed = (1664525 * seed + 1013904223) >>> 0;
-    const term = seed % 8;
+    const classIndex = seed % 8;
 
     positions[i * 2] = x;
     positions[i * 2 + 1] = y;
-    paletteIndices[i] = term;
+    paletteIndices[i] = classIndex;
   }
 
   return { count, positions, paletteIndices };

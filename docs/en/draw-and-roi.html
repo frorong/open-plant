@@ -42,7 +42,7 @@
           <a href="#persist">Persisted regions</a>
           <a href="#style">Custom styles</a>
           <a href="#clip">Point clipping</a>
-          <a href="#roi-stats">ROI term stats</a>
+          <a href="#roi-stats">ROI class stats</a>
         </aside>
 
         <article class="content">
@@ -293,13 +293,13 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>8. ROI term-count stats API</h2>
+            <h2>8. ROI class-count stats API</h2>
             <pre><code class="language-tsx">import { computeRoiPointGroups } from "open-plant";
 
 const stats = computeRoiPointGroups(pointData, regions, {
-  paletteIndexToTermId: ["bg", "negative", "positive"],
+  paletteIndexToClassId: ["bg", "negative", "positive"],
 });
-// stats.groups -&gt; [{ regionId, totalCount, termCounts[] }]</code></pre>
+// stats.groups -&gt; [{ regionId, totalCount, classCounts[] }]</code></pre>
             <p>
               Call <code>computeRoiPointGroups</code> when <code>pointData</code> or <code>regions</code> change — it replaces the removed <code>onRoiPointGroups</code> prop from legacy <code>WsiViewerCanvas</code>.
             </p>

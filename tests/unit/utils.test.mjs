@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTermPalette, calcScaleLength, calcScaleResolution, isSameViewState, toBearerToken } from "../../dist/index.js";
+import { buildClassPalette, calcScaleLength, calcScaleResolution, isSameViewState, toBearerToken } from "../../dist/index.js";
 
 test("toBearerToken: normalizes token format", () => {
   assert.equal(toBearerToken("abc"), "Bearer abc");
@@ -21,14 +21,14 @@ test("isSameViewState: compares with epsilon tolerance", () => {
   assert.equal(isSameViewState({ zoom: 1, offsetX: 10, offsetY: 20, rotationDeg: 1.5 }, { zoom: 1.2, offsetX: 10, offsetY: 20, rotationDeg: 1.5 }), false);
 });
 
-test("buildTermPalette: keeps index 0 as default and deduplicates term ids", () => {
-  const palette = buildTermPalette([
-    { termId: "p", termColor: "#ff0000" },
-    { termId: "n", termColor: "#0000ff" },
-    { termId: "p", termColor: "#ffffff" },
+test("buildClassPalette: keeps index 0 as default and deduplicates class ids", () => {
+  const palette = buildClassPalette([
+    { classId: "p", classColor: "#ff0000" },
+    { classId: "n", classColor: "#0000ff" },
+    { classId: "p", classColor: "#ffffff" },
   ]);
 
   assert.equal(palette.colors.length, 12);
-  assert.equal(palette.termToPaletteIndex.get("p"), 1);
-  assert.equal(palette.termToPaletteIndex.get("n"), 2);
+  assert.equal(palette.classToPaletteIndex.get("p"), 1);
+  assert.equal(palette.classToPaletteIndex.get("n"), 2);
 });

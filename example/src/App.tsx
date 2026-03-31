@@ -24,6 +24,7 @@ import {
   WsiViewer,
 } from "../../src";
 import { DrawToolbar } from "./components/DrawToolbar";
+import { ClassColorControls } from "./components/ClassColorControls";
 import { PointControls } from "./components/PointControls";
 import { StatusBar } from "./components/StatusBar";
 import { StatusOverlay } from "./components/StatusOverlay";
@@ -79,27 +80,27 @@ function ViewerOverviewMap({ authToken, show, options }: { authToken: string; sh
   return <OverviewMap source={source} projectorRef={rendererRef} authToken={authToken} options={options} invalidateRef={overviewInvalidateRef} />;
 }
 
-function resolvePositivePaletteIndex(terms: { termId?: string | null; termName?: string | null }[] | undefined, termToPaletteIndex: Map<string, number>): number {
-  if (!Array.isArray(terms) || terms.length === 0) {
+function resolvePositivePaletteIndex(classes: { classId?: string | null; className?: string | null }[] | undefined, classToPaletteIndex: Map<string, number>): number {
+  if (!Array.isArray(classes) || classes.length === 0) {
     return 0;
   }
 
   let fallback = 0;
-  for (let i = 0; i < terms.length; i += 1) {
-    const term = terms[i];
-    const paletteIndex = termToPaletteIndex.get(String(term?.termId ?? "")) ?? 0;
+  for (let i = 0; i < classes.length; i += 1) {
+    const item = classes[i];
+    const paletteIndex = classToPaletteIndex.get(String(item?.classId ?? "")) ?? 0;
     if (!paletteIndex) continue;
 
-    const termId = String(term?.termId ?? "")
+    const classId = String(item?.classId ?? "")
       .trim()
       .toLowerCase();
-    const termName = String(term?.termName ?? "")
+    const className = String(item?.className ?? "")
       .trim()
       .toLowerCase();
-    if (!fallback && (termName.includes("positive") || termId === "positive" || termId === "pos" || termId === "4" || termId === "p")) {
+    if (!fallback && (className.includes("positive") || classId === "positive" || classId === "pos" || classId === "4" || classId === "p")) {
       fallback = paletteIndex;
     }
-    if (termName === "positive" || termName === "ki-67 positive") {
+    if (className === "positive" || className === "ki-67 positive") {
       return paletteIndex;
     }
   }
@@ -198,10 +199,10 @@ export default function App() {
   }, [resetInteraction]);
 
   const imageLoader = useImageLoader(bearerToken, onResetAll);
-  const { source } = imageLoader;
+  const { source, classes } = imageLoader;
 
-  const pointData = usePointLoader(source, imageLoader.pointZstUrl, bearerToken);
-  const draw = useDrawState(source, pointData.pointPayload);
+  const pointData = usePointLoader(source, classes, imageLoader.pointZstUrl, bearerToken);
+  const draw = useDrawState(source, classes, pointData.pointPayload);
   const viewer = useViewerControls(source);
   const currentHeatmapZoom = useMemo(() => {
     if (!source) return undefined;
@@ -347,7 +348,7 @@ export default function App() {
     []
   );
 
-  const positivePaletteIndex = useMemo(() => resolvePositivePaletteIndex(source?.terms, pointData.termPalette.termToPaletteIndex), [source, pointData.termPalette.termToPaletteIndex]);
+  const positivePaletteIndex = useMemo(() => resolvePositivePaletteIndex(classes, pointData.classPalette.classToPaletteIndex), [classes, pointData.classPalette.classToPaletteIndex]);
 
   const positiveHeatmapData = useMemo(() => {
     const payload = pointData.pointPayload;
@@ -470,6 +471,12 @@ export default function App() {
             onInnerBlackFillChange={setPointInnerBlackFill}
           />
 
+          <ClassColorControls
+            classes={classes}
+            disabled={!source}
+            onClassColorChange={imageLoader.updateClassColor}
+          />
+
           <StatusBar error={imageLoader.error} imageSummary={imageSummary} scaleSummary={viewer.scaleSummary} pointStatus={pointData.pointStatus} webGpuCaps={webGpuCaps} clipMode={viewer.clipMode} />
         </div>
       </div>
@@ -500,7 +507,7 @@ export default function App() {
             >
               <PointLayer
                 data={pointData.pointPayload}
-                palette={pointData.termPalette.colors}
+                palette={pointData.classPalette.colors}
                 sizeByZoom={pointSizeByZoom}
                 strokeScale={pointStrokeScale}
                 innerFillOpacity={pointInnerBlackFill ? 0.2 : 0}

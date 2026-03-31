@@ -20,7 +20,7 @@ export function StatusBar({ error, imageSummary, scaleSummary, pointStatus, webG
           ? `points warn: ${pointStatus.error}`
           : pointStatus.loading
             ? "points loading..."
-            : `points ${pointStatus.count.toLocaleString()} | terms ${pointStatus.terms} | nt ${pointStatus.hasNt ? "yes" : "no"} | stain ${pointStatus.hasPositivityRank ? "yes" : "no"}`}
+            : `points ${pointStatus.count.toLocaleString()} | classes ${pointStatus.classes} | nt ${pointStatus.hasNt ? "yes" : "no"} | stain ${pointStatus.hasPositivityRank ? "yes" : "no"}`}
       </div>
 
       <div className="status">

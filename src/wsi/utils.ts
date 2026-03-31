@@ -1,5 +1,5 @@
 import { DEFAULT_POINT_COLOR } from "./constants";
-import type { TermPalette, WsiPointData, WsiViewState } from "./types";
+import type { ClassPalette, WsiPointData, WsiViewState } from "./types";
 
 export function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, value));
@@ -94,23 +94,23 @@ export function hexToRgba(
 	return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 255];
 }
 
-export function buildTermPalette(
-	terms:
-		| Array<{ termId?: string | null; termColor?: string | null }>
+export function buildClassPalette(
+	classes:
+		| Array<{ classId?: string | null; classColor?: string | null }>
 		| null
 		| undefined,
-): TermPalette {
+): ClassPalette {
 	const palette: Array<[number, number, number, number]> = [
 		[...DEFAULT_POINT_COLOR],
 	];
-	const termToPaletteIndex = new Map<string, number>();
+	const classToPaletteIndex = new Map<string, number>();
 
-	for (const term of terms ?? []) {
-		const termId = String(term?.termId ?? "");
-		if (!termId || termToPaletteIndex.has(termId)) continue;
+	for (const item of classes ?? []) {
+		const classId = String(item?.classId ?? "");
+		if (!classId || classToPaletteIndex.has(classId)) continue;
 
-		termToPaletteIndex.set(termId, palette.length);
-		palette.push(hexToRgba(term?.termColor));
+		classToPaletteIndex.set(classId, palette.length);
+		palette.push(hexToRgba(item?.classColor));
 	}
 
 	const colors = new Uint8Array(palette.length * 4);
@@ -121,5 +121,5 @@ export function buildTermPalette(
 		colors[i * 4 + 3] = palette[i][3];
 	}
 
-	return { colors, termToPaletteIndex };
+	return { colors, classToPaletteIndex };
 }

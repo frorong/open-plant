@@ -231,7 +231,7 @@ export async function filterPointDataByPolygonsHybrid(
   }
 
   const nextPositions = new Float32Array(candidateCount * 2);
-  const nextTerms = new Uint16Array(candidateCount);
+  const nextClasses = new Uint16Array(candidateCount);
   const nextFillModes = pointFillModes ? new Uint8Array(candidateCount) : null;
   const nextIds = pointIds ? new Uint32Array(candidateCount) : null;
   let cursor = 0;
@@ -243,7 +243,7 @@ export async function filterPointDataByPolygonsHybrid(
     if (!pointInAnyPreparedPolygon(x, y, prepared)) continue;
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
-    nextTerms[cursor] = pointData.paletteIndices[pointIndex];
+    nextClasses[cursor] = pointData.paletteIndices[pointIndex];
     if (nextFillModes) {
       nextFillModes[cursor] = pointFillModes![pointIndex];
     }
@@ -256,7 +256,7 @@ export async function filterPointDataByPolygonsHybrid(
   const compactData: WsiPointData = {
     count: cursor,
     positions: nextPositions.subarray(0, cursor * 2),
-    paletteIndices: nextTerms.subarray(0, cursor),
+    paletteIndices: nextClasses.subarray(0, cursor),
   };
   if (nextFillModes) {
     compactData.fillModes = nextFillModes.subarray(0, cursor);

@@ -41,7 +41,7 @@
           <a href="#camera-color">Camera + Color</a>
           <a href="#points">Load Points</a>
           <a href="#roi">ROI Clip</a>
-          <a href="#roi-stats">ROI Term Stats</a>
+          <a href="#roi-stats">ROI Class Stats</a>
           <a href="#clip-accel">ROI Acceleration</a>
         </aside>
 
@@ -138,12 +138,12 @@ function Viewer({ source, token }) {
               Point loading and parsing (e.g. ZST/MVT decoding) is <strong>not</strong> part of the library.
               Parse points externally, then pass typed arrays to the viewer.
             </p>
-            <pre><code class="language-ts">import { buildTermPalette } from "open-plant";
+            <pre><code class="language-ts">import { buildClassPalette } from "open-plant";
 
 // positions: Float32Array [x0,y0,x1,y1,...] (your own loader)
-// paletteIndices: Uint16Array (mapped from your term table)
+// paletteIndices: Uint16Array (mapped from your class table)
 
-const termPalette = buildTermPalette(source.terms);
+const classPalette = buildClassPalette(classes);
 
 const pointData = {
   count: positions.length / 2,
@@ -155,7 +155,7 @@ const pointData = {
             <pre><code class="language-tsx">import { WsiViewer, PointLayer } from "open-plant";
 
 &lt;WsiViewer source={source} authToken={toBearerToken(token)}&gt;
-  &lt;PointLayer data={pointData} palette={termPalette.colors} /&gt;
+  &lt;PointLayer data={pointData} palette={classPalette.colors} /&gt;
 &lt;/WsiViewer&gt;</code></pre>
           </section>
 
@@ -178,7 +178,7 @@ const pointData = {
 &lt;WsiViewer source={source}&gt;
   &lt;PointLayer
     data={pointData}
-    palette={termPalette.colors}
+    palette={classPalette.colors}
     clipEnabled
     clipToRegions={roiRegions}
   /&gt;
@@ -187,16 +187,16 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>7. ROI term stats</h2>
+            <h2>7. ROI class stats</h2>
             <p>
               <code>onRoiPointGroups</code> was removed with <code>WsiViewerCanvas</code>. Call <code>computeRoiPointGroups</code> when your data changes:
             </p>
             <pre><code class="language-ts">import { computeRoiPointGroups } from "open-plant";
 
 const stats = computeRoiPointGroups(pointData, regions, {
-  paletteIndexToTermId: new Map([[1, "negative"], [2, "positive"]]),
+  paletteIndexToClassId: new Map([[1, "negative"], [2, "positive"]]),
 });
-// stats.groups -&gt; per-ROI term counts</code></pre>
+// stats.groups -&gt; per-ROI class counts</code></pre>
           </section>
 
           <section class="panel reveal" id="clip-accel">
@@ -208,7 +208,7 @@ const clipMode = caps.supported ? "hybrid-webgpu" : "worker";</code></pre>
             <pre><code class="language-tsx">&lt;WsiViewer source={source}&gt;
   &lt;PointLayer
     data={pointData}
-    palette={termPalette.colors}
+    palette={classPalette.colors}
     clipEnabled
     clipToRegions={regions}
     clipMode={clipMode}

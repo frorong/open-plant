@@ -42,7 +42,7 @@
           <a href="#persist">영역 유지/라벨</a>
           <a href="#style">스타일 커스터마이징</a>
           <a href="#clip">ROI 기반 포인트 필터</a>
-          <a href="#roi-stats">ROI term 통계</a>
+          <a href="#roi-stats">ROI class 통계</a>
         </aside>
 
         <article class="content">
@@ -302,13 +302,13 @@ const handleDrawComplete = (result) =&gt; {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>8. ROI term count 통계 API</h2>
+            <h2>8. ROI class count 통계 API</h2>
             <pre><code class="language-tsx">import { computeRoiPointGroups } from "open-plant";
 
 const stats = computeRoiPointGroups(pointData, regions, {
-  paletteIndexToTermId: ["bg", "negative", "positive"],
+  paletteIndexToClassId: ["bg", "negative", "positive"],
 });
-// stats.groups -&gt; [{ regionId, totalCount, termCounts[] }]</code></pre>
+// stats.groups -&gt; [{ regionId, totalCount, classCounts[] }]</code></pre>
             <p>
               <code>pointData</code>나 <code>regions</code>가 바뀔 때 <code>computeRoiPointGroups</code>를 호출하세요. 레거시 <code>WsiViewerCanvas</code>의 <code>onRoiPointGroups</code>를 대체합니다.
             </p>

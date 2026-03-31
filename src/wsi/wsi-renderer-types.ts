@@ -28,7 +28,7 @@ export interface PointProgram {
   program: WebGLProgram;
   vao: WebGLVertexArrayObject;
   posBuffer: WebGLBuffer;
-  termBuffer: WebGLBuffer;
+  classBuffer: WebGLBuffer;
   fillModeBuffer: WebGLBuffer;
   indexBuffer: WebGLBuffer;
   paletteTexture: WebGLTexture;

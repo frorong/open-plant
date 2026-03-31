@@ -102,13 +102,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Region style resolver API: `resolveRegionStrokeStyle`.
 - Custom overlay shape API for patch/dashed guides: `overlayShapes`.
 - Fixed-pixel stamp tool: `stamp-rectangle-4096px` and `stampOptions.rectanglePixelSize`.
-- ROI term-group utility and callback path: `computeRoiPointGroups`, `onRoiPointGroups`.
+- ROI class-group utility and callback path: `computeRoiPointGroups`, `onRoiPointGroups`.
 - Release gate workflow: `.github/workflows/release-gate.yml`.
 - PR template: `.github/pull_request_template.md`.
 - Contribution guides: root `CONTRIBUTING.md`, docs EN/KO `contributing.html`.
 - Hybrid WebGPU draw bridge payload support via `WsiPointData.drawIndices`.
 - Hybrid clip option `bridgeToDraw` and clip stat flag `bridgedToDraw`.
-- Unit test coverage for ROI term stats with draw-index bridge input.
+- Unit test coverage for ROI class stats with draw-index bridge input.
 - Patch-intent draw path for `stamp-rectangle-4096px` with dedicated `onPatchComplete` callback.
 - Patch overlay channel on viewer (`patchRegions`, `patchStrokeStyle`) separated from ROI hover/active interaction.
 - Custom React overlay layer slots via `customLayers` for host-owned rendering pipelines.
@@ -124,7 +124,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Publish gate now enforces `npm run release:gate` via `prepublishOnly`.
 
 ### Docs
-- Updated EN/KO API and guides for rotation, pointer world callbacks, overlay shapes, 4096px patch intent flow, custom layers, and ROI term stats.
+- Updated EN/KO API and guides for rotation, pointer world callbacks, overlay shapes, 4096px patch intent flow, custom layers, and ROI class stats.
 - Updated `todo.md` gap table with current support status and code-path references.
 - Added EN/KO migration guides with API stability/deprecation policy and release-gate contract.
 - Added EN/KO contributing pages and linked them across docs navigation.

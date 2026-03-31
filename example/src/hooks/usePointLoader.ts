@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { buildTermPalette, type WsiImageSource, type WsiPointData } from "../../../src";
+import { buildClassPalette, type WsiClass, type WsiImageSource, type WsiPointData } from "../../../src";
 import { S3_BASE_URL } from "../utils/constants";
-import { createTermAliasResolver } from "../utils/term-resolver";
+import { createClassAliasResolver } from "../utils/class-resolver";
 import { type LoadedPointData, loadPointsFromZst } from "../point-loader";
 
 export interface PointStatus {
 	loading: boolean;
 	error: string;
 	count: number;
-	terms: number;
+	classes: number;
 	hasNt: boolean;
 	hasPositivityRank: boolean;
 }
@@ -17,23 +17,23 @@ export const INITIAL_POINT_STATUS: PointStatus = {
 	loading: false,
 	error: "",
 	count: 0,
-	terms: 0,
+	classes: 0,
 	hasNt: false,
 	hasPositivityRank: false,
 };
 
 export function usePointLoader(
 	source: WsiImageSource | null,
+	classes: WsiClass[],
 	pointZstUrl: string,
 	bearerToken: string,
 ) {
 	const [pointPayload, setPointPayload] = useState<WsiPointData | null>(null);
 	const [pointStatus, setPointStatus] = useState<PointStatus>(INITIAL_POINT_STATUS);
 
-	const termPalette = useMemo(() => {
-		if (!source?.terms?.length) return buildTermPalette([]);
-		return buildTermPalette(source.terms);
-	}, [source]);
+	const classPalette = useMemo(() => {
+		return buildClassPalette(classes);
+	}, [classes]);
 
 	useEffect(() => {
 		if (!pointZstUrl || !source) {
@@ -42,19 +42,20 @@ export function usePointLoader(
 				...prev,
 				loading: false,
 				count: 0,
-				terms: source?.terms?.length || 0,
+				classes: classes.length,
 			}));
 			return;
 		}
 
 		let cancelled = false;
 		const currentSource = source;
+		const currentClasses = classes;
 
 		setPointStatus({
 			loading: true,
 			error: "",
 			count: 0,
-			terms: currentSource.terms.length,
+			classes: currentClasses.length,
 			hasNt: false,
 			hasPositivityRank: false,
 		});
@@ -69,24 +70,24 @@ export function usePointLoader(
 			.then((result: LoadedPointData) => {
 				if (cancelled) return;
 
-				const localTermIndex = result.localTermIndex || new Uint16Array(0);
-				const termTable = Array.isArray(result.termTable) ? result.termTable : [""];
-				const resolveTermPaletteIndex = createTermAliasResolver(currentSource.terms, termPalette.termToPaletteIndex);
+				const localClassIndex = result.localClassIndex || new Uint16Array(0);
+				const classTable = Array.isArray(result.classTable) ? result.classTable : [""];
+				const resolveClassPaletteIndex = createClassAliasResolver(currentClasses, classPalette.classToPaletteIndex);
 
-				const lut = new Uint16Array(Math.max(1, termTable.length));
-				const unmatchedTerms: string[] = [];
-				for (let i = 0; i < termTable.length; i += 1) {
-					const key = String(termTable[i] ?? "");
-					const mapped = resolveTermPaletteIndex(key);
+				const lut = new Uint16Array(Math.max(1, classTable.length));
+				const unmatchedClasses: string[] = [];
+				for (let i = 0; i < classTable.length; i += 1) {
+					const key = String(classTable[i] ?? "");
+					const mapped = resolveClassPaletteIndex(key);
 					lut[i] = mapped;
 					if (mapped === 0 && key && key !== "0") {
-						unmatchedTerms.push(key);
+						unmatchedClasses.push(key);
 					}
 				}
 
-				const paletteIndices = new Uint16Array(localTermIndex.length);
-				for (let i = 0; i < localTermIndex.length; i += 1) {
-					paletteIndices[i] = lut[localTermIndex[i]] ?? 0;
+				const paletteIndices = new Uint16Array(localClassIndex.length);
+				for (let i = 0; i < localClassIndex.length; i += 1) {
+					paletteIndices[i] = lut[localClassIndex[i]] ?? 0;
 				}
 				const ids = new Uint32Array(result.count);
 				for (let i = 0; i < ids.length; i += 1) {
@@ -102,11 +103,11 @@ export function usePointLoader(
 
 				setPointStatus({
 					loading: false,
-					error: unmatchedTerms.length
-						? `term unmatched: ${unmatchedTerms.slice(0, 5).join(", ")}${unmatchedTerms.length > 5 ? " ..." : ""}`
+					error: unmatchedClasses.length
+						? `class unmatched: ${unmatchedClasses.slice(0, 5).join(", ")}${unmatchedClasses.length > 5 ? " ..." : ""}`
 						: "",
 					count: result.count || 0,
-					terms: termTable.length,
+					classes: classTable.length,
 					hasNt: Boolean(result.hasNt),
 					hasPositivityRank: Boolean(result.hasPositivityRank),
 				});
@@ -118,7 +119,7 @@ export function usePointLoader(
 					loading: false,
 					error: err.message || "point load failed",
 					count: 0,
-					terms: 0,
+					classes: 0,
 					hasNt: false,
 					hasPositivityRank: false,
 				});
@@ -127,12 +128,12 @@ export function usePointLoader(
 		return () => {
 			cancelled = true;
 		};
-	}, [pointZstUrl, source, bearerToken, termPalette]);
+	}, [pointZstUrl, source, classes, bearerToken, classPalette]);
 
 	const reset = () => {
 		setPointPayload(null);
 		setPointStatus(INITIAL_POINT_STATUS);
 	};
 
-	return { pointPayload, pointStatus, termPalette, reset };
+	return { pointPayload, pointStatus, classPalette, reset };
 }

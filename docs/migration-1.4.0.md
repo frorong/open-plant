@@ -121,7 +121,7 @@ v1.4.0에서 컴포지션 API가 도입되었고, 당시에는 `WsiViewerCanvas`
 | 기존 prop | 대안 (v1.4.4) |
 |---|---|
 | `customLayers` | `useViewerContext()` + 호스트 React 오버레이 (`worldToScreen` 등) |
-| `onRoiPointGroups` / `roiPaletteIndexToTermId` | `computeRoiPointGroups(pointData, regions, options)` 를 뷰어 밖에서 호출 |
+| `onRoiPointGroups` / `roiPaletteIndexToClassId` | `computeRoiPointGroups(pointData, regions, options)` 를 뷰어 밖에서 호출 |
 
 `WsiViewerCanvas`는 패키지에서 제거되었으므로, 위 기능은 **반드시** 새 API 또는 유틸로 이전해야 합니다.
 

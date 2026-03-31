@@ -99,23 +99,23 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
   const pointVertex = `#version 300 es
     precision highp float;
     in vec2 aPosition;
-    in uint aTerm;
+    in uint aClass;
     in uint aFillMode;
     uniform mat3 uCamera;
     uniform float uPointSize;
-    flat out uint vTerm;
+    flat out uint vClass;
     flat out uint vFillMode;
     void main() {
       vec3 clip = uCamera * vec3(aPosition, 1.0);
       gl_Position = vec4(clip.xy, 0.0, 1.0);
       gl_PointSize = uPointSize;
-      vTerm = aTerm;
+      vClass = aClass;
       vFillMode = aFillMode;
     }`;
 
   const pointFragment = `#version 300 es
     precision highp float;
-    flat in uint vTerm;
+    flat in uint vClass;
     flat in uint vFillMode;
     uniform sampler2D uPalette;
     uniform float uPaletteSize;
@@ -128,7 +128,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
       float r = length(pc);
       if (r > 1.0) discard;
 
-      float idx = clamp(float(vTerm), 0.0, max(0.0, uPaletteSize - 1.0));
+      float idx = clamp(float(vClass), 0.0, max(0.0, uPaletteSize - 1.0));
       vec2 uv = vec2((idx + 0.5) / uPaletteSize, 0.5);
       vec4 color = texture(uPalette, uv);
       if (color.a <= 0.0) discard;
@@ -163,11 +163,11 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
 
   const vao = gl.createVertexArray();
   const posBuffer = gl.createBuffer();
-  const termBuffer = gl.createBuffer();
+  const classBuffer = gl.createBuffer();
   const fillModeBuffer = gl.createBuffer();
   const indexBuffer = gl.createBuffer();
   const paletteTexture = gl.createTexture();
-  if (!vao || !posBuffer || !termBuffer || !fillModeBuffer || !indexBuffer || !paletteTexture) {
+  if (!vao || !posBuffer || !classBuffer || !fillModeBuffer || !indexBuffer || !paletteTexture) {
     throw new Error("point buffer allocation failed");
   }
 
@@ -182,14 +182,14 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
   gl.enableVertexAttribArray(posLoc);
   gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, termBuffer);
+  gl.bindBuffer(gl.ARRAY_BUFFER, classBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
-  const termLoc = gl.getAttribLocation(program, "aTerm");
-  if (termLoc < 0) {
-    throw new Error("point term attribute not found");
+  const classLoc = gl.getAttribLocation(program, "aClass");
+  if (classLoc < 0) {
+    throw new Error("point class attribute not found");
   }
-  gl.enableVertexAttribArray(termLoc);
-  gl.vertexAttribIPointer(termLoc, 1, gl.UNSIGNED_SHORT, 0, 0);
+  gl.enableVertexAttribArray(classLoc);
+  gl.vertexAttribIPointer(classLoc, 1, gl.UNSIGNED_SHORT, 0, 0);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, fillModeBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
@@ -219,7 +219,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     program,
     vao,
     posBuffer,
-    termBuffer,
+    classBuffer,
     fillModeBuffer,
     indexBuffer,
     paletteTexture,
