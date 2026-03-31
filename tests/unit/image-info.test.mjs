@@ -11,9 +11,9 @@ function createRawImageInfo() {
     tileSize: 256,
     zoom: 8,
     path: "/tiles/hash123",
-    terms: [
-      { termId: "1", termName: "Positive", termColor: "#ff0000" },
-      { termId: "2", termName: "Negative", termColor: "#0000ff" },
+    classes: [
+      { classId: "1", className: "Positive", classColor: "#ff0000" },
+      { classId: "2", className: "Negative", classColor: "#0000ff" },
     ],
     imsInfo: {
       path: "/tiles/hash123",

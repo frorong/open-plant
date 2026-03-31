@@ -28,12 +28,12 @@ export function filterPointDataByPolygons(pointData: WsiPointData | null | undef
 
   const count = sanitizePointCount(pointData);
   const positions = pointData.positions;
-  const terms = pointData.paletteIndices;
+  const classes = pointData.paletteIndices;
   const fillModes = pointData.fillModes instanceof Uint8Array && pointData.fillModes.length >= count ? pointData.fillModes : null;
   const pointIds = pointData.ids instanceof Uint32Array && pointData.ids.length >= count ? pointData.ids : null;
 
   const nextPositions = new Float32Array(count * 2);
-  const nextTerms = new Uint16Array(count);
+  const nextClasses = new Uint16Array(count);
   const nextFillModes = fillModes ? new Uint8Array(count) : null;
   const nextIds = pointIds ? new Uint32Array(count) : null;
   let cursor = 0;
@@ -44,7 +44,7 @@ export function filterPointDataByPolygons(pointData: WsiPointData | null | undef
     if (!pointInAnyPreparedPolygon(x, y, prepared)) continue;
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
-    nextTerms[cursor] = terms[i];
+    nextClasses[cursor] = classes[i];
     if (nextFillModes) {
       nextFillModes[cursor] = fillModes![i];
     }
@@ -57,7 +57,7 @@ export function filterPointDataByPolygons(pointData: WsiPointData | null | undef
   const output: WsiPointData = {
     count: cursor,
     positions: nextPositions.subarray(0, cursor * 2),
-    paletteIndices: nextTerms.subarray(0, cursor),
+    paletteIndices: nextClasses.subarray(0, cursor),
   };
   if (nextFillModes) {
     output.fillModes = nextFillModes.subarray(0, cursor);

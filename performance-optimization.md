@@ -21,7 +21,7 @@
 
 ### 1.4 포인트 렌더 파이프라인
 - 포인트 입력을 `Float32Array(positions)` + `Uint16Array(paletteIndices)`로 고정해 CPU/GPU 전송 비용 최소화.
-- 팔레트는 1D 텍스처(`RGBA`)로 유지해 term 색 변경 시 전체 포인트 버퍼 재업로드를 피함.
+- 팔레트는 1D 텍스처(`RGBA`)로 유지해 class 색 변경 시 전체 포인트 버퍼 재업로드를 피함.
 - 포인트는 단일 draw call(`gl.POINTS`)로 렌더.
 - 링 형태는 fragment shader에서 계산해 geometry 확장 없이 표현.
 

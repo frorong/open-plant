@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { normalizeImageInfo, normalizeImageTerms, type WsiImageSource, type WsiTerm } from "../../../src";
+import { normalizeImageClasses, normalizeImageInfo, type WsiClass, type WsiImageSource } from "../../../src";
 import { DEFAULT_INFO_URL, S3_BASE_URL } from "../utils/constants";
-import { createDemoSource, createDemoTerms } from "../utils/demo-source";
+import { createDemoClasses, createDemoSource } from "../utils/demo-source";
 
 export interface ImageLoaderState {
 	loading: boolean;
 	error: string;
 	source: WsiImageSource | null;
-	terms: WsiTerm[];
+	classes: WsiClass[];
 	pointZstUrl: string;
 	fitNonce: number;
 }
@@ -15,7 +15,7 @@ export interface ImageLoaderState {
 export interface ImageLoaderActions {
 	loadImageInfo: (url: string) => void;
 	loadDemo: () => void;
-	updateTermColor: (termId: string, color: string) => void;
+	updateClassColor: (classId: string, color: string) => void;
 	setFitNonce: React.Dispatch<React.SetStateAction<number>>;
 }
 
@@ -28,7 +28,7 @@ export function useImageLoader(
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 	const [source, setSource] = useState<WsiImageSource | null>(null);
-	const [terms, setTerms] = useState<WsiTerm[]>([]);
+	const [classes, setClasses] = useState<WsiClass[]>([]);
 	const [pointZstUrl, setPointZstUrl] = useState("");
 	const [fitNonce, setFitNonce] = useState(0);
 
@@ -36,9 +36,9 @@ export function useImageLoader(
 		setLoading(true);
 		setError("");
 		const demoSource = createDemoSource();
-		const demoTerms = createDemoTerms();
+		const demoClasses = createDemoClasses();
 		setSource(demoSource);
-		setTerms(demoTerms);
+		setClasses(demoClasses);
 		setPointZstUrl("/sample/10000000cells.zst");
 		setFitNonce(prev => prev + 1);
 		onReset();
@@ -51,7 +51,7 @@ export function useImageLoader(
 			if (!trimmedUrl) {
 				setError("image info URL이 비어 있습니다.");
 				setSource(null);
-				setTerms([]);
+				setClasses([]);
 				return;
 			}
 
@@ -75,16 +75,16 @@ export function useImageLoader(
 							return `${tileBaseUrl}${p}/${tier}/${y}_${x}.webp`;
 						},
 					}, `${S3_BASE_URL}/ims`);
-					const nextTerms = normalizeImageTerms(raw);
+					const nextClasses = normalizeImageClasses(raw);
 					setSource(nextSource);
-					setTerms(nextTerms);
+					setClasses(nextClasses);
 					setPointZstUrl(raw?.mvtPath ? String(raw.mvtPath) : "");
 					setFitNonce(prev => prev + 1);
 					onReset();
 				})
 				.catch((err: Error) => {
 					setSource(null);
-					setTerms([]);
+					setClasses([]);
 					setPointZstUrl("");
 					setError(err.message || "알 수 없는 오류");
 					onReset();
@@ -96,11 +96,11 @@ export function useImageLoader(
 		[bearerToken, onReset],
 	);
 
-	const updateTermColor = useCallback((termId: string, color: string): void => {
+	const updateClassColor = useCallback((classId: string, color: string): void => {
 		const nextColor = String(color || "").trim();
-		if (!termId || !nextColor) return;
-		setTerms(prev =>
-			prev.map(term => (term.termId === termId ? { ...term, termColor: nextColor } : term))
+		if (!classId || !nextColor) return;
+		setClasses(prev =>
+			prev.map(item => (item.classId === classId ? { ...item, classColor: nextColor } : item))
 		);
 	}, []);
 
@@ -114,5 +114,5 @@ export function useImageLoader(
 		}
 	}, [loadImageInfo, loadDemo]);
 
-	return { loading, error, source, terms, pointZstUrl, fitNonce, loadImageInfo, loadDemo, updateTermColor, setFitNonce };
+	return { loading, error, source, classes, pointZstUrl, fitNonce, loadImageInfo, loadDemo, updateClassColor, setFitNonce };
 }

@@ -1,4 +1,4 @@
-import type { WsiTerm } from "../../../src";
+import type { WsiClass } from "../../../src";
 
 function normalizeKey(value: string | null | undefined): string {
 	return String(value || "")
@@ -6,30 +6,30 @@ function normalizeKey(value: string | null | undefined): string {
 		.toLowerCase();
 }
 
-export function createTermAliasResolver(
-	terms: WsiTerm[],
-	termToPaletteIndex: Map<string, number>,
+export function createClassAliasResolver(
+	classes: WsiClass[],
+	classToPaletteIndex: Map<string, number>,
 ): (rawValue: string | number | null | undefined) => number {
-	const direct = termToPaletteIndex;
+	const direct = classToPaletteIndex;
 	const alias = new Map<string, number>();
 
 	let positivePaletteIndex = 0;
 	let negativePaletteIndex = 0;
 
-	for (const term of terms) {
-		const termId = String(term.termId ?? "");
-		const paletteIndex = direct.get(termId) ?? 0;
+	for (const item of classes) {
+		const classId = String(item.classId ?? "");
+		const paletteIndex = direct.get(classId) ?? 0;
 		if (!paletteIndex) continue;
 
-		const termName = normalizeKey(term.termName);
-		if (termName) {
-			alias.set(termName, paletteIndex);
+		const className = normalizeKey(item.className);
+		if (className) {
+			alias.set(className, paletteIndex);
 		}
 
-		if (!positivePaletteIndex && termName.includes("positive")) {
+		if (!positivePaletteIndex && className.includes("positive")) {
 			positivePaletteIndex = paletteIndex;
 		}
-		if (!negativePaletteIndex && termName.includes("negative")) {
+		if (!negativePaletteIndex && className.includes("negative")) {
 			negativePaletteIndex = paletteIndex;
 		}
 	}

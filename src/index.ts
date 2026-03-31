@@ -66,8 +66,8 @@ export type {
   RegionHoverEvent,
 } from "./react/wsi-viewer-canvas-types";
 export { DEFAULT_POINT_COLOR } from "./wsi/constants";
-export type { RawImagePayload, RawImsInfo, RawWsiTerm } from "./wsi/image-info";
-export { normalizeImageInfo, normalizeImageTerms, toTileUrl } from "./wsi/image-info";
+export type { RawImagePayload, RawImsInfo, RawWsiClass } from "./wsi/image-info";
+export { normalizeImageInfo, normalizeImageClasses, toTileUrl } from "./wsi/image-info";
 export type { RoiCoordinate, RoiPolygon } from "./wsi/point-clip";
 export { filterPointDataByPolygons, filterPointIndicesByPolygons } from "./wsi/point-clip";
 export type {
@@ -112,9 +112,9 @@ export type {
   RoiPointGroup,
   RoiPointGroupOptions,
   RoiPointGroupStats,
-  RoiTermCount,
-} from "./wsi/roi-term-stats";
-export { computeRoiPointGroups } from "./wsi/roi-term-stats";
+  RoiClassCount,
+} from "./wsi/roi-class-stats";
+export { computeRoiPointGroups } from "./wsi/roi-class-stats";
 export type { SpatialExtent, SpatialIndex, SpatialIndexItem } from "./wsi/spatial-index";
 export { createSpatialIndex } from "./wsi/spatial-index";
 export type {
@@ -125,7 +125,7 @@ export type {
 } from "./wsi/tile-scheduler";
 export { TileScheduler } from "./wsi/tile-scheduler";
 export type {
-  TermPalette,
+  ClassPalette,
   WsiCoordinate,
   WsiImageColorSettings,
   WsiImageSource,
@@ -136,11 +136,11 @@ export type {
   WsiRegionCoordinates,
   WsiRenderStats,
   WsiRingCoordinates,
-  WsiTerm,
+  WsiClass,
   WsiViewState,
 } from "./wsi/types";
 export {
-  buildTermPalette,
+  buildClassPalette,
   calcScaleLength,
   calcScaleResolution,
   clamp,

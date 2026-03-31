@@ -1,8 +1,8 @@
 import { type PreparedRoiPolygon, pointInPreparedPolygon, prepareRoiPolygons, toRoiGeometry } from "./roi-geometry";
 import type { WsiPointData, WsiRegion } from "./types";
 
-export interface RoiTermCount {
-  termId: string;
+export interface RoiClassCount {
+  classId: string;
   paletteIndex: number;
   count: number;
 }
@@ -11,11 +11,11 @@ export interface RoiPointGroup {
   regionId: string | number;
   regionIndex: number;
   totalCount: number;
-  termCounts: RoiTermCount[];
+  classCounts: RoiClassCount[];
 }
 
 export interface RoiPointGroupOptions {
-  paletteIndexToTermId?: ReadonlyMap<number, string> | readonly string[];
+  paletteIndexToClassId?: ReadonlyMap<number, string> | readonly string[];
   includeEmptyRegions?: boolean;
 }
 
@@ -142,11 +142,7 @@ function buildPreparedRegionGridIndex(regions: readonly PreparedRegion[]): Prepa
   };
 }
 
-function getCandidateRegionIndices(
-  index: PreparedRegionGridIndex | null,
-  x: number,
-  y: number,
-): readonly number[] {
+function getCandidateRegionIndices(index: PreparedRegionGridIndex | null, x: number, y: number): readonly number[] {
   if (!index) return EMPTY_CANDIDATE_REGION_INDICES;
   if (x < index.minX || x > index.maxX || y < index.minY || y > index.maxY) {
     return EMPTY_CANDIDATE_REGION_INDICES;
@@ -156,13 +152,13 @@ function getCandidateRegionIndices(
   return index.buckets[cellY * index.gridSize + cellX] ?? EMPTY_CANDIDATE_REGION_INDICES;
 }
 
-function resolveTermId(paletteIndex: number, paletteIndexToTermId: RoiPointGroupOptions["paletteIndexToTermId"]): string {
-  if (Array.isArray(paletteIndexToTermId)) {
-    const fromArray = paletteIndexToTermId[paletteIndex];
+function resolveClassId(paletteIndex: number, paletteIndexToClassId: RoiPointGroupOptions["paletteIndexToClassId"]): string {
+  if (Array.isArray(paletteIndexToClassId)) {
+    const fromArray = paletteIndexToClassId[paletteIndex];
     if (typeof fromArray === "string" && fromArray.length > 0) return fromArray;
   }
-  if (paletteIndexToTermId instanceof Map) {
-    const fromMap = paletteIndexToTermId.get(paletteIndex);
+  if (paletteIndexToClassId instanceof Map) {
+    const fromMap = paletteIndexToClassId.get(paletteIndex);
     if (typeof fromMap === "string" && fromMap.length > 0) return fromMap;
   }
   return String(paletteIndex);
@@ -217,7 +213,7 @@ export function computeRoiPointGroups(pointData: WsiPointData | null | undefined
     };
   }
 
-  const regionTermCounters = new Map<number, Map<number, number>>();
+  const regionClassCounters = new Map<number, Map<number, number>>();
   const regionTotalCounters = new Map<number, number>();
   const preparedRegionIndex = buildPreparedRegionGridIndex(preparedRegions);
   let insideCount = 0;
@@ -249,9 +245,9 @@ export function computeRoiPointGroups(pointData: WsiPointData | null | undefined
     insideCount += 1;
 
     const paletteIndex = pointData.paletteIndices[pointIndex] ?? 0;
-    const regionTermMap = regionTermCounters.get(bestRegion.regionIndex) ?? new Map<number, number>();
-    regionTermMap.set(paletteIndex, (regionTermMap.get(paletteIndex) ?? 0) + 1);
-    regionTermCounters.set(bestRegion.regionIndex, regionTermMap);
+    const regionClassMap = regionClassCounters.get(bestRegion.regionIndex) ?? new Map<number, number>();
+    regionClassMap.set(paletteIndex, (regionClassMap.get(paletteIndex) ?? 0) + 1);
+    regionClassCounters.set(bestRegion.regionIndex, regionClassMap);
     regionTotalCounters.set(bestRegion.regionIndex, (regionTotalCounters.get(bestRegion.regionIndex) ?? 0) + 1);
   }
 
@@ -260,10 +256,10 @@ export function computeRoiPointGroups(pointData: WsiPointData | null | undefined
   for (const region of preparedRegions) {
     const totalCount = regionTotalCounters.get(region.regionIndex) ?? 0;
     if (!includeEmptyRegions && totalCount <= 0) continue;
-    const termMap = regionTermCounters.get(region.regionIndex) ?? new Map();
-    const termCounts: RoiTermCount[] = Array.from(termMap.entries())
+    const classMap = regionClassCounters.get(region.regionIndex) ?? new Map();
+    const classCounts: RoiClassCount[] = Array.from(classMap.entries())
       .map(([paletteIndex, count]) => ({
-        termId: resolveTermId(paletteIndex, options.paletteIndexToTermId),
+        classId: resolveClassId(paletteIndex, options.paletteIndexToClassId),
         paletteIndex,
         count,
       }))
@@ -273,7 +269,7 @@ export function computeRoiPointGroups(pointData: WsiPointData | null | undefined
       regionId: region.regionId,
       regionIndex: region.regionIndex,
       totalCount,
-      termCounts,
+      classCounts,
     });
   }
 

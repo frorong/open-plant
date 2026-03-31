@@ -120,7 +120,7 @@
               <div class="flow-step"><strong>업로드:</strong> positions/paletteIndices를 GPU 버퍼로 전송.</div>
               <div class="flow-step"><strong>셰이더 렌더:</strong> <code>fillModes</code> 기반 ring/solid 모드로 palette 색상을 렌더합니다.</div>
               <div class="flow-step"><strong>ROI clip:</strong> 필요 시 <code>clipMode</code>에 따라 polygon 내부 포인트만 필터링.</div>
-              <div class="flow-step"><strong>ROI 통계:</strong> <code>computeRoiPointGroups</code> / <code>onRoiPointGroups</code>로 ROI별 term 집계.</div>
+              <div class="flow-step"><strong>ROI 통계:</strong> <code>computeRoiPointGroups</code> / <code>onRoiPointGroups</code>로 ROI별 class 집계.</div>
             </div>
           </section>
 
@@ -170,8 +170,8 @@
                 <p>저배율에서 cell density 집계를 compute pass로 사전 생성.</p>
               </div>
               <div class="card">
-                <h3>Term Histogram</h3>
-                <p>ROI 단위 term count/positivity 통계를 GPU에서 병렬 계산.</p>
+                <h3>Class Histogram</h3>
+                <p>ROI 단위 class count/positivity 통계를 GPU에서 병렬 계산.</p>
               </div>
               <div class="card">
                 <h3>Interop</h3>

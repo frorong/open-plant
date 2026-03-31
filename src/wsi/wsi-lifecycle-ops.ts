@@ -94,7 +94,7 @@ export function destroyRenderer(options: DestroyRendererOptions): DestroyRendere
     options.gl.deleteProgram(options.tileProgram.program);
 
     options.gl.deleteBuffer(options.pointProgram.posBuffer);
-    options.gl.deleteBuffer(options.pointProgram.termBuffer);
+    options.gl.deleteBuffer(options.pointProgram.classBuffer);
     options.gl.deleteBuffer(options.pointProgram.fillModeBuffer);
     options.gl.deleteBuffer(options.pointProgram.indexBuffer);
     options.gl.deleteTexture(options.pointProgram.paletteTexture);

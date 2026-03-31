@@ -119,7 +119,7 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
 
   const safeCount = sanitizePointCount(pointData);
   const positionsCopy = pointData.positions.slice(0, safeCount * 2);
-  const termsCopy = pointData.paletteIndices.slice(0, safeCount);
+  const classesCopy = pointData.paletteIndices.slice(0, safeCount);
   const fillModesCopy = pointData.fillModes instanceof Uint8Array && pointData.fillModes.length >= safeCount ? pointData.fillModes.slice(0, safeCount) : null;
   const idsCopy = pointData.ids instanceof Uint32Array && pointData.ids.length >= safeCount ? pointData.ids.slice(0, safeCount) : null;
 
@@ -145,13 +145,13 @@ export async function filterPointDataByPolygonsInWorker(pointData: WsiPointData 
       id: requestTicket.id,
       count: safeCount,
       positions: positionsCopy.buffer,
-      paletteIndices: termsCopy.buffer,
+      paletteIndices: classesCopy.buffer,
       fillModes: fillModesCopy?.buffer,
       ids: idsCopy?.buffer,
       polygons: polygons ?? [],
     };
 
-    const transfer: Transferable[] = [positionsCopy.buffer, termsCopy.buffer];
+    const transfer: Transferable[] = [positionsCopy.buffer, classesCopy.buffer];
     if (fillModesCopy) transfer.push(fillModesCopy.buffer);
     if (idsCopy) transfer.push(idsCopy.buffer);
 

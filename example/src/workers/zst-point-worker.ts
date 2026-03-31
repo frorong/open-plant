@@ -95,9 +95,9 @@ function getFirstLayer(tile) {
 	return layer;
 }
 
-function resolveRawTermId(properties) {
+function resolveRawClassId(properties) {
 	if (!properties) return "0";
-	const candidates = [
+	const candidates = [	
 		properties.termId,
 		properties.term_id,
 		properties.categoryId,
@@ -122,9 +122,9 @@ function parsePointsFromLayer(layer, imageHeight) {
 	const len = layer.length;
 
 	const positions = new Float32Array(len * 2);
-	const localTermIndex = new Uint16Array(len);
-	const termTable = [""];
-	const termToLocal = new Map();
+	const localClassIndex = new Uint16Array(len);
+	const classTable = [""];
+	const classToLocal = new Map();
 
 	let hasNt = false;
 	let hasPositivityRank = false;
@@ -157,29 +157,29 @@ function parsePointsFromLayer(layer, imageHeight) {
 			hasPositivityRank = true;
 		}
 
-		const termId = resolveRawTermId(feature.properties);
-		let localIdx = termToLocal.get(termId);
+		const classId = resolveRawClassId(feature.properties);
+		let localIdx = classToLocal.get(classId);
 		if (localIdx === undefined) {
-			localIdx = termTable.length;
+			localIdx = classTable.length;
 			if (localIdx >= 65535) {
 				localIdx = 0;
 			} else {
-				termToLocal.set(termId, localIdx);
-				termTable.push(termId);
+				classToLocal.set(classId, localIdx);
+				classTable.push(classId);
 			}
 		}
 
 		positions[cursor * 2] = x;
 		positions[cursor * 2 + 1] = y;
-		localTermIndex[cursor] = localIdx;
+		localClassIndex[cursor] = localIdx;
 		cursor += 1;
 	}
 
 	return {
 		count: cursor,
 		positions: positions.subarray(0, cursor * 2),
-		localTermIndex: localTermIndex.subarray(0, cursor),
-		termTable,
+		localClassIndex: localClassIndex.subarray(0, cursor),
+		classTable,
 		hasNt,
 		hasPositivityRank,
 	};
@@ -212,19 +212,19 @@ self.onmessage = async (event) => {
 		const parsed = parsePointsFromLayer(layer, imageHeight);
 
 		const positions = parsed.positions.slice();
-		const localTermIndex = parsed.localTermIndex.slice();
+		const localClassIndex = parsed.localClassIndex.slice();
 
 		self.postMessage(
 			{
 				type: "done",
 				count: parsed.count,
-				termTable: parsed.termTable,
+				classTable: parsed.classTable,
 				hasNt: parsed.hasNt,
 				hasPositivityRank: parsed.hasPositivityRank,
 				positions,
-				localTermIndex,
+				localClassIndex,
 			},
-			[positions.buffer, localTermIndex.buffer],
+			[positions.buffer, localClassIndex.buffer],
 		);
 	} catch (error) {
 		self.postMessage({

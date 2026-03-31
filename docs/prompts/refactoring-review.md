@@ -101,7 +101,7 @@
 
 - `wsi/time-utils.ts` (`nowMs`)
 - `wsi/view-utils.ts` (`isSameViewState`, scale 관련)
-- `wsi/color-utils.ts` (`hexToRgba`, `buildTermPalette`)
+- `wsi/color-utils.ts` (`hexToRgba`, `buildClassPalette`)
 - `wsi/auth-utils.ts` (`toBearerToken`)
 
 완료 기준:

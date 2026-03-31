@@ -245,7 +245,7 @@
               <li><strong>과거 Props 표:</strong> git 히스토리 및 <code>migration-1.4.0.md</code> 매핑표에 보존됩니다.</li>
             </ul>
             <div class="callout">
-              ROI term 통계: <code>onRoiPointGroups</code> 대신 앱 코드에서 <code>computeRoiPointGroups()</code>를 호출하세요. <code>customLayers</code>는 직접 대체 없음 — <code>useViewerContext</code> + 호스트 React 오버레이를 사용하세요.
+              ROI class 통계: <code>onRoiPointGroups</code> 대신 앱 코드에서 <code>computeRoiPointGroups()</code>를 호출하세요. <code>customLayers</code>는 직접 대체 없음 — <code>useViewerContext</code> + 호스트 React 오버레이를 사용하세요.
             </div>
           </section>
 
@@ -306,8 +306,13 @@
   maxTierZoom: number;
   tilePath: string;
   tileBaseUrl: string;
-  terms: WsiTerm[];
   tileUrlBuilder?: (tier: number, x: number, y: number) => string;
+}
+
+interface WsiClass {
+  classId: string;
+  className: string;
+  classColor: string;
 }
 
 interface WsiPointData {
@@ -383,14 +388,15 @@ interface WsiRenderStats {
               <tbody>
                 <tr><td><code>normalizeImageInfo(raw, tileBaseUrl)</code></td><td>백엔드 응답 + 타일 베이스 URL을 `WsiImageSource`로 변환.</td></tr>
                 <tr><td><code>toTileUrl(source, tier, x, y)</code></td><td>IMS 타일 URL 생성.</td></tr>
-                <tr><td><code>buildTermPalette(terms)</code></td><td>termId → palette index 매핑 + RGBA 팔레트 생성.</td></tr>
+                <tr><td><code>normalizeImageClasses(raw)</code></td><td>백엔드 payload에서 class 메타데이터를 정규화합니다.</td></tr>
+                <tr><td><code>buildClassPalette(classes)</code></td><td>classId → palette index 매핑 + RGBA 팔레트 생성.</td></tr>
                 <tr><td><code>filterPointDataByPolygons(data, polygons)</code></td><td>ROI 다각형 기반 포인트 필터링.</td></tr>
                 <tr><td><code>filterPointDataByPolygonsInWorker(data, polygons)</code></td><td>ROI 필터를 워커 스레드에서 실행합니다.</td></tr>
                 <tr><td><code>terminateRoiClipWorker()</code></td><td>공유 ROI clip worker 인스턴스를 종료합니다(teardown/테스트에서 유용).</td></tr>
                 <tr><td><code>filterPointIndicesByPolygons(data, polygons)</code></td><td>polygon 내부 원본 point 인덱스를 반환해 patch JSON export 파이프라인을 구성합니다.</td></tr>
                 <tr><td><code>filterPointIndicesByPolygonsInWorker(data, polygons)</code></td><td>point 인덱스 반환의 워커 버전(+duration 메타).</td></tr>
                 <tr><td><code>filterPointDataByPolygonsHybrid(data, polygons, options?)</code></td><td>실험적 하이브리드 경로(WebGPU bbox prefilter + polygon 정밀 판정). <code>{ bridgeToDraw: true }</code>를 주면 전체 버퍼 + <code>drawIndices</code> 브리지를 반환합니다.</td></tr>
-                <tr><td><code>computeRoiPointGroups(pointData, regions, options)</code></td><td>TypedArray 포인트 버퍼로 ROI별 term count(<code>roiPointGroups</code>)를 계산합니다.</td></tr>
+                <tr><td><code>computeRoiPointGroups(pointData, regions, options)</code></td><td>TypedArray 포인트 버퍼로 ROI별 class count(<code>roiPointGroups</code>)를 계산합니다.</td></tr>
                 <tr><td><code>getWebGpuCapabilities()</code></td><td>런타임에서 WebGPU 지원/어댑터/기능 정보를 조회합니다.</td></tr>
                 <tr><td><code>prefilterPointsByBoundsWebGpu(positions, count, bounds)</code></td><td>ROI bounding box 기준 점 분류를 WebGPU compute로 수행합니다(실험적).</td></tr>
                 <tr><td><code>calcScaleResolution(imageMpp, imageZoom, currentZoom)</code></td><td>현재 줌 기준 μm/스크린픽셀 해상도 계산.</td></tr>

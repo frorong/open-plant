@@ -1,4 +1,4 @@
-import type { WsiImageSource, WsiTerm } from "./types";
+import type { WsiClass, WsiImageSource } from "./types";
 
 export interface RawImsInfo {
   width?: number | null;
@@ -9,10 +9,10 @@ export interface RawImsInfo {
   mpp?: number | null;
 }
 
-export interface RawWsiTerm {
-  termId?: string | null;
-  termName?: string | null;
-  termColor?: string | null;
+export interface RawWsiClass {
+  classId?: string | null;
+  className?: string | null;
+  classColor?: string | null;
 }
 
 export interface RawImagePayload {
@@ -26,16 +26,16 @@ export interface RawImagePayload {
   path?: string | null;
   mpp?: number | null;
   imsInfo?: RawImsInfo | null;
-  terms?: RawWsiTerm[] | null;
+  classes?: RawWsiClass[] | null;
   tileUrlBuilder?: (tier: number, x: number, y: number, tilePath: string, tileBaseUrl: string) => string;
 }
 
-export function normalizeImageTerms(raw: Pick<RawImagePayload, "terms"> | null | undefined): WsiTerm[] {
-  return Array.isArray(raw?.terms)
-    ? raw.terms.map((term: RawWsiTerm) => ({
-        termId: String(term?.termId ?? ""),
-        termName: String(term?.termName ?? ""),
-        termColor: String(term?.termColor ?? ""),
+export function normalizeImageClasses(raw: Pick<RawImagePayload, "classes"> | null | undefined): WsiClass[] {
+  return Array.isArray(raw?.classes)
+    ? raw.classes.map((item: RawWsiClass) => ({
+        classId: String(item?.classId ?? ""),
+        className: String(item?.className ?? ""),
+        classColor: String(item?.classColor ?? ""),
       }))
     : [];
 }

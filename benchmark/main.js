@@ -60,10 +60,10 @@ function initOP(canvas, data) {
 
   const vs = `#version 300 es
 precision highp float;
-in vec2 aPos; in uint aTerm;
+in vec2 aPos; in uint aClass;
 uniform mat3 uCam; uniform float uSz;
 flat out uint vT;
-void main(){ vec3 c=uCam*vec3(aPos,1.); gl_Position=vec4(c.xy,0.,1.); gl_PointSize=uSz; vT=aTerm; }`;
+void main(){ vec3 c=uCam*vec3(aPos,1.); gl_Position=vec4(c.xy,0.,1.); gl_PointSize=uSz; vT=aClass; }`;
   const fs = `#version 300 es
 precision highp float;
 flat in uint vT;
@@ -100,7 +100,7 @@ void main(){
   const tb = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, tb);
   gl.bufferData(gl.ARRAY_BUFFER, data.idx, gl.STATIC_DRAW);
-  const tl = gl.getAttribLocation(pg, "aTerm");
+  const tl = gl.getAttribLocation(pg, "aClass");
   gl.enableVertexAttribArray(tl);
   gl.vertexAttribIPointer(tl, 1, gl.UNSIGNED_SHORT, 0, 0);
   const pt = gl.createTexture();

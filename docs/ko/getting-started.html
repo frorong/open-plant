@@ -41,7 +41,7 @@
           <a href="#camera-color">카메라 + 색상 보정</a>
           <a href="#points">포인트 로드/팔레트</a>
           <a href="#roi">ROI clip 적용</a>
-          <a href="#roi-stats">ROI term 통계</a>
+          <a href="#roi-stats">ROI class 통계</a>
           <a href="#clip-accel">ROI 가속 모드</a>
         </aside>
 
@@ -143,17 +143,17 @@ function Viewer({ source, token }) {
           </section>
 
           <section class="panel reveal" id="points">
-            <h2>5. 포인트 데이터 전달 + term 팔레트 매핑</h2>
+            <h2>5. 포인트 데이터 전달 + class 팔레트 매핑</h2>
             <p>
               포인트 로딩/파싱(ZST/MVT 디코딩 등)은 <strong>라이브러리 외부</strong>에서 처리합니다.
               파싱 완료된 TypedArray를 뷰어에 전달하세요.
             </p>
-            <pre><code class="language-ts">import { buildTermPalette } from "open-plant";
+            <pre><code class="language-ts">import { buildClassPalette } from "open-plant";
 
 // positions: Float32Array [x0,y0,x1,y1,...] (직접 구현한 로더)
-// paletteIndices: Uint16Array (term 테이블에서 매핑)
+// paletteIndices: Uint16Array (class 테이블에서 매핑)
 
-const termPalette = buildTermPalette(source.terms);
+const classPalette = buildClassPalette(classes);
 
 const pointData = {
   count: positions.length / 2,
@@ -165,7 +165,7 @@ const pointData = {
             <pre><code class="language-tsx">import { WsiViewer, PointLayer } from "open-plant";
 
 &lt;WsiViewer source={source} authToken={toBearerToken(token)}&gt;
-  &lt;PointLayer data={pointData} palette={termPalette.colors} /&gt;
+  &lt;PointLayer data={pointData} palette={classPalette.colors} /&gt;
 &lt;/WsiViewer&gt;</code></pre>
           </section>
 
@@ -188,7 +188,7 @@ const pointData = {
 &lt;WsiViewer source={source}&gt;
   &lt;PointLayer
     data={pointData}
-    palette={termPalette.colors}
+    palette={classPalette.colors}
     clipEnabled
     clipToRegions={roiRegions}
   /&gt;
@@ -197,16 +197,16 @@ const pointData = {
           </section>
 
           <section class="panel reveal" id="roi-stats">
-            <h2>7. ROI term 통계</h2>
+            <h2>7. ROI class 통계</h2>
             <p>
               <code>onRoiPointGroups</code>는 <code>WsiViewerCanvas</code>와 함께 제거되었습니다. 데이터가 바뀔 때 <code>computeRoiPointGroups</code>를 호출하세요.
             </p>
             <pre><code class="language-ts">import { computeRoiPointGroups } from "open-plant";
 
 const stats = computeRoiPointGroups(pointData, regions, {
-  paletteIndexToTermId: new Map([[1, "negative"], [2, "positive"]]),
+  paletteIndexToClassId: new Map([[1, "negative"], [2, "positive"]]),
 });
-// stats.groups -&gt; ROI별 term count</code></pre>
+// stats.groups -&gt; ROI별 class count</code></pre>
           </section>
 
           <section class="panel reveal" id="clip-accel">
@@ -218,7 +218,7 @@ const clipMode = caps.supported ? "hybrid-webgpu" : "worker";</code></pre>
             <pre><code class="language-tsx">&lt;WsiViewer source={source}&gt;
   &lt;PointLayer
     data={pointData}
-    palette={termPalette.colors}
+    palette={classPalette.colors}
     clipEnabled
     clipToRegions={regions}
     clipMode={clipMode}

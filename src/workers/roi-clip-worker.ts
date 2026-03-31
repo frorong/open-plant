@@ -29,12 +29,12 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
   const start = nowMs();
   const count = Math.max(0, Math.floor(msg.count));
   const positions = new Float32Array(msg.positions);
-  const terms = new Uint16Array(msg.paletteIndices);
+  const classes = new Uint16Array(msg.paletteIndices);
   const fillModes = msg.fillModes ? new Uint8Array(msg.fillModes) : null;
   const ids = msg.ids ? new Uint32Array(msg.ids) : null;
 
   const maxCountByPositions = Math.floor(positions.length / 2);
-  const safeCount = Math.max(0, Math.min(count, maxCountByPositions, terms.length, fillModes ? fillModes.length : Number.MAX_SAFE_INTEGER));
+  const safeCount = Math.max(0, Math.min(count, maxCountByPositions, classes.length, fillModes ? fillModes.length : Number.MAX_SAFE_INTEGER));
   const hasFillModes = fillModes instanceof Uint8Array && fillModes.length >= safeCount;
   const hasIds = ids instanceof Uint32Array && ids.length >= safeCount;
   const prepared = prepareRoiPolygons(msg.polygons ?? []);
@@ -58,7 +58,7 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
   }
 
   const nextPositions = new Float32Array(safeCount * 2);
-  const nextTerms = new Uint16Array(safeCount);
+  const nextClasses = new Uint16Array(safeCount);
   const nextFillModes = hasFillModes ? new Uint8Array(safeCount) : null;
   const nextIds = hasIds ? new Uint32Array(safeCount) : null;
   let cursor = 0;
@@ -69,7 +69,7 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
     if (!pointInAnyPreparedPolygon(x, y, prepared)) continue;
     nextPositions[cursor * 2] = x;
     nextPositions[cursor * 2 + 1] = y;
-    nextTerms[cursor] = terms[i];
+    nextClasses[cursor] = classes[i];
     if (nextFillModes) {
       nextFillModes[cursor] = fillModes![i];
     }
@@ -80,7 +80,7 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
   }
 
   const outPositions = nextPositions.slice(0, cursor * 2);
-  const outTerms = nextTerms.slice(0, cursor);
+  const outClasses = nextClasses.slice(0, cursor);
   const outFillModes = nextFillModes ? nextFillModes.slice(0, cursor) : null;
   const outIds = nextIds ? nextIds.slice(0, cursor) : null;
 
@@ -89,7 +89,7 @@ function handleDataRequest(msg: RoiClipWorkerDataRequest): RoiClipWorkerSuccess 
     id: msg.id,
     count: cursor,
     positions: outPositions.buffer,
-    paletteIndices: outTerms.buffer,
+    paletteIndices: outClasses.buffer,
     durationMs: nowMs() - start,
   };
   if (outFillModes) {

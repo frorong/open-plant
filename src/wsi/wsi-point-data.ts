@@ -131,7 +131,7 @@ export function setPointData(runtime: PointBufferRuntime, gl: WebGL2RenderingCon
     gl.bindBuffer(gl.ARRAY_BUFFER, pointProgram.posBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, currentPointData.positions, gl.STATIC_DRAW);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, pointProgram.termBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, pointProgram.classBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, currentPointData.paletteIndices, gl.STATIC_DRAW);
 
     const zeroFillModes = getZeroFillModes(nextRuntime.zeroFillModes, safeCount);

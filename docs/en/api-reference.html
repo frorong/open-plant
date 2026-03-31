@@ -242,7 +242,7 @@
               <li><strong>Historical prop list:</strong> preserved in git history and in <code>migration-1.4.0.md</code> mapping tables.</li>
             </ul>
             <div class="callout">
-              ROI term groups: call <code>computeRoiPointGroups()</code> from app code instead of <code>onRoiPointGroups</code>. <code>customLayers</code> has no direct replacement — use <code>useViewerContext</code> + a host React overlay.
+              ROI class groups: call <code>computeRoiPointGroups()</code> from app code instead of <code>onRoiPointGroups</code>. <code>customLayers</code> has no direct replacement — use <code>useViewerContext</code> + a host React overlay.
             </div>
           </section>
 
@@ -299,8 +299,13 @@
   maxTierZoom: number;
   tilePath: string;
   tileBaseUrl: string;
-  terms: WsiTerm[];
   tileUrlBuilder?: (tier: number, x: number, y: number) => string;
+}
+
+interface WsiClass {
+  classId: string;
+  className: string;
+  classColor: string;
 }
 
 interface WsiPointData {
@@ -374,14 +379,15 @@ interface WsiRenderStats {
               <tbody>
                 <tr><td><code>normalizeImageInfo(raw, tileBaseUrl)</code></td><td>Converts backend payload + tile base URL to <code>WsiImageSource</code>.</td></tr>
                 <tr><td><code>toTileUrl(source, tier, x, y)</code></td><td>Builds IMS tile URL.</td></tr>
-                <tr><td><code>buildTermPalette(terms)</code></td><td>Builds termId to palette mapping and RGBA texture.</td></tr>
+                <tr><td><code>normalizeImageClasses(raw)</code></td><td>Normalizes class metadata from backend payloads.</td></tr>
+                <tr><td><code>buildClassPalette(classes)</code></td><td>Builds classId to palette mapping and RGBA texture.</td></tr>
                 <tr><td><code>filterPointDataByPolygons(data, polygons)</code></td><td>Filters points inside ROI polygons only.</td></tr>
                 <tr><td><code>filterPointDataByPolygonsInWorker(data, polygons)</code></td><td>Runs ROI clipping in a dedicated worker thread.</td></tr>
                 <tr><td><code>terminateRoiClipWorker()</code></td><td>Terminates the shared ROI clip worker instance (useful on teardown/tests).</td></tr>
                 <tr><td><code>filterPointIndicesByPolygons(data, polygons)</code></td><td>Returns original point indices inside polygons for patch JSON export pipelines.</td></tr>
                 <tr><td><code>filterPointIndicesByPolygonsInWorker(data, polygons)</code></td><td>Worker variant returning point indices + timing metadata.</td></tr>
                 <tr><td><code>filterPointDataByPolygonsHybrid(data, polygons, options?)</code></td><td>Experimental hybrid clipping (WebGPU bbox prefilter + exact polygon test). Use <code>{ bridgeToDraw: true }</code> to return full buffers + <code>drawIndices</code> bridge payload.</td></tr>
-                <tr><td><code>computeRoiPointGroups(pointData, regions, options)</code></td><td>Computes per-ROI term counts (<code>roiPointGroups</code>-style) from typed point buffers.</td></tr>
+                <tr><td><code>computeRoiPointGroups(pointData, regions, options)</code></td><td>Computes per-ROI class counts (<code>roiPointGroups</code>-style) from typed point buffers.</td></tr>
                 <tr><td><code>getWebGpuCapabilities()</code></td><td>Returns WebGPU support/adapter/features for runtime decisions.</td></tr>
                 <tr><td><code>prefilterPointsByBoundsWebGpu(positions, count, bounds)</code></td><td>Experimental compute pass to classify points by ROI bounding boxes.</td></tr>
                 <tr><td><code>calcScaleResolution(imageMpp, imageZoom, currentZoom)</code></td><td>Returns microns-per-screen-pixel for the current zoom.</td></tr>
