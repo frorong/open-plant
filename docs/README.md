@@ -13,6 +13,8 @@
 - `en/contributing.html`, `ko/contributing.html`: 오픈소스 기여 워크플로우/품질 게이트
 - `assets/site.css`: 공통 스타일
 - `assets/site.js`: 공통 스크립트
+- `assets/examples-playground.js`: examples 문서용 live playground 번들
+- `docs-src/examples-playground/`: playground 소스
 
 ## Local Preview
 
@@ -22,6 +24,12 @@ python3 -m http.server 4173
 ```
 
 브라우저에서 `http://localhost:4173` 접속.
+
+playground 소스를 수정했으면 repo root에서 아래를 먼저 실행:
+
+```bash
+npm run build:docs:examples
+```
 
 ## Deploy
 
@@ -57,3 +65,7 @@ python3 -m http.server 4173
   - `CHANGELOG.md` (`Unreleased` 포함)
   - `README.md` (Features / API 섹션)
 - EN/KO 페이지는 기능 단위로 동등한 정보가 유지되어야 합니다.
+- `docs-src/examples-playground/` 변경 시:
+  - `npm run build:docs:examples`
+  - `docs/en/examples.html`
+  - `docs/ko/examples.html`

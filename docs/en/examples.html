@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Examples | Open Plant WSI Docs</title>
+    <meta
+      name="description"
+      content="Example-driven guide for the public Open Plant WSI API"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="examples">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">Overview</a>
+          <a href="getting-started.html" data-nav="getting-started">Getting Started</a>
+          <a href="examples.html" data-nav="examples">Examples</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="contributing.html" data-nav="contributing">Contributing</a>
+          <a href="architecture.html" data-nav="architecture">Architecture</a>
+          <a href="../ko/examples.html">KO</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Examples</h2>
+          <div class="sidebar-group">Reference App Tree</div>
+          <a href="#composition"><code>WsiViewer</code></a>
+          <a href="#points"><code>PointLayer</code></a>
+          <a href="#draw"><code>DrawingLayer</code> / <code>RegionLayer</code></a>
+          <a href="#heatmap"><code>HeatmapLayer</code> / <code>OverviewMap</code></a>
+          <div class="sidebar-group">Input And Analysis</div>
+          <a href="#source"><code>normalizeImageInfo</code> / <code>toTileUrl</code></a>
+          <a href="#clip"><code>filterPointDataByPolygons*</code></a>
+          <a href="#hit-index"><code>buildPointSpatialIndexAsync</code></a>
+          <a href="#geometry"><code>parseWkt</code> / <code>computeRoiPointGroups</code></a>
+          <a href="#utils"><code>calcScaleResolution</code> / <code>clamp</code></a>
+          <div class="sidebar-group">Renderers</div>
+          <a href="#low-level"><code>TileViewerCanvas</code> / <code>WsiTileRenderer</code></a>
+          <a href="#export-index">Export Index</a>
+          <a href="api-reference.html">API Reference</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Examples</div>
+            <h1>Understand the public API through usage</h1>
+            <p>
+              This page now follows the same API shape as
+              <code>example/src/App.tsx</code>. Instead of a flat topic list, the
+              sections are grouped by the actual viewer tree: source setup,
+              <code>WsiViewer</code>, child layers, interaction workers, and the
+              low-level renderers underneath them.
+            </p>
+          </section>
+
+          <section class="panel reveal">
+            <span class="pill">open-plant 1.4.10</span>
+            <h2>API Tree</h2>
+            <div class="card-grid api-tree-grid">
+              <div class="card api-tree-branch">
+                <h3>Viewer Composition</h3>
+                <p><code>WsiViewer</code> owns tiles, camera state, events, and the shared overlay surface.</p>
+                <div class="api-tree-list">
+                  <a href="#composition"><code>WsiViewer</code></a>
+                  <a href="#points"><code>PointLayer</code></a>
+                  <a href="#draw"><code>DrawingLayer</code> / <code>RegionLayer</code> / <code>PatchLayer</code> / <code>OverlayLayer</code></a>
+                  <a href="#heatmap"><code>HeatmapLayer</code> / <code>OverviewMap</code> / <code>useViewerContext</code></a>
+                </div>
+              </div>
+              <div class="card api-tree-branch">
+                <h3>Input And Analysis</h3>
+                <p>These APIs prepare image metadata, point payloads, ROI filters, and search helpers that feed the viewer tree.</p>
+                <div class="api-tree-list">
+                  <a href="#source"><code>normalizeImageInfo</code> / <code>normalizeImageClasses</code> / <code>toTileUrl</code> / <code>toBearerToken</code></a>
+                  <a href="#clip"><code>filterPointDataByPolygons</code> / worker / hybrid</a>
+                  <a href="#hit-index"><code>buildPointSpatialIndexAsync</code> / <code>lookupCellIndex</code></a>
+                  <a href="#geometry"><code>parseWkt</code> / <code>toRoiGeometry</code> / <code>computeRoiPointGroups</code> / <code>createSpatialIndex</code></a>
+                  <a href="#utils"><code>calcScaleResolution</code> / <code>calcScaleLength</code> / <code>clamp</code></a>
+                </div>
+              </div>
+              <div class="card api-tree-branch">
+                <h3>Low-Level Runtime</h3>
+                <p>Drop down here only when the React composition layer is not enough and you need direct renderer control.</p>
+                <div class="api-tree-list">
+                  <a href="#low-level"><code>TileViewerCanvas</code> / <code>M1TileRenderer</code> / <code>WsiTileRenderer</code></a>
+                  <a href="#export-index">Full export index</a>
+                </div>
+              </div>
+            </div>
+            <div class="callout">
+              Every section below now uses the same structure: API-focused title,
+              runnable StackBlitz preview, then code that matches that API node in
+              the tree. The reference flow is the app in
+              <code>example/src/App.tsx</code>, not an abstract docs-only order.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="composition">
+            <h2>1. <code>WsiViewer</code>: composition root and child layers</h2>
+            <p>
+              <code>WsiViewer</code> is the center of the current React API. It
+              owns tile rendering, shared overlay canvases, and camera state.
+              Points, ROI, drawing, and heatmap are attached as child layers.
+            </p>
+            <div data-open-plant-inline-demo="composition" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-tsx">import { useState } from "react";
+import {
+  DrawingLayer,
+  HeatmapLayer,
+  OverlayLayer,
+  PatchLayer,
+  PointLayer,
+  RegionLayer,
+  WsiViewer,
+  type DrawOverlayShape,
+  type DrawTool,
+  type HeatmapPointData,
+  type PointSizeByZoom,
+  type WsiImageSource,
+  type WsiPointData,
+  type WsiRegion,
+  type WsiViewState,
+} from "open-plant";
+
+function ViewerShell({
+  source,
+  pointData,
+  palette,
+  heatmapData,
+}: {
+  source: WsiImageSource | null;
+  pointData: WsiPointData | null;
+  palette: Uint8Array | null;
+  heatmapData: HeatmapPointData | null;
+}) {
+  const [viewState, setViewState] = useState&lt;Partial&lt;WsiViewState&gt;&gt;({});
+  const [drawTool, setDrawTool] = useState&lt;DrawTool&gt;("cursor");
+  const [regions, setRegions] = useState&lt;WsiRegion[]&gt;([]);
+
+  const pointSizeByZoom: PointSizeByZoom = { 1.25: 2, 2.5: 3, 5: 4, 10: 6, 20: 8 };
+  const overlayShapes: DrawOverlayShape[] = [
+    {
+      id: "focus-mask",
+      coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]],
+      closed: true,
+      invertedFill: { fillColor: "rgba(0, 0, 0, 0.14)" },
+    },
+  ];
+
+  return (
+    &lt;WsiViewer
+      source={source}
+      viewState={viewState}
+      onViewStateChange={setViewState}
+      zoomSnaps={[1.25, 2.5, 5, 10, 20, 40]}
+      zoomSnapFitAsMin
+      onPointerWorldMove={(event) =&gt; console.log(event.coordinate)}
+      onStats={(stats) =&gt; console.log(stats.frameMs, stats.visible)}
+      style={{ width: "100%", height: 720 }}
+    &gt;
+      &lt;PointLayer data={pointData} palette={palette} sizeByZoom={pointSizeByZoom} /&gt;
+      &lt;HeatmapLayer data={heatmapData} visible opacity={0.7} radius={2} blur={3} /&gt;
+      &lt;RegionLayer regions={regions} /&gt;
+      &lt;DrawingLayer
+        tool={drawTool}
+        onComplete={(result) =&gt; {
+          setRegions((prev) =&gt; [
+            ...prev,
+            { id: crypto.randomUUID(), label: "ROI", coordinates: result.coordinates },
+          ]);
+          setDrawTool("cursor");
+        }}
+      /&gt;
+      &lt;OverlayLayer shapes={overlayShapes} /&gt;
+      &lt;PatchLayer regions={regions.filter((region) =&gt; String(region.label).startsWith("Patch"))} /&gt;
+    &lt;/WsiViewer&gt;
+  );
+}</code></pre>
+            <div class="callout">
+              <code>WsiViewerCanvas</code> is not exported from the current package.
+              New implementations should treat <code>WsiViewer</code> + child
+              layers as the primary path.
+            </div>
+            <table>
+              <thead>
+                <tr><th>Key exports</th><th>Role</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>WsiViewer</code>, <code>WsiViewerProps</code></td><td>Root for camera, tiles, and shared canvases.</td></tr>
+                <tr><td><code>PointLayer</code>, <code>PointLayerProps</code></td><td>Pass point buffers and palette into the renderer.</td></tr>
+                <tr><td><code>RegionLayer</code>, <code>RegionLayerProps</code></td><td>Show persisted ROI, hover, active state, and labels.</td></tr>
+                <tr><td><code>DrawingLayer</code>, <code>DrawingLayerProps</code></td><td>Control draw tools and receive completed shapes.</td></tr>
+                <tr><td><code>PatchLayer</code>, <code>OverlayLayer</code></td><td>Render patch-only polygons and custom overlay shapes.</td></tr>
+                <tr><td><code>PointerWorldMoveEvent</code>, <code>WsiRenderStats</code>, <code>WsiTileErrorEvent</code></td><td>Typed payloads for pointer, stats, and tile errors.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="source">
+            <h2>2. <code>normalizeImageInfo</code> / <code>normalizeImageClasses</code> / <code>toTileUrl</code></h2>
+            <p>
+              Fetch image metadata from your API, then normalize it into runtime
+              inputs with <code>normalizeImageInfo</code> and
+              <code>normalizeImageClasses</code>. Use
+              <code>toBearerToken</code> so your fetch path accepts either raw or
+              prefixed tokens.
+            </p>
+            <div data-open-plant-inline-demo="source" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-ts">import {
+  normalizeImageClasses,
+  normalizeImageInfo,
+  toBearerToken,
+  toTileUrl,
+  type RawImagePayload,
+  type WsiClass,
+  type WsiImageSource,
+} from "open-plant";
+
+const imageId = "69898975a05a9cd9ec6fe311";
+const token = toBearerToken("&lt;access-token&gt;");
+
+const response = await fetch(`/api/v4/images/${imageId}/info`, {
+  headers: { Authorization: token },
+});
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+const raw = (await response.json()) as RawImagePayload;
+const source: WsiImageSource = normalizeImageInfo(raw, "https://your-cdn.example.com/ims");
+const classes: WsiClass[] = normalizeImageClasses(raw);
+const previewTileUrl = toTileUrl(source, source.maxTierZoom, 0, 0);</code></pre>
+            <div class="callout">
+              <code>RawImagePayload</code>, <code>RawImsInfo</code>, and
+              <code>RawWsiClass</code> describe the server response shape.
+              <code>WsiImageSource</code>, <code>WsiClass</code>,
+              <code>WsiImageColorSettings</code>, and <code>WsiViewState</code>
+              are the runtime shapes your app usually stores.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="points">
+            <h2>3. <code>PointLayer</code>: point rendering and picking</h2>
+            <p>
+              Point decoding is outside the library. The core contract is to build
+              <code>WsiPointData</code> with TypedArrays, then pass the palette from
+              <code>buildClassPalette</code> into <code>PointLayer</code>.
+            </p>
+            <div data-open-plant-inline-demo="points" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-tsx">import { useMemo, useRef } from "react";
+import {
+  DEFAULT_POINT_COLOR,
+  PointLayer,
+  buildClassPalette,
+  hexToRgba,
+  type PointHoverEvent,
+  type PointQueryHandle,
+  type PointSizeByZoom,
+  type WsiClass,
+  type WsiPointData,
+} from "open-plant";
+
+function CellLayer({
+  classes,
+  positions,
+  paletteIndices,
+}: {
+  classes: WsiClass[];
+  positions: Float32Array;
+  paletteIndices: Uint16Array;
+}) {
+  const pointRef = useRef&lt;PointQueryHandle&gt;(null);
+  const palette = useMemo(() =&gt; buildClassPalette(classes), [classes]);
+
+  const pointData: WsiPointData = {
+    count: positions.length / 2,
+    positions,
+    paletteIndices,
+  };
+
+  const sizeByZoom: PointSizeByZoom = { 1.25: 2, 2.5: 3, 5: 4, 10: 5, 20: 7 };
+
+  console.log(DEFAULT_POINT_COLOR, hexToRgba("#13bfa0"));
+
+  return (
+    &lt;PointLayer
+      ref={pointRef}
+      data={pointData}
+      palette={palette.colors}
+      sizeByZoom={sizeByZoom}
+      strokeScale={1.15}
+      innerFillOpacity={0.2}
+      onHover={(event: PointHoverEvent) =&gt; console.log(event.id, event.coordinate)}
+      onClick={(event) =&gt; console.log(event.index, event.id)}
+    /&gt;
+  );
+}
+
+const hit = pointRef.current?.queryAt([12000, 18000]);</code></pre>
+            <div class="callout">
+              If all you need is coordinate picking, <code>PointQueryHandle</code>
+              plus <code>onHover</code>/<code>onClick</code> is enough. Drop down to
+              the Point Hit Index APIs only when you need direct control over the
+              spatial hash.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="draw">
+            <h2>4. <code>DrawingLayer</code> / <code>RegionLayer</code> / <code>PatchLayer</code> / <code>OverlayLayer</code></h2>
+            <p>
+              <code>DrawingLayer</code> is the normal path for user-created ROI.
+              If coordinates already exist, <code>RegionLayer</code>,
+              <code>PatchLayer</code>, and <code>OverlayLayer</code> are enough.
+            </p>
+            <div data-open-plant-inline-demo="draw" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-tsx">import {
+  DrawingLayer,
+  OverlayLayer,
+  PatchLayer,
+  RegionLayer,
+  closeRing,
+  createCircle,
+  createRectangle,
+  type BrushOptions,
+  type DrawAreaTooltipOptions,
+  type DrawResult,
+  type DrawTool,
+  type PatchDrawResult,
+  type StampOptions,
+} from "open-plant";
+
+const manualRectangle = createRectangle([1200, 1400], [2600, 2800]);
+const manualCircle = createCircle([3200, 3200], [3800, 3800]);
+const manualPolygon = closeRing([[4200, 4200], [5200, 4400], [4900, 5300]]);
+
+const brushOptions: BrushOptions = {
+  radius: 24,
+  edgeDetail: 1.5,
+  edgeSmoothing: 2,
+  clickSelectRoi: true,
+};
+
+const stampOptions: StampOptions = {
+  rectangleAreaMm2: 2,
+  circleAreaMm2: 0.2,
+  rectanglePixelSize: 4096,
+};
+
+const areaTooltip: DrawAreaTooltipOptions = { enabled: true };
+const drawTool: DrawTool = "freehand";
+
+&lt;RegionLayer
+  regions={[
+    { id: "rect", label: "Rect ROI", coordinates: manualRectangle },
+    { id: "circle", label: "Circle ROI", coordinates: manualCircle },
+    { id: "poly", label: "Manual ROI", coordinates: manualPolygon },
+  ]}
+  strokeStyle={{ color: "#ffd166", width: 2.5 }}
+  hoverStrokeStyle={{ color: "#ff6a3d", width: 3 }}
+  activeStrokeStyle={{ color: "#ff2f2f", width: 3.2, shadowBlur: 12 }}
+  labelStyle={({ zoom }) =&gt; ({ fontSize: zoom &gt; 4 ? 13 : 11 })}
+  autoLiftLabelAtMaxZoom
+/&gt;
+
+&lt;DrawingLayer
+  tool={drawTool}
+  stampOptions={stampOptions}
+  brushOptions={brushOptions}
+  areaTooltip={areaTooltip}
+  onComplete={(result: DrawResult) =&gt; console.log(result.intent, result.coordinates)}
+  onPatchComplete={(patch: PatchDrawResult) =&gt; console.log(patch.tool, patch.coordinates)}
+/&gt;
+
+&lt;PatchLayer regions={[{ id: "patch-1", coordinates: manualRectangle }]} /&gt;
+&lt;OverlayLayer
+  shapes={[
+    {
+      id: "mask",
+      coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]],
+      closed: true,
+      invertedFill: { fillColor: "rgba(0, 0, 0, 0.15)" },
+    },
+  ]}
+/&gt;</code></pre>
+            <pre><code class="language-tsx">import { DrawLayer, useViewerContext } from "open-plant";
+
+function StandaloneDrawOverlay() {
+  const { rendererRef, source } = useViewerContext();
+  if (!source) return null;
+
+  return (
+    &lt;DrawLayer
+      tool="rectangle"
+      imageWidth={source.width}
+      imageHeight={source.height}
+      imageMpp={source.mpp}
+      imageZoom={source.maxTierZoom}
+      projectorRef={rendererRef}
+      onDrawComplete={(result) =&gt; console.log(result.coordinates)}
+    /&gt;
+  );
+}</code></pre>
+            <div class="callout">
+              <code>DrawLayer</code> is a lower-level overlay primitive. Most apps
+              should stay on <code>DrawingLayer</code> unless they need direct
+              projector control.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="heatmap">
+            <h2>5. <code>HeatmapLayer</code> / <code>OverviewMap</code> / <code>useViewerContext</code></h2>
+            <p>
+              Use <code>HeatmapLayer</code> for hotspot density, and pair
+              <code>OverviewMap</code> with <code>useViewerContext</code> when you
+              need a minimap or explicit coordinate transforms.
+            </p>
+            <div data-open-plant-inline-demo="heatmap" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-tsx">import {
+  HeatmapLayer,
+  OverviewMap,
+  useViewerContext,
+  type HeatmapKernelScaleMode,
+  type HeatmapPointData,
+  type OverviewMapOptions,
+} from "open-plant";
+
+const heatmapData: HeatmapPointData = {
+  count: hotspots.length / 2,
+  positions: hotspots,
+  weights,
+};
+
+const scaleMode: HeatmapKernelScaleMode = "fixed-zoom";
+
+&lt;HeatmapLayer
+  data={heatmapData}
+  visible
+  opacity={0.75}
+  radius={2}
+  blur={3}
+  gradient={["transparent", "#0ff", "#0f0", "#ff0", "#f00"]}
+  scaleMode={scaleMode}
+  fixedZoom={6}
+  densityContrast={4}
+  onStats={(stats) =&gt; console.log(stats.visiblePoints, stats.renderMs)}
+/&gt;</code></pre>
+            <pre><code class="language-tsx">function ViewerChrome() {
+  const { rendererRef, source, worldToScreen, screenToWorld, overviewInvalidateRef } = useViewerContext();
+  if (!source) return null;
+
+  const options: Partial&lt;OverviewMapOptions&gt; = {
+    position: "bottom-right",
+    viewportBorderStyle: "dash",
+    interactive: true,
+  };
+
+  console.log(worldToScreen(1000, 1000), screenToWorld(200, 120));
+
+  return (
+    &lt;OverviewMap
+      source={source}
+      projectorRef={rendererRef}
+      invalidateRef={overviewInvalidateRef}
+      options={options}
+    /&gt;
+  );
+}</code></pre>
+            <div class="callout">
+              <code>__heatmapLayerInternals</code> is exposed for internal/debug
+              style scenarios. It should not be treated as the default public path
+              for app code.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="clip">
+            <h2>6. <code>filterPointDataByPolygons*</code>: sync / worker / hybrid-webgpu</h2>
+            <p>
+              You can either pre-process point data with the clip functions
+              directly, or let <code>PointLayer</code> handle clipping by passing
+              <code>clipEnabled</code> and <code>clipMode</code>.
+            </p>
+            <div data-open-plant-inline-demo="clip" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-ts">import {
+  filterPointDataByPolygons,
+  filterPointDataByPolygonsHybrid,
+  filterPointDataByPolygonsInWorker,
+  filterPointIndicesByPolygons,
+  filterPointIndicesByPolygonsInWorker,
+  terminateRoiClipWorker,
+  type HybridPointClipOptions,
+  type PointClipMode,
+  type RoiPolygon,
+} from "open-plant";
+
+const polygons: RoiPolygon[] = [roi.coordinates as RoiPolygon];
+
+const syncData = filterPointDataByPolygons(pointData, polygons);
+const syncIndices = filterPointIndicesByPolygons(pointData, polygons);
+
+const workerResult = await filterPointDataByPolygonsInWorker(pointData, polygons);
+const workerIndices = await filterPointIndicesByPolygonsInWorker(pointData, polygons);
+
+const hybridOptions: HybridPointClipOptions = { bridgeToDraw: true };
+const hybridResult = await filterPointDataByPolygonsHybrid(pointData, polygons, hybridOptions);
+
+const clipMode: PointClipMode = "worker";
+terminateRoiClipWorker();</code></pre>
+            <pre><code class="language-tsx">&lt;PointLayer
+  data={pointData}
+  palette={palette.colors}
+  clipEnabled
+  clipToRegions={regions}
+  clipMode="worker"
+  onClipStats={(event) =&gt; {
+    console.log(event.mode, event.durationMs, event.outputCount);
+  }}
+/&gt;</code></pre>
+            <table>
+              <thead>
+                <tr><th>Mode</th><th>Recommended use</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>"sync"</code></td><td>Small data, quick debugging</td><td>Runs on the main thread.</td></tr>
+                <tr><td><code>"worker"</code></td><td>Default production path</td><td>Best tradeoff for keeping UI responsive.</td></tr>
+                <tr><td><code>"hybrid-webgpu"</code></td><td>Opt-in after benchmarking real data</td><td>Uses bbox prefilter before polygon inclusion checks.</td></tr>
+              </tbody>
+            </table>
+            <div class="callout">
+              The <code>RoiClipWorkerRequest</code> protocol types are only needed
+              if you are building a custom worker bridge yourself. Most apps only
+              need <code>filterPointDataByPolygonsInWorker</code>.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="hit-index">
+            <h2>7. <code>buildPointSpatialIndexAsync</code> / <code>lookupCellIndex</code></h2>
+            <p>
+              <code>PointLayer</code> events are enough for most hover/click cases.
+              Use <code>buildPointSpatialIndexAsync</code> when you need explicit
+              control over coordinate lookup or custom picking.
+            </p>
+            <div data-open-plant-inline-demo="hit-index" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-ts">import {
+  buildPointSpatialIndexAsync,
+  lookupCellIndex,
+  terminatePointHitIndexWorker,
+  type FlatPointSpatialIndex,
+} from "open-plant";
+
+const flatIndex: FlatPointSpatialIndex | null = await buildPointSpatialIndexAsync(pointData, source);
+
+if (flatIndex) {
+  const cellIndex = lookupCellIndex(flatIndex, 12, 8);
+  console.log(flatIndex.cellSize, flatIndex.safeCount, cellIndex);
+}
+
+terminatePointHitIndexWorker();</code></pre>
+            <div class="callout">
+              <code>PointHitIndexWorkerRequest</code> and
+              <code>PointHitIndexWorkerResponse</code> are useful only when you
+              want the worker message contract typed in your own bridge layer.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="geometry">
+            <h2>8. <code>parseWkt</code> / <code>toRoiGeometry</code> / <code>computeRoiPointGroups</code> / <code>createSpatialIndex</code></h2>
+            <p>
+              This is the path for turning WKT strings into ROI coordinates,
+              computing per-ROI class counts, and keeping a bbox search index for
+              fast lookups.
+            </p>
+            <div data-open-plant-inline-demo="geometry" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-ts">import {
+  computeRoiPointGroups,
+  createSpatialIndex,
+  parseWkt,
+  toRoiGeometry,
+  type RoiPointGroupStats,
+  type SpatialExtent,
+  type SpatialIndexItem,
+} from "open-plant";
+
+const parsed = parseWkt("POLYGON ((1200 1400, 2400 1400, 2400 2600, 1200 2600, 1200 1400))");
+const roiGeometry = toRoiGeometry(parsed?.coordinates);
+
+const stats: RoiPointGroupStats = computeRoiPointGroups(pointData, regions, {
+  paletteIndexToClassId: new Map([
+    [1, "negative"],
+    [2, "positive"],
+  ]),
+});
+
+const index = createSpatialIndex&lt;{ id: string }&gt;(16);
+const items: SpatialIndexItem&lt;{ id: string }&gt;[] = [
+  { minX: 1200, minY: 1400, maxX: 2400, maxY: 2600, value: { id: "roi-1" } },
+  { minX: 2600, minY: 3000, maxX: 4200, maxY: 4600, value: { id: "roi-2" } },
+];
+index.load(items);
+
+const searchExtent: SpatialExtent = [1800, 1800, 3200, 3200];
+const candidates = index.search(searchExtent);</code></pre>
+            <div class="callout">
+              <code>RoiPointGroup</code>, <code>RoiClassCount</code>,
+              <code>ParsedWktGeometry</code>, <code>ParsedWktPolygon</code>, and
+              <code>ParsedWktMultiPolygon</code> are the result types for this
+              workflow.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="utils">
+            <h2>9. <code>calcScaleResolution</code> / <code>calcScaleLength</code> / <code>clamp</code> / view helpers</h2>
+            <p>
+              Scale-bar math, numeric clamping, color conversion, and view-state
+              comparisons are exported as standalone helpers.
+            </p>
+            <div data-open-plant-inline-demo="utils" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-ts">import {
+  calcScaleLength,
+  calcScaleResolution,
+  clamp,
+  hexToRgba,
+  isSameViewState,
+  type WsiViewState,
+} from "open-plant";
+
+const prev: Partial&lt;WsiViewState&gt; = { zoom: 1, offsetX: 0, offsetY: 0, rotationDeg: 0 };
+const next: Partial&lt;WsiViewState&gt; = { zoom: 1, offsetX: 0, offsetY: 0, rotationDeg: 0 };
+
+const resolution = calcScaleResolution(0.25, 8, 10);
+const scaleLabel = calcScaleLength(0.25, 8, 10);
+const safeOpacity = clamp(1.2, 0, 1);
+const rgba = hexToRgba("#13bfa0");
+const sameView = isSameViewState(prev, next);</code></pre>
+            <div class="callout">
+              <code>buildClassPalette</code> is also a utility export, but it is
+              introduced earlier in the point-rendering section because that is
+              where it normally enters app code.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="low-level">
+            <h2>10. <code>TileViewerCanvas</code> / <code>M1TileRenderer</code> / <code>WsiTileRenderer</code></h2>
+            <p>
+              These APIs are for engine integration and experiments. They are not
+              the default entry point for most React applications, but they are
+              useful when you need direct renderer control.
+            </p>
+            <div data-open-plant-inline-demo="low-level" data-open-plant-inline-lang="en"></div>
+            <pre><code class="language-tsx">import {
+  TileViewerCanvas,
+  type TileDefinition,
+  type ViewState,
+} from "open-plant";
+
+const tiles: TileDefinition[] = [
+  { id: "tile-0-0", url: "/tiles/0/0_0.webp", bounds: [0, 0, 1024, 1024] },
+];
+
+const viewState: Partial&lt;ViewState&gt; = { zoom: 1, offsetX: 512, offsetY: 512 };
+
+&lt;TileViewerCanvas
+  imageWidth={8192}
+  imageHeight={8192}
+  tiles={tiles}
+  viewState={viewState}
+  style={{ width: 640, height: 480 }}
+/&gt;</code></pre>
+            <pre><code class="language-ts">import {
+  TileScheduler,
+  WsiTileRenderer,
+  getWebGpuCapabilities,
+  prefilterPointsByBoundsWebGpu,
+  type ScheduledTile,
+  type WsiTileRendererOptions,
+} from "open-plant";
+
+const rendererOptions: WsiTileRendererOptions = {
+  authToken,
+  pointSizeByZoom: { 1.25: 2, 5: 4, 20: 7 },
+  tileScheduler: { maxConcurrency: 12, maxRetries: 2 },
+  onViewStateChange: (next) =&gt; console.log(next.zoom),
+  onStats: (stats) =&gt; console.log(stats.frameMs),
+};
+
+const renderer = new WsiTileRenderer(canvas, source, rendererOptions);
+renderer.setPointPalette(palette.colors);
+renderer.setPointData(pointData);
+renderer.setImageColorSettings({ brightness: 0.05, contrast: 0.1, saturation: 0 });
+renderer.fitToImage({ duration: 0 });
+renderer.zoomBy(1.2, 400, 300);
+
+const scheduledTile: ScheduledTile = {
+  key: "6/10/12",
+  tier: 6,
+  x: 10,
+  y: 12,
+  bounds: [10240, 12288, 11264, 13312],
+  distance2: 0,
+  url: "https://your-cdn.example.com/tiles/6/12_10.webp",
+};
+
+const scheduler = new TileScheduler({
+  authToken,
+  onTileLoad: (tile, bitmap) =&gt; console.log(tile.key, bitmap.width, bitmap.height),
+});
+scheduler.schedule([scheduledTile]);
+
+const caps = await getWebGpuCapabilities();
+if (caps.supported) {
+  const mask = await prefilterPointsByBoundsWebGpu(
+    pointData.positions,
+    pointData.count,
+    new Float32Array([1200, 1400, 2400, 2600]),
+  );
+  console.log(mask);
+}
+
+renderer.destroy();
+scheduler.destroy();</code></pre>
+            <pre><code class="language-ts">import { M1TileRenderer } from "open-plant";
+
+const simpleRenderer = new M1TileRenderer({
+  canvas,
+  imageWidth: 8192,
+  imageHeight: 8192,
+  initialViewState: { zoom: 1 },
+});
+
+await simpleRenderer.setTiles(tiles);
+simpleRenderer.destroy();</code></pre>
+            <div class="callout">
+              <code>M1TileRenderer</code> and <code>TileViewerCanvas</code> are
+              closer to the light tile-only path. Production WSI integration usually
+              means <code>WsiTileRenderer</code> directly or the higher-level
+              <code>WsiViewer</code>.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="export-index">
+            <h2>11. Export Index</h2>
+            <p>
+              The table below lists the full current public surface from
+              <code>src/index.ts</code>. Each row points to the section that should
+              be your first stop on this page.
+            </p>
+            <div data-examples-export-index="en"></div>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/examples-exports.js" defer></script>
+    <script>
+      window.__OPEN_PLANT_EXAMPLES_DEBUG__ = {
+        stage: "html",
+        href: window.location.href,
+        timestamp: new Date().toISOString(),
+      };
+      console.error("[open-plant/examples] html reached", window.__OPEN_PLANT_EXAMPLES_DEBUG__);
+    </script>
+    <script src="https://unpkg.com/@stackblitz/sdk@1/bundles/sdk.umd.js"></script>
+    <script type="module" src="../assets/examples-playground.js?v=20260406-api-tree"></script>
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>

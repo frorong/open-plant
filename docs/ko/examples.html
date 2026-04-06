@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Examples | Open Plant WSI Docs</title>
+    <meta
+      name="description"
+      content="Open Plant WSI 공개 API를 예제 중심으로 설명하는 사용 가이드"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body data-page="examples">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.html"><span class="brand-dot"></span><span>Open Plant WSI</span></a>
+        <nav class="topnav" aria-label="Main Navigation">
+          <a href="index.html" data-nav="index">개요</a>
+          <a href="getting-started.html" data-nav="getting-started">빠른 시작</a>
+          <a href="examples.html" data-nav="examples">Examples</a>
+          <a href="api-reference.html" data-nav="api-reference">API</a>
+          <a href="contributing.html" data-nav="contributing">기여 가이드</a>
+          <a href="architecture.html" data-nav="architecture">아키텍처</a>
+          <a href="../en/examples.html">EN</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>Examples</h2>
+          <div class="sidebar-group">Reference App 트리</div>
+          <a href="#composition"><code>WsiViewer</code></a>
+          <a href="#points"><code>PointLayer</code></a>
+          <a href="#draw"><code>DrawingLayer</code> / <code>RegionLayer</code></a>
+          <a href="#heatmap"><code>HeatmapLayer</code> / <code>OverviewMap</code></a>
+          <div class="sidebar-group">입력과 분석</div>
+          <a href="#source"><code>normalizeImageInfo</code> / <code>toTileUrl</code></a>
+          <a href="#clip"><code>filterPointDataByPolygons*</code></a>
+          <a href="#hit-index"><code>buildPointSpatialIndexAsync</code></a>
+          <a href="#geometry"><code>parseWkt</code> / <code>computeRoiPointGroups</code></a>
+          <a href="#utils"><code>calcScaleResolution</code> / <code>clamp</code></a>
+          <div class="sidebar-group">Renderer</div>
+          <a href="#low-level"><code>TileViewerCanvas</code> / <code>WsiTileRenderer</code></a>
+          <a href="#export-index">Export Index</a>
+          <a href="api-reference.html">API Reference</a>
+        </aside>
+
+        <article class="content">
+          <section class="hero reveal">
+            <div class="kicker">Examples</div>
+            <h1>공개 API를 예제로 이해하는 페이지</h1>
+            <p>
+              이 페이지는 이제 <code>example/src/App.tsx</code> 의 실제 API
+              구조를 그대로 따라갑니다. 평면적인 주제 목록이 아니라 source 준비,
+              <code>WsiViewer</code>, 자식 레이어, interaction worker, 그 아래
+              저수준 renderer 순서로 트리를 잡았습니다.
+            </p>
+          </section>
+
+          <section class="panel reveal">
+            <span class="pill">open-plant 1.4.10</span>
+            <h2>API Tree</h2>
+            <div class="card-grid api-tree-grid">
+              <div class="card api-tree-branch">
+                <h3>Viewer Composition</h3>
+                <p><code>WsiViewer</code> 가 타일, 카메라, 이벤트, 공용 overlay surface를 잡고 그 아래에 레이어가 붙습니다.</p>
+                <div class="api-tree-list">
+                  <a href="#composition"><code>WsiViewer</code></a>
+                  <a href="#points"><code>PointLayer</code></a>
+                  <a href="#draw"><code>DrawingLayer</code> / <code>RegionLayer</code> / <code>PatchLayer</code> / <code>OverlayLayer</code></a>
+                  <a href="#heatmap"><code>HeatmapLayer</code> / <code>OverviewMap</code> / <code>useViewerContext</code></a>
+                </div>
+              </div>
+              <div class="card api-tree-branch">
+                <h3>입력과 분석</h3>
+                <p>이미지 메타데이터, 포인트 payload, ROI filter, 검색 helper는 viewer 트리에 들어가기 전 이 계층에서 준비됩니다.</p>
+                <div class="api-tree-list">
+                  <a href="#source"><code>normalizeImageInfo</code> / <code>normalizeImageClasses</code> / <code>toTileUrl</code> / <code>toBearerToken</code></a>
+                  <a href="#clip"><code>filterPointDataByPolygons</code> / worker / hybrid</a>
+                  <a href="#hit-index"><code>buildPointSpatialIndexAsync</code> / <code>lookupCellIndex</code></a>
+                  <a href="#geometry"><code>parseWkt</code> / <code>toRoiGeometry</code> / <code>computeRoiPointGroups</code> / <code>createSpatialIndex</code></a>
+                  <a href="#utils"><code>calcScaleResolution</code> / <code>calcScaleLength</code> / <code>clamp</code></a>
+                </div>
+              </div>
+              <div class="card api-tree-branch">
+                <h3>저수준 런타임</h3>
+                <p>React composition 계층으로 부족할 때만 내려가서 renderer를 직접 제어합니다.</p>
+                <div class="api-tree-list">
+                  <a href="#low-level"><code>TileViewerCanvas</code> / <code>M1TileRenderer</code> / <code>WsiTileRenderer</code></a>
+                  <a href="#export-index">Full export index</a>
+                </div>
+              </div>
+            </div>
+            <div class="callout">
+              아래 모든 섹션은 같은 형식으로 맞췄습니다. 실제 API 이름 중심의
+              제목, 바로 실행되는 StackBlitz preview, 그리고 그 API 노드에 맞는
+              runnable source 순서입니다. 기준 흐름은 docs 전용 순서가 아니라
+              <code>example/src/App.tsx</code> 입니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="composition">
+            <h2>1. <code>WsiViewer</code>: composition root and child layers</h2>
+            <p>
+              현재 공개 React API의 중심은 <code>WsiViewer</code>입니다.
+              타일 렌더링, view state, 공용 overlay canvas는 여기서 관리하고,
+              포인트/ROI/드로잉/heatmap은 자식 레이어로 붙입니다.
+            </p>
+            <div data-open-plant-inline-demo="composition" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-tsx">import { useState } from "react";
+import {
+  DrawingLayer,
+  HeatmapLayer,
+  OverlayLayer,
+  PatchLayer,
+  PointLayer,
+  RegionLayer,
+  WsiViewer,
+  type DrawOverlayShape,
+  type DrawTool,
+  type HeatmapPointData,
+  type PointSizeByZoom,
+  type WsiImageSource,
+  type WsiPointData,
+  type WsiRegion,
+  type WsiViewState,
+} from "open-plant";
+
+function ViewerShell({
+  source,
+  pointData,
+  palette,
+  heatmapData,
+}: {
+  source: WsiImageSource | null;
+  pointData: WsiPointData | null;
+  palette: Uint8Array | null;
+  heatmapData: HeatmapPointData | null;
+}) {
+  const [viewState, setViewState] = useState&lt;Partial&lt;WsiViewState&gt;&gt;({});
+  const [drawTool, setDrawTool] = useState&lt;DrawTool&gt;("cursor");
+  const [regions, setRegions] = useState&lt;WsiRegion[]&gt;([]);
+
+  const pointSizeByZoom: PointSizeByZoom = { 1.25: 2, 2.5: 3, 5: 4, 10: 6, 20: 8 };
+  const overlayShapes: DrawOverlayShape[] = [
+    {
+      id: "focus-mask",
+      coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]],
+      closed: true,
+      invertedFill: { fillColor: "rgba(0, 0, 0, 0.14)" },
+    },
+  ];
+
+  return (
+    &lt;WsiViewer
+      source={source}
+      viewState={viewState}
+      onViewStateChange={setViewState}
+      zoomSnaps={[1.25, 2.5, 5, 10, 20, 40]}
+      zoomSnapFitAsMin
+      onPointerWorldMove={(event) =&gt; console.log(event.coordinate)}
+      onStats={(stats) =&gt; console.log(stats.frameMs, stats.visible)}
+      style={{ width: "100%", height: 720 }}
+    &gt;
+      &lt;PointLayer data={pointData} palette={palette} sizeByZoom={pointSizeByZoom} /&gt;
+      &lt;HeatmapLayer data={heatmapData} visible opacity={0.7} radius={2} blur={3} /&gt;
+      &lt;RegionLayer regions={regions} /&gt;
+      &lt;DrawingLayer
+        tool={drawTool}
+        onComplete={(result) =&gt; {
+          setRegions((prev) =&gt; [
+            ...prev,
+            { id: crypto.randomUUID(), label: "ROI", coordinates: result.coordinates },
+          ]);
+          setDrawTool("cursor");
+        }}
+      /&gt;
+      &lt;OverlayLayer shapes={overlayShapes} /&gt;
+      &lt;PatchLayer regions={regions.filter((region) =&gt; String(region.label).startsWith("Patch"))} /&gt;
+    &lt;/WsiViewer&gt;
+  );
+}</code></pre>
+            <div class="callout">
+              <code>WsiViewerCanvas</code>는 현재 패키지에서 export되지 않습니다.
+              신규 구현은 <code>WsiViewer</code> + layer 조합으로 가는 것이 기준입니다.
+            </div>
+            <table>
+              <thead>
+                <tr><th>주요 Export</th><th>역할</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>WsiViewer</code>, <code>WsiViewerProps</code></td><td>카메라/타일/공용 캔버스의 루트.</td></tr>
+                <tr><td><code>PointLayer</code>, <code>PointLayerProps</code></td><td>포인트 데이터와 palette를 렌더러에 전달.</td></tr>
+                <tr><td><code>RegionLayer</code>, <code>RegionLayerProps</code></td><td>영속 ROI, hover, active, label 표시.</td></tr>
+                <tr><td><code>DrawingLayer</code>, <code>DrawingLayerProps</code></td><td>draw tool 상태와 결과 수신.</td></tr>
+                <tr><td><code>PatchLayer</code>, <code>OverlayLayer</code></td><td>보조 polygon / custom overlay 렌더.</td></tr>
+                <tr><td><code>PointerWorldMoveEvent</code>, <code>WsiRenderStats</code>, <code>WsiTileErrorEvent</code></td><td>상태/에러/포인터 이벤트 payload.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel reveal" id="source">
+            <h2>2. <code>normalizeImageInfo</code> / <code>normalizeImageClasses</code> / <code>toTileUrl</code></h2>
+            <p>
+              API 서버에서 이미지 info를 받은 뒤 <code>normalizeImageInfo</code>,
+              <code>normalizeImageClasses</code>로 런타임 입력으로 바꿉니다.
+              토큰은 <code>toBearerToken</code>으로 정규화해 두면 좋습니다.
+            </p>
+            <div data-open-plant-inline-demo="source" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-ts">import {
+  normalizeImageClasses,
+  normalizeImageInfo,
+  toBearerToken,
+  toTileUrl,
+  type RawImagePayload,
+  type WsiClass,
+  type WsiImageSource,
+} from "open-plant";
+
+const imageId = "69898975a05a9cd9ec6fe311";
+const token = toBearerToken("&lt;access-token&gt;");
+
+const response = await fetch(`/api/v4/images/${imageId}/info`, {
+  headers: { Authorization: token },
+});
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+const raw = (await response.json()) as RawImagePayload;
+const source: WsiImageSource = normalizeImageInfo(raw, "https://your-cdn.example.com/ims");
+const classes: WsiClass[] = normalizeImageClasses(raw);
+const previewTileUrl = toTileUrl(source, source.maxTierZoom, 0, 0);</code></pre>
+            <div class="callout">
+              <code>RawImagePayload</code>, <code>RawImsInfo</code>,
+              <code>RawWsiClass</code>는 서버 응답 shape입니다.
+              <code>WsiImageSource</code>, <code>WsiClass</code>,
+              <code>WsiImageColorSettings</code>, <code>WsiViewState</code>는
+              앱 코드에서 직접 들고 다니는 쪽의 타입입니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="points">
+            <h2>3. <code>PointLayer</code>: point rendering and picking</h2>
+            <p>
+              포인트 로더는 라이브러리 밖에서 구현합니다. 핵심은
+              <code>WsiPointData</code>를 TypedArray로 준비하고,
+              <code>buildClassPalette</code> 결과를 <code>PointLayer</code>에
+              넘기는 것입니다.
+            </p>
+            <div data-open-plant-inline-demo="points" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-tsx">import { useMemo, useRef } from "react";
+import {
+  DEFAULT_POINT_COLOR,
+  PointLayer,
+  buildClassPalette,
+  hexToRgba,
+  type PointHoverEvent,
+  type PointQueryHandle,
+  type PointSizeByZoom,
+  type WsiClass,
+  type WsiPointData,
+} from "open-plant";
+
+function CellLayer({
+  classes,
+  positions,
+  paletteIndices,
+}: {
+  classes: WsiClass[];
+  positions: Float32Array;
+  paletteIndices: Uint16Array;
+}) {
+  const pointRef = useRef&lt;PointQueryHandle&gt;(null);
+  const palette = useMemo(() =&gt; buildClassPalette(classes), [classes]);
+
+  const pointData: WsiPointData = {
+    count: positions.length / 2,
+    positions,
+    paletteIndices,
+  };
+
+  const sizeByZoom: PointSizeByZoom = { 1.25: 2, 2.5: 3, 5: 4, 10: 5, 20: 7 };
+
+  console.log(DEFAULT_POINT_COLOR, hexToRgba("#13bfa0"));
+
+  return (
+    &lt;PointLayer
+      ref={pointRef}
+      data={pointData}
+      palette={palette.colors}
+      sizeByZoom={sizeByZoom}
+      strokeScale={1.15}
+      innerFillOpacity={0.2}
+      onHover={(event: PointHoverEvent) =&gt; console.log(event.id, event.coordinate)}
+      onClick={(event) =&gt; console.log(event.index, event.id)}
+    /&gt;
+  );
+}
+
+const hit = pointRef.current?.queryAt([12000, 18000]);</code></pre>
+            <div class="callout">
+              간단한 좌표 조회가 목적이면 <code>PointQueryHandle</code> 또는
+              <code>onHover</code>/<code>onClick</code>이면 충분합니다. 직접
+              spatial hash를 다뤄야 할 때만 아래의 Point Hit Index 섹션으로
+              내려가세요.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="draw">
+            <h2>4. <code>DrawingLayer</code> / <code>RegionLayer</code> / <code>PatchLayer</code> / <code>OverlayLayer</code></h2>
+            <p>
+              ROI를 사용자 입력으로 만들 때는 <code>DrawingLayer</code>가 가장
+              일반적입니다. 이미 좌표를 갖고 있다면 <code>RegionLayer</code>,
+              <code>PatchLayer</code>, <code>OverlayLayer</code>만으로도 충분합니다.
+            </p>
+            <div data-open-plant-inline-demo="draw" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-tsx">import {
+  DrawingLayer,
+  OverlayLayer,
+  PatchLayer,
+  RegionLayer,
+  closeRing,
+  createCircle,
+  createRectangle,
+  type BrushOptions,
+  type DrawAreaTooltipOptions,
+  type DrawResult,
+  type DrawTool,
+  type PatchDrawResult,
+  type StampOptions,
+} from "open-plant";
+
+const manualRectangle = createRectangle([1200, 1400], [2600, 2800]);
+const manualCircle = createCircle([3200, 3200], [3800, 3800]);
+const manualPolygon = closeRing([[4200, 4200], [5200, 4400], [4900, 5300]]);
+
+const brushOptions: BrushOptions = {
+  radius: 24,
+  edgeDetail: 1.5,
+  edgeSmoothing: 2,
+  clickSelectRoi: true,
+};
+
+const stampOptions: StampOptions = {
+  rectangleAreaMm2: 2,
+  circleAreaMm2: 0.2,
+  rectanglePixelSize: 4096,
+};
+
+const areaTooltip: DrawAreaTooltipOptions = { enabled: true };
+const drawTool: DrawTool = "freehand";
+
+&lt;RegionLayer
+  regions={[
+    { id: "rect", label: "Rect ROI", coordinates: manualRectangle },
+    { id: "circle", label: "Circle ROI", coordinates: manualCircle },
+    { id: "poly", label: "Manual ROI", coordinates: manualPolygon },
+  ]}
+  strokeStyle={{ color: "#ffd166", width: 2.5 }}
+  hoverStrokeStyle={{ color: "#ff6a3d", width: 3 }}
+  activeStrokeStyle={{ color: "#ff2f2f", width: 3.2, shadowBlur: 12 }}
+  labelStyle={({ zoom }) =&gt; ({ fontSize: zoom &gt; 4 ? 13 : 11 })}
+  autoLiftLabelAtMaxZoom
+/&gt;
+
+&lt;DrawingLayer
+  tool={drawTool}
+  stampOptions={stampOptions}
+  brushOptions={brushOptions}
+  areaTooltip={areaTooltip}
+  onComplete={(result: DrawResult) =&gt; console.log(result.intent, result.coordinates)}
+  onPatchComplete={(patch: PatchDrawResult) =&gt; console.log(patch.tool, patch.coordinates)}
+/&gt;
+
+&lt;PatchLayer regions={[{ id: "patch-1", coordinates: manualRectangle }]} /&gt;
+&lt;OverlayLayer
+  shapes={[
+    {
+      id: "mask",
+      coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]],
+      closed: true,
+      invertedFill: { fillColor: "rgba(0, 0, 0, 0.15)" },
+    },
+  ]}
+/&gt;</code></pre>
+            <pre><code class="language-tsx">import { DrawLayer, useViewerContext } from "open-plant";
+
+function StandaloneDrawOverlay() {
+  const { rendererRef, source } = useViewerContext();
+  if (!source) return null;
+
+  return (
+    &lt;DrawLayer
+      tool="rectangle"
+      imageWidth={source.width}
+      imageHeight={source.height}
+      imageMpp={source.mpp}
+      imageZoom={source.maxTierZoom}
+      projectorRef={rendererRef}
+      onDrawComplete={(result) =&gt; console.log(result.coordinates)}
+    /&gt;
+  );
+}</code></pre>
+            <div class="callout">
+              <code>DrawLayer</code>는 low-level overlay입니다. 일반 앱에서는
+              대부분 <code>DrawingLayer</code>만으로 충분합니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="heatmap">
+            <h2>5. <code>HeatmapLayer</code> / <code>OverviewMap</code> / <code>useViewerContext</code></h2>
+            <p>
+              hotspot 표현은 <code>HeatmapLayer</code>, 미니맵과 좌표 변환은
+              <code>OverviewMap</code>, <code>useViewerContext</code> 조합으로
+              붙입니다.
+            </p>
+            <div data-open-plant-inline-demo="heatmap" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-tsx">import {
+  HeatmapLayer,
+  OverviewMap,
+  useViewerContext,
+  type HeatmapKernelScaleMode,
+  type HeatmapPointData,
+  type OverviewMapOptions,
+} from "open-plant";
+
+const heatmapData: HeatmapPointData = {
+  count: hotspots.length / 2,
+  positions: hotspots,
+  weights,
+};
+
+const scaleMode: HeatmapKernelScaleMode = "fixed-zoom";
+
+&lt;HeatmapLayer
+  data={heatmapData}
+  visible
+  opacity={0.75}
+  radius={2}
+  blur={3}
+  gradient={["transparent", "#0ff", "#0f0", "#ff0", "#f00"]}
+  scaleMode={scaleMode}
+  fixedZoom={6}
+  densityContrast={4}
+  onStats={(stats) =&gt; console.log(stats.visiblePoints, stats.renderMs)}
+/&gt;</code></pre>
+            <pre><code class="language-tsx">function ViewerChrome() {
+  const { rendererRef, source, worldToScreen, screenToWorld, overviewInvalidateRef } = useViewerContext();
+  if (!source) return null;
+
+  const options: Partial&lt;OverviewMapOptions&gt; = {
+    position: "bottom-right",
+    viewportBorderStyle: "dash",
+    interactive: true,
+  };
+
+  console.log(worldToScreen(1000, 1000), screenToWorld(200, 120));
+
+  return (
+    &lt;OverviewMap
+      source={source}
+      projectorRef={rendererRef}
+      invalidateRef={overviewInvalidateRef}
+      options={options}
+    /&gt;
+  );
+}</code></pre>
+            <div class="callout">
+              <code>__heatmapLayerInternals</code>는 internal/debug 용도입니다.
+              앱 공개 코드의 기본 경로로 잡지 않는 편이 안전합니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="clip">
+            <h2>6. <code>filterPointDataByPolygons*</code>: sync / worker / hybrid-webgpu</h2>
+            <p>
+              포인트를 ROI 내부로 줄이고 싶다면 직접 함수 호출로 전처리할 수도 있고,
+              <code>PointLayer</code>에 <code>clipEnabled</code> /
+              <code>clipMode</code>를 넘겨 런타임에서 처리할 수도 있습니다.
+            </p>
+            <div data-open-plant-inline-demo="clip" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-ts">import {
+  filterPointDataByPolygons,
+  filterPointDataByPolygonsHybrid,
+  filterPointDataByPolygonsInWorker,
+  filterPointIndicesByPolygons,
+  filterPointIndicesByPolygonsInWorker,
+  terminateRoiClipWorker,
+  type HybridPointClipOptions,
+  type PointClipMode,
+  type RoiPolygon,
+} from "open-plant";
+
+const polygons: RoiPolygon[] = [roi.coordinates as RoiPolygon];
+
+const syncData = filterPointDataByPolygons(pointData, polygons);
+const syncIndices = filterPointIndicesByPolygons(pointData, polygons);
+
+const workerResult = await filterPointDataByPolygonsInWorker(pointData, polygons);
+const workerIndices = await filterPointIndicesByPolygonsInWorker(pointData, polygons);
+
+const hybridOptions: HybridPointClipOptions = { bridgeToDraw: true };
+const hybridResult = await filterPointDataByPolygonsHybrid(pointData, polygons, hybridOptions);
+
+const clipMode: PointClipMode = "worker";
+terminateRoiClipWorker();</code></pre>
+            <pre><code class="language-tsx">&lt;PointLayer
+  data={pointData}
+  palette={palette.colors}
+  clipEnabled
+  clipToRegions={regions}
+  clipMode="worker"
+  onClipStats={(event) =&gt; {
+    console.log(event.mode, event.durationMs, event.outputCount);
+  }}
+/&gt;</code></pre>
+            <table>
+              <thead>
+                <tr><th>모드</th><th>권장 상황</th><th>비고</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>"sync"</code></td><td>작은 데이터, 단순 디버깅</td><td>메인 스레드에서 바로 계산.</td></tr>
+                <tr><td><code>"worker"</code></td><td>운영 기본값</td><td>메인 UI 블로킹을 줄이기 가장 쉽습니다.</td></tr>
+                <tr><td><code>"hybrid-webgpu"</code></td><td>실데이터 벤치마크 후 opt-in</td><td>bbox prefilter 뒤 polygon 판정을 이어갑니다.</td></tr>
+              </tbody>
+            </table>
+            <div class="callout">
+              <code>RoiClipWorkerRequest</code> 계열 protocol 타입은 custom worker bridge를
+              직접 만들 때만 필요합니다. 일반 앱에서는
+              <code>filterPointDataByPolygonsInWorker</code>만 호출하면 됩니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="hit-index">
+            <h2>7. <code>buildPointSpatialIndexAsync</code> / <code>lookupCellIndex</code></h2>
+            <p>
+              hover/click은 <code>PointLayer</code> 기본 이벤트로 충분한 경우가 많습니다.
+              하지만 좌표 기반 질의를 직접 제어하거나 custom picking을 만들 때는
+              <code>buildPointSpatialIndexAsync</code>를 사용합니다.
+            </p>
+            <div data-open-plant-inline-demo="hit-index" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-ts">import {
+  buildPointSpatialIndexAsync,
+  lookupCellIndex,
+  terminatePointHitIndexWorker,
+  type FlatPointSpatialIndex,
+} from "open-plant";
+
+const flatIndex: FlatPointSpatialIndex | null = await buildPointSpatialIndexAsync(pointData, source);
+
+if (flatIndex) {
+  const cellIndex = lookupCellIndex(flatIndex, 12, 8);
+  console.log(flatIndex.cellSize, flatIndex.safeCount, cellIndex);
+}
+
+terminatePointHitIndexWorker();</code></pre>
+            <div class="callout">
+              worker protocol 타입인 <code>PointHitIndexWorkerRequest</code> /
+              <code>PointHitIndexWorkerResponse</code>는 내부 worker 통신 contract를
+              타입으로 맞추고 싶을 때만 직접 사용하면 됩니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="geometry">
+            <h2>8. <code>parseWkt</code> / <code>toRoiGeometry</code> / <code>computeRoiPointGroups</code> / <code>createSpatialIndex</code></h2>
+            <p>
+              문자열 WKT를 ROI 좌표로 바꾸고, ROI별 class count를 계산하고, bbox
+              검색용 spatial index를 두는 흐름입니다.
+            </p>
+            <div data-open-plant-inline-demo="geometry" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-ts">import {
+  computeRoiPointGroups,
+  createSpatialIndex,
+  parseWkt,
+  toRoiGeometry,
+  type RoiPointGroupStats,
+  type SpatialExtent,
+  type SpatialIndexItem,
+} from "open-plant";
+
+const parsed = parseWkt("POLYGON ((1200 1400, 2400 1400, 2400 2600, 1200 2600, 1200 1400))");
+const roiGeometry = toRoiGeometry(parsed?.coordinates);
+
+const stats: RoiPointGroupStats = computeRoiPointGroups(pointData, regions, {
+  paletteIndexToClassId: new Map([
+    [1, "negative"],
+    [2, "positive"],
+  ]),
+});
+
+const index = createSpatialIndex&lt;{ id: string }&gt;(16);
+const items: SpatialIndexItem&lt;{ id: string }&gt;[] = [
+  { minX: 1200, minY: 1400, maxX: 2400, maxY: 2600, value: { id: "roi-1" } },
+  { minX: 2600, minY: 3000, maxX: 4200, maxY: 4600, value: { id: "roi-2" } },
+];
+index.load(items);
+
+const searchExtent: SpatialExtent = [1800, 1800, 3200, 3200];
+const candidates = index.search(searchExtent);</code></pre>
+            <div class="callout">
+              <code>RoiPointGroup</code>, <code>RoiClassCount</code>,
+              <code>ParsedWktGeometry</code>, <code>ParsedWktPolygon</code>,
+              <code>ParsedWktMultiPolygon</code>은 이 흐름의 결과 타입들입니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="utils">
+            <h2>9. <code>calcScaleResolution</code> / <code>calcScaleLength</code> / <code>clamp</code> / view helper</h2>
+            <p>
+              scale bar 계산, 숫자 clamp, color 변환, view state diff 판단 같은
+              보조 로직은 모두 별도 util로 export됩니다.
+            </p>
+            <div data-open-plant-inline-demo="utils" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-ts">import {
+  calcScaleLength,
+  calcScaleResolution,
+  clamp,
+  hexToRgba,
+  isSameViewState,
+  type WsiViewState,
+} from "open-plant";
+
+const prev: Partial&lt;WsiViewState&gt; = { zoom: 1, offsetX: 0, offsetY: 0, rotationDeg: 0 };
+const next: Partial&lt;WsiViewState&gt; = { zoom: 1, offsetX: 0, offsetY: 0, rotationDeg: 0 };
+
+const resolution = calcScaleResolution(0.25, 8, 10);
+const scaleLabel = calcScaleLength(0.25, 8, 10);
+const safeOpacity = clamp(1.2, 0, 1);
+const rgba = hexToRgba("#13bfa0");
+const sameView = isSameViewState(prev, next);</code></pre>
+            <div class="callout">
+              <code>buildClassPalette</code>도 util export지만 포인트 예제에서 실제
+              사용 흐름과 더 가깝기 때문에 포인트 섹션에서 먼저 다뤘습니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="low-level">
+            <h2>10. <code>TileViewerCanvas</code> / <code>M1TileRenderer</code> / <code>WsiTileRenderer</code></h2>
+            <p>
+              React layer surface 대신 직접 렌더러를 다뤄야 할 때 쓰는 API입니다.
+              운영 앱의 기본 진입점은 아니지만, 엔진 통합이나 실험에는 유용합니다.
+            </p>
+            <div data-open-plant-inline-demo="low-level" data-open-plant-inline-lang="ko"></div>
+            <pre><code class="language-tsx">import {
+  TileViewerCanvas,
+  type TileDefinition,
+  type ViewState,
+} from "open-plant";
+
+const tiles: TileDefinition[] = [
+  { id: "tile-0-0", url: "/tiles/0/0_0.webp", bounds: [0, 0, 1024, 1024] },
+];
+
+const viewState: Partial&lt;ViewState&gt; = { zoom: 1, offsetX: 512, offsetY: 512 };
+
+&lt;TileViewerCanvas
+  imageWidth={8192}
+  imageHeight={8192}
+  tiles={tiles}
+  viewState={viewState}
+  style={{ width: 640, height: 480 }}
+/&gt;</code></pre>
+            <pre><code class="language-ts">import {
+  TileScheduler,
+  WsiTileRenderer,
+  getWebGpuCapabilities,
+  prefilterPointsByBoundsWebGpu,
+  type ScheduledTile,
+  type WsiTileRendererOptions,
+} from "open-plant";
+
+const rendererOptions: WsiTileRendererOptions = {
+  authToken,
+  pointSizeByZoom: { 1.25: 2, 5: 4, 20: 7 },
+  tileScheduler: { maxConcurrency: 12, maxRetries: 2 },
+  onViewStateChange: (next) =&gt; console.log(next.zoom),
+  onStats: (stats) =&gt; console.log(stats.frameMs),
+};
+
+const renderer = new WsiTileRenderer(canvas, source, rendererOptions);
+renderer.setPointPalette(palette.colors);
+renderer.setPointData(pointData);
+renderer.setImageColorSettings({ brightness: 0.05, contrast: 0.1, saturation: 0 });
+renderer.fitToImage({ duration: 0 });
+renderer.zoomBy(1.2, 400, 300);
+
+const scheduledTile: ScheduledTile = {
+  key: "6/10/12",
+  tier: 6,
+  x: 10,
+  y: 12,
+  bounds: [10240, 12288, 11264, 13312],
+  distance2: 0,
+  url: "https://your-cdn.example.com/tiles/6/12_10.webp",
+};
+
+const scheduler = new TileScheduler({
+  authToken,
+  onTileLoad: (tile, bitmap) =&gt; console.log(tile.key, bitmap.width, bitmap.height),
+});
+scheduler.schedule([scheduledTile]);
+
+const caps = await getWebGpuCapabilities();
+if (caps.supported) {
+  const mask = await prefilterPointsByBoundsWebGpu(
+    pointData.positions,
+    pointData.count,
+    new Float32Array([1200, 1400, 2400, 2600]),
+  );
+  console.log(mask);
+}
+
+renderer.destroy();
+scheduler.destroy();</code></pre>
+            <pre><code class="language-ts">import { M1TileRenderer } from "open-plant";
+
+const simpleRenderer = new M1TileRenderer({
+  canvas,
+  imageWidth: 8192,
+  imageHeight: 8192,
+  initialViewState: { zoom: 1 },
+});
+
+await simpleRenderer.setTiles(tiles);
+simpleRenderer.destroy();</code></pre>
+            <div class="callout">
+              <code>M1TileRenderer</code>와 <code>TileViewerCanvas</code>는 단순 타일
+              경량 경로에 가깝고, 실제 WSI 통합에서는 보통
+              <code>WsiTileRenderer</code> 또는 상위 <code>WsiViewer</code>를
+              사용합니다.
+            </div>
+          </section>
+
+          <section class="panel reveal" id="export-index">
+            <h2>11. Export Index</h2>
+            <p>
+              아래 표는 현재 <code>src/index.ts</code> 기준 공개 export 전체입니다.
+              각 항목은 이 페이지 안에서 먼저 봐야 할 섹션으로 연결됩니다.
+            </p>
+            <div data-examples-export-index="ko"></div>
+          </section>
+
+          <p class="footer">Open Plant WSI Docs • <span data-role="year"></span></p>
+        </article>
+      </div>
+    </main>
+
+    <script src="../assets/examples-exports.js" defer></script>
+    <script>
+      window.__OPEN_PLANT_EXAMPLES_DEBUG__ = {
+        stage: "html",
+        href: window.location.href,
+        timestamp: new Date().toISOString(),
+      };
+      console.error("[open-plant/examples] html reached", window.__OPEN_PLANT_EXAMPLES_DEBUG__);
+    </script>
+    <script src="https://unpkg.com/@stackblitz/sdk@1/bundles/sdk.umd.js"></script>
+    <script type="module" src="../assets/examples-playground.js?v=20260406-api-tree"></script>
+    <script src="../assets/site.js" defer></script>
+  </body>
+</html>
