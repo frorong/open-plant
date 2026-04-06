@@ -36,6 +36,7 @@ export interface PointProgram {
   uPointSize: WebGLUniformLocation;
   uPalette: WebGLUniformLocation;
   uPaletteSize: WebGLUniformLocation;
+  uPointOpacity: WebGLUniformLocation;
   uPointStrokeScale: WebGLUniformLocation;
   uPointInnerFillAlpha: WebGLUniformLocation;
 }
@@ -74,6 +75,7 @@ export interface WsiTileRendererOptions {
   maxZoom?: number;
   viewTransition?: WsiViewTransitionOptions;
   pointSizeByZoom?: PointSizeByZoom;
+  pointOpacity?: number;
   pointStrokeScale?: number;
   pointInnerFillOpacity?: number;
   maxCacheTiles?: number;

@@ -94,9 +94,20 @@ export function hexToRgba(
 	return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 255];
 }
 
+function resolvePaletteClassKey(
+	item:
+		| { classId?: string | null; className?: string | null }
+		| null
+		| undefined,
+): string {
+	const classId = String(item?.classId ?? "").trim();
+	if (classId) return classId;
+	return String(item?.className ?? "").trim();
+}
+
 export function buildClassPalette(
 	classes:
-		| Array<{ classId?: string | null; classColor?: string | null }>
+		| Array<{ classId?: string | null; className?: string | null; classColor?: string | null }>
 		| null
 		| undefined,
 ): ClassPalette {
@@ -106,10 +117,10 @@ export function buildClassPalette(
 	const classToPaletteIndex = new Map<string, number>();
 
 	for (const item of classes ?? []) {
-		const classId = String(item?.classId ?? "");
-		if (!classId || classToPaletteIndex.has(classId)) continue;
+		const classKey = resolvePaletteClassKey(item);
+		if (!classKey || classToPaletteIndex.has(classKey)) continue;
 
-		classToPaletteIndex.set(classId, palette.length);
+		classToPaletteIndex.set(classKey, palette.length);
 		palette.push(hexToRgba(item?.classColor));
 	}
 

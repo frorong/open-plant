@@ -32,3 +32,11 @@ test("buildClassPalette: keeps index 0 as default and deduplicates class ids", (
   assert.equal(palette.classToPaletteIndex.get("p"), 1);
   assert.equal(palette.classToPaletteIndex.get("n"), 2);
 });
+
+test("buildClassPalette: falls back to className when classId is empty", () => {
+  const palette = buildClassPalette([
+    { classId: "", className: "Positive", classColor: "#ff0000" },
+  ]);
+
+  assert.equal(palette.classToPaletteIndex.get("Positive"), 1);
+});

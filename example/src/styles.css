@@ -171,17 +171,17 @@ button:disabled {
 
 .class-color-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 8px 10px;
-  width: min(100%, 760px);
+  width: min(100%, 980px);
 }
 
 .class-color-row {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) 42px;
+  grid-template-columns: 14px minmax(0, 1fr) 120px 42px;
   align-items: center;
   gap: 8px;
-  min-width: 180px;
+  min-width: 280px;
 }
 
 .class-color-swatch {
@@ -218,6 +218,23 @@ button:disabled {
   border-radius: 6px;
   background: #0f1a28;
   padding: 2px;
+}
+
+.class-stroke-opacity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 6px;
+}
+
+.class-stroke-opacity-input {
+  width: 100%;
+}
+
+.class-stroke-opacity-value {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
 }
 
 button.active {

@@ -14,6 +14,7 @@ import {
   MAX_POINT_SIZE_PX,
   MIN_POINT_SIZE_PX,
   normalizePointInnerFillOpacity,
+  normalizePointOpacity,
   normalizePointSizeStops,
   normalizeStrokeScale,
   normalizeTransitionEasing,
@@ -104,6 +105,7 @@ export class WsiTileRenderer {
   private pointBuffersDirty = true;
   private pointPaletteSize = 1;
   private pointSizeStops: PointSizeStop[] = clonePointSizeStops(DEFAULT_POINT_SIZE_STOPS);
+  private pointOpacity = 1.0;
   private pointStrokeScale = 1.0;
   private pointInnerFillOpacity = 0;
   private imageColorSettings: NormalizedImageColorSettings = {
@@ -159,6 +161,7 @@ export class WsiTileRenderer {
         ? Math.max(0, options.rotationDragSensitivityDegPerPixel)
         : DEFAULT_ROTATION_DRAG_SENSITIVITY;
     this.pointSizeStops = normalizePointSizeStops(options.pointSizeByZoom);
+    this.pointOpacity = normalizePointOpacity(options.pointOpacity);
     this.pointStrokeScale = normalizeStrokeScale(options.pointStrokeScale);
     this.pointInnerFillOpacity = normalizePointInnerFillOpacity(options.pointInnerFillOpacity);
     this.imageColorSettings = toNormalizedImageColorSettings(options.imageColorSettings);
@@ -397,6 +400,13 @@ export class WsiTileRenderer {
     this.requestRender();
   }
 
+  setPointOpacity(opacity: number | null | undefined): void {
+    const next = normalizePointOpacity(opacity);
+    if (this.pointOpacity === next) return;
+    this.pointOpacity = next;
+    this.requestRender();
+  }
+
   setPointStrokeScale(scale: number | null | undefined): void {
     const next = normalizeStrokeScale(scale);
     if (this.pointStrokeScale === next) return;
@@ -582,6 +592,7 @@ export class WsiTileRenderer {
       pointCount: this.pointCount,
       usePointIndices: this.usePointIndices,
       pointPaletteSize: this.pointPaletteSize,
+      pointOpacity: this.pointOpacity,
       pointStrokeScale: this.pointStrokeScale,
       pointInnerFillOpacity: this.pointInnerFillOpacity,
       pointSizePx: this.getPointSizeByZoom() * Math.max(1, window.devicePixelRatio || 1),

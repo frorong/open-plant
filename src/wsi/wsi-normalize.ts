@@ -23,6 +23,8 @@ export const DEFAULT_POINT_SIZE_STOPS: readonly PointSizeStop[] = [
 
 const MIN_STROKE_SCALE = 0.1;
 const MAX_STROKE_SCALE = 5.0;
+const MIN_POINT_OPACITY = 0;
+const MAX_POINT_OPACITY = 1;
 const MIN_POINT_INNER_FILL_OPACITY = 0;
 const MAX_POINT_INNER_FILL_OPACITY = 1;
 const MIN_IMAGE_COLOR_INPUT = -100;
@@ -98,6 +100,11 @@ export function resolvePointSizeByZoomStops(continuousZoom: number, stops: reado
 export function normalizeStrokeScale(value: number | null | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return 1.0;
   return clamp(value, MIN_STROKE_SCALE, MAX_STROKE_SCALE);
+}
+
+export function normalizePointOpacity(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1;
+  return clamp(value, MIN_POINT_OPACITY, MAX_POINT_OPACITY);
 }
 
 export function normalizePointInnerFillOpacity(value: number | null | undefined): number {

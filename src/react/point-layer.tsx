@@ -12,6 +12,7 @@ export interface PointLayerProps {
   data?: WsiPointData | null;
   palette?: Uint8Array | null;
   sizeByZoom?: PointSizeByZoom;
+  opacity?: number;
   strokeScale?: number;
   innerFillOpacity?: number;
   clipEnabled?: boolean;
@@ -31,6 +32,7 @@ export const PointLayer = forwardRef<PointQueryHandle, PointLayerProps>(function
     data = null,
     palette = null,
     sizeByZoom,
+    opacity,
     strokeScale,
     innerFillOpacity,
     clipEnabled = false,
@@ -72,6 +74,12 @@ export const PointLayer = forwardRef<PointQueryHandle, PointLayerProps>(function
     if (!renderer || sizeByZoom === undefined) return;
     renderer.setPointSizeByZoom(sizeByZoom);
   }, [rendererSerial, sizeByZoom]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || opacity === undefined) return;
+    renderer.setPointOpacity(opacity);
+  }, [rendererSerial, opacity]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

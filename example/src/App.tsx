@@ -23,8 +23,8 @@ import {
   type WsiRenderStats,
   WsiViewer,
 } from "../../src";
-import { DrawToolbar } from "./components/DrawToolbar";
 import { ClassColorControls } from "./components/ClassColorControls";
+import { DrawToolbar } from "./components/DrawToolbar";
 import { PointControls } from "./components/PointControls";
 import { StatusBar } from "./components/StatusBar";
 import { StatusOverlay } from "./components/StatusOverlay";
@@ -34,8 +34,31 @@ import { useDrawState } from "./hooks/useDrawState";
 import { useImageLoader } from "./hooks/useImageLoader";
 import { usePointLoader } from "./hooks/usePointLoader";
 import { useViewerControls } from "./hooks/useViewerControls";
+import { looksPositiveClass } from "./utils/class-resolver";
 import { DEFAULT_INFO_URL, DEFAULT_POINT_SIZE_STOPS } from "./utils/constants";
 import { getRegionTopCenter } from "./utils/region-utils";
+
+type ExamplePointClass = {
+  classId?: string | null;
+  className?: string | null;
+  termId?: string | null;
+  term?: string | null;
+  categoryId?: string | null;
+  category?: string | null;
+  label?: string | null;
+};
+
+function clampUnitOpacity(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function resolveClassControlKey(item: ExamplePointClass | null | undefined): string {
+  return String(item?.classId ?? item?.termId ?? item?.categoryId ?? item?.className ?? item?.term ?? item?.category ?? item?.label ?? "").trim();
+}
+
+function resolvePaletteColorKey(item: ExamplePointClass | null | undefined): string {
+  return String(item?.classId ?? item?.className ?? "").trim();
+}
 
 function PatchLabelOverlay({ patchRegions }: { patchRegions: { id?: string | number; coordinates: unknown }[] }) {
   const { worldToScreen } = useViewerContext();
@@ -80,7 +103,7 @@ function ViewerOverviewMap({ authToken, show, options }: { authToken: string; sh
   return <OverviewMap source={source} projectorRef={rendererRef} authToken={authToken} options={options} invalidateRef={overviewInvalidateRef} />;
 }
 
-function resolvePositivePaletteIndex(classes: { classId?: string | null; className?: string | null }[] | undefined, classToPaletteIndex: Map<string, number>): number {
+function resolvePositivePaletteIndex(classes: ExamplePointClass[] | undefined, classToPaletteIndex: Map<string, number>): number {
   if (!Array.isArray(classes) || classes.length === 0) {
     return 0;
   }
@@ -88,19 +111,14 @@ function resolvePositivePaletteIndex(classes: { classId?: string | null; classNa
   let fallback = 0;
   for (let i = 0; i < classes.length; i += 1) {
     const item = classes[i];
-    const paletteIndex = classToPaletteIndex.get(String(item?.classId ?? "")) ?? 0;
+    const paletteKey = String(item?.classId ?? "").trim() || String(item?.className ?? "").trim();
+    const paletteIndex = classToPaletteIndex.get(paletteKey) ?? 0;
     if (!paletteIndex) continue;
 
-    const classId = String(item?.classId ?? "")
-      .trim()
-      .toLowerCase();
-    const className = String(item?.className ?? "")
-      .trim()
-      .toLowerCase();
-    if (!fallback && (className.includes("positive") || classId === "positive" || classId === "pos" || classId === "4" || classId === "p")) {
+    if (!fallback && looksPositiveClass(item)) {
       fallback = paletteIndex;
     }
-    if (className === "positive" || className === "ki-67 positive") {
+    if (looksPositiveClass(item)) {
       return paletteIndex;
     }
   }
@@ -147,15 +165,17 @@ export default function App() {
   const [pointSizeStop5, setPointSizeStop5] = useState<number>(DEFAULT_POINT_SIZE_STOPS[5]);
   const [pointSizeStop6, setPointSizeStop6] = useState<number>(DEFAULT_POINT_SIZE_STOPS[6]);
   const [pointSizeStop8, setPointSizeStop8] = useState<number>(DEFAULT_POINT_SIZE_STOPS[8]);
+  const [pointOpacity, setPointOpacity] = useState(1);
   const [pointStrokeScale, setPointStrokeScale] = useState(1);
   const [pointInnerBlackFill, setPointInnerBlackFill] = useState(false);
+  const [classStrokeOpacityByKey, setClassStrokeOpacityByKey] = useState<Record<string, number>>({});
 
   const pointSizeByZoom = useMemo(
     () => ({ 1: pointSizeStop1, 2: pointSizeStop2, 5: pointSizeStop5, 6: pointSizeStop6, 8: pointSizeStop8 }) as const,
     [pointSizeStop1, pointSizeStop2, pointSizeStop5, pointSizeStop6, pointSizeStop8]
   );
 
-  const [showHeatmap, setShowHeatmap] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [heatmapFixedZoom, setHeatmapFixedZoom] = useState<number | undefined>(undefined);
   const [heatmapScaleMode, setHeatmapScaleMode] = useState<"screen" | "fixed-zoom">("fixed-zoom");
   const [heatmapDensityContrast, setHeatmapDensityContrast] = useState(3);
@@ -202,6 +222,22 @@ export default function App() {
   const { source, classes } = imageLoader;
 
   const pointData = usePointLoader(source, classes, imageLoader.pointZstUrl, bearerToken);
+  const pointPalette = useMemo(() => {
+    const basePalette = pointData.classPalette.colors;
+    if (!(basePalette instanceof Uint8Array) || basePalette.length === 0) {
+      return basePalette;
+    }
+
+    const nextPalette = basePalette.slice();
+    for (const item of classes) {
+      const classKey = resolveClassControlKey(item);
+      const paletteKey = resolvePaletteColorKey(item);
+      const paletteIndex = pointData.classPalette.classToPaletteIndex.get(paletteKey);
+      if (!classKey || !paletteIndex) continue;
+      nextPalette[paletteIndex * 4 + 3] = Math.round(255 * clampUnitOpacity(classStrokeOpacityByKey[classKey] ?? 1));
+    }
+    return nextPalette;
+  }, [classes, classStrokeOpacityByKey, pointData.classPalette.classToPaletteIndex, pointData.classPalette.colors]);
   const draw = useDrawState(source, classes, pointData.pointPayload);
   const viewer = useViewerControls(source);
   const currentHeatmapZoom = useMemo(() => {
@@ -213,6 +249,30 @@ export default function App() {
     return source.maxTierZoom + Math.log2(Math.max(1e-6, rawZoom));
   }, [source, viewer.viewState?.zoom]);
   const hasCurrentHeatmapZoom = typeof currentHeatmapZoom === "number" && Number.isFinite(currentHeatmapZoom);
+
+  useEffect(() => {
+    setClassStrokeOpacityByKey(prev => {
+      const next: Record<string, number> = {};
+      for (const item of classes) {
+        const classKey = resolveClassControlKey(item);
+        if (!classKey) continue;
+        next[classKey] = clampUnitOpacity(prev[classKey] ?? 1);
+      }
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length === nextKeys.length && nextKeys.every(key => prev[key] === next[key])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [classes]);
+
+  const handleClassStrokeOpacityChange = useCallback((classKey: string, opacity: number) => {
+    const nextKey = String(classKey || "").trim();
+    if (!nextKey) return;
+    const nextOpacity = clampUnitOpacity(opacity);
+    setClassStrokeOpacityByKey(prev => (prev[nextKey] === nextOpacity ? prev : { ...prev, [nextKey]: nextOpacity }));
+  }, []);
 
   useEffect(() => {
     if (!source || !pointData.pointPayload) {
@@ -465,6 +525,8 @@ export default function App() {
             onStop6Change={setPointSizeStop6}
             onStop8Change={setPointSizeStop8}
             onResetStops={resetPointSizeStops}
+            pointOpacity={pointOpacity}
+            onOpacityChange={setPointOpacity}
             pointStrokeScale={pointStrokeScale}
             onStrokeScaleChange={setPointStrokeScale}
             pointInnerBlackFill={pointInnerBlackFill}
@@ -473,8 +535,10 @@ export default function App() {
 
           <ClassColorControls
             classes={classes}
+            classStrokeOpacityByKey={classStrokeOpacityByKey}
             disabled={!source}
             onClassColorChange={imageLoader.updateClassColor}
+            onClassStrokeOpacityChange={handleClassStrokeOpacityChange}
           />
 
           <StatusBar error={imageLoader.error} imageSummary={imageSummary} scaleSummary={viewer.scaleSummary} pointStatus={pointData.pointStatus} webGpuCaps={webGpuCaps} clipMode={viewer.clipMode} />
@@ -507,8 +571,9 @@ export default function App() {
             >
               <PointLayer
                 data={pointData.pointPayload}
-                palette={pointData.classPalette.colors}
+                palette={pointPalette}
                 sizeByZoom={pointSizeByZoom}
+                opacity={pointOpacity}
                 strokeScale={pointStrokeScale}
                 innerFillOpacity={pointInnerBlackFill ? 0.2 : 0}
                 clipEnabled

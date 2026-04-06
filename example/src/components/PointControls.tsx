@@ -10,6 +10,8 @@ interface PointControlsProps {
 	onStop6Change: (v: number) => void;
 	onStop8Change: (v: number) => void;
 	onResetStops: () => void;
+	pointOpacity: number;
+	onOpacityChange: (v: number) => void;
 	pointStrokeScale: number;
 	onStrokeScaleChange: (v: number) => void;
 	pointInnerBlackFill: boolean;
@@ -47,6 +49,8 @@ export function PointControls({
 	onStop6Change,
 	onStop8Change,
 	onResetStops,
+	pointOpacity,
+	onOpacityChange,
 	pointStrokeScale,
 	onStrokeScaleChange,
 	pointInnerBlackFill,
@@ -69,6 +73,22 @@ export function PointControls({
 			<div className="subpanel point-stroke-panel">
 				<span className="subpanel-title">Point Stroke</span>
 				<label className="point-slider-wrap">
+					layer opacity
+					<input
+						className="point-slider"
+						type="range"
+						min={0}
+						max={1}
+						step={0.05}
+						value={pointOpacity}
+						onChange={e => {
+							const next = Number(e.target.value);
+							if (Number.isFinite(next)) onOpacityChange(next);
+						}}
+					/>
+				</label>
+				<span className="point-slider-value">{pointOpacity.toFixed(2)}</span>
+				<label className="point-slider-wrap">
 					thickness
 					<input
 						className="point-slider"
@@ -86,7 +106,7 @@ export function PointControls({
 				<span className="point-slider-value">{pointStrokeScale.toFixed(2)}x</span>
 				<label className="point-checkbox-wrap">
 					<input type="checkbox" checked={pointInnerBlackFill} onChange={e => onInnerBlackFillChange(e.target.checked)} />
-					inner black fill (opacity 0.1)
+					inner black fill (opacity 0.2)
 				</label>
 			</div>
 		</>

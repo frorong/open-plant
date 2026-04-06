@@ -1,38 +1,87 @@
 import type { WsiClass } from "../../../src";
 
+type ClassControlItem = Pick<WsiClass, "classId" | "className" | "classColor"> & {
+	termId?: string | null;
+	term?: string | null;
+	categoryId?: string | null;
+	category?: string | null;
+	label?: string | null;
+};
+
 interface ClassColorControlsProps {
-	classes: WsiClass[];
+	classes: ClassControlItem[];
+	classStrokeOpacityByKey: Record<string, number>;
 	disabled?: boolean;
-	onClassColorChange: (classId: string, color: string) => void;
+	onClassColorChange: (classKey: string, color: string) => void;
+	onClassStrokeOpacityChange: (classKey: string, opacity: number) => void;
 }
 
 function toColorInputValue(color: string): string {
 	return /^#([0-9a-f]{6})$/i.test(color) ? color : "#808080";
 }
 
-export function ClassColorControls({ classes, disabled = false, onClassColorChange }: ClassColorControlsProps) {
+function resolveClassControlKey(item: ClassControlItem): string {
+	return String(
+		item.classId
+		|| item.termId
+		|| item.categoryId
+		|| item.className
+		|| item.term
+		|| item.category
+		|| item.label
+		|| "",
+	).trim();
+}
+
+export function ClassColorControls({
+	classes,
+	classStrokeOpacityByKey,
+	disabled = false,
+	onClassColorChange,
+	onClassStrokeOpacityChange,
+}: ClassColorControlsProps) {
 	if (!classes.length) return null;
 
 	return (
 		<div className="subpanel class-color-panel">
-			<span className="subpanel-title">Class Colors</span>
+			<span className="subpanel-title">Class Colors / Stroke</span>
 			<div className="class-color-grid">
-				{classes.map(item => (
-					<label key={item.classId || item.className} className="class-color-row">
-						<span className="class-color-swatch" style={{ backgroundColor: item.classColor || "#808080" }} />
-						<span className="class-color-label">
-							<strong>{item.className || "(unnamed)"}</strong>
-							<small>{item.classId || "-"}</small>
-						</span>
-						<input
-							className="class-color-input"
-							type="color"
-							value={toColorInputValue(item.classColor)}
-							disabled={disabled}
-							onChange={event => onClassColorChange(item.classId, event.target.value)}
-						/>
-					</label>
-				))}
+				{classes.map(item => {
+					const classKey = resolveClassControlKey(item);
+					const strokeOpacity = classStrokeOpacityByKey[classKey] ?? 1;
+					return (
+						<div key={classKey} className="class-color-row">
+							<span className="class-color-swatch" style={{ backgroundColor: item.classColor || "#808080" }} />
+							<span className="class-color-label">
+								<strong>{item.className || "(unnamed)"}</strong>
+								<small>{classKey || "-"}</small>
+							</span>
+							<div className="class-stroke-opacity">
+								<input
+									className="class-stroke-opacity-input"
+									type="range"
+									min={0}
+									max={1}
+									step={0.05}
+									value={strokeOpacity}
+									disabled={disabled}
+									onChange={event => {
+										const next = Number(event.target.value);
+										if (Number.isFinite(next)) onClassStrokeOpacityChange(classKey, next);
+									}}
+								/>
+								<span className="class-stroke-opacity-value">{strokeOpacity.toFixed(2)}</span>
+							</div>
+							<input
+								className="class-color-input"
+								type="color"
+								value={toColorInputValue(item.classColor)}
+								disabled={disabled}
+								onChange={event => onClassColorChange(classKey, event.target.value)}
+							/>
+						</div>
+					);
+				})}
 			</div>
 		</div>
 	);

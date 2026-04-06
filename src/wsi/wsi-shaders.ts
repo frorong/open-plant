@@ -120,6 +120,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     uniform sampler2D uPalette;
     uniform float uPaletteSize;
     uniform float uPointSize;
+    uniform float uPointOpacity;
     uniform float uPointStrokeScale;
     uniform float uPointInnerFillAlpha;
     out vec4 outColor;
@@ -134,9 +135,10 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
       if (color.a <= 0.0) discard;
 
       float aa = 1.5 / max(1.0, uPointSize);
+      float pointOpacity = clamp(uPointOpacity, 0.0, 1.0);
       float outerMask = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, r);
       if (vFillMode != 0u) {
-        float alpha = outerMask * color.a;
+        float alpha = outerMask * color.a * pointOpacity;
         if (alpha <= 0.001) discard;
         outColor = vec4(color.rgb * alpha, alpha);
       } else {
@@ -146,16 +148,17 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
         float innerMask = smoothstep(innerRadius - aa, innerRadius + aa, r);
         float ringAlpha = outerMask * innerMask * color.a;
         float fillAlpha = outerMask * (1.0 - innerMask) * clamp(uPointInnerFillAlpha, 0.0, 1.0);
-        float alpha = ringAlpha + fillAlpha;
+        float alpha = (ringAlpha + fillAlpha) * pointOpacity;
         if (alpha <= 0.001) discard;
         // Premultiplied alpha output: inner fill is black, so it only contributes alpha.
-        outColor = vec4(color.rgb * ringAlpha, alpha);
+        outColor = vec4(color.rgb * ringAlpha * pointOpacity, alpha);
       }
     }`;
 
   const program = createProgram(gl, pointVertex, pointFragment);
   const uCamera = requireUniformLocation(gl, program, "uCamera");
   const uPointSize = requireUniformLocation(gl, program, "uPointSize");
+  const uPointOpacity = requireUniformLocation(gl, program, "uPointOpacity");
   const uPointStrokeScale = requireUniformLocation(gl, program, "uPointStrokeScale");
   const uPointInnerFillAlpha = requireUniformLocation(gl, program, "uPointInnerFillAlpha");
   const uPalette = requireUniformLocation(gl, program, "uPalette");
@@ -225,6 +228,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     paletteTexture,
     uCamera,
     uPointSize,
+    uPointOpacity,
     uPointStrokeScale,
     uPointInnerFillAlpha,
     uPalette,
