@@ -10,6 +10,10 @@ import {
 	type WsiRegion,
 } from "../../../src";
 
+export type ExampleRoiRegion = WsiRegion & {
+	dashed?: boolean;
+};
+
 export function useDrawState(
 	source: { id: string; name: string; width: number; height: number } | null,
 	classes: WsiClass[],
@@ -18,7 +22,7 @@ export function useDrawState(
 	const [drawTool, setDrawTool] = useState<DrawTool>("cursor");
 	const [labelInput, setLabelInput] = useState("");
 	const [lastDraw, setLastDraw] = useState<DrawResult | null>(null);
-	const [roiRegions, setRoiRegions] = useState<WsiRegion[]>([]);
+	const [roiRegions, setRoiRegions] = useState<ExampleRoiRegion[]>([]);
 	const [patchRegions, setPatchRegions] = useState<WsiRegion[]>([]);
 	const [lastPatch, setLastPatch] = useState<PatchDrawResult | null>(null);
 	const [lastPatchIndices, setLastPatchIndices] = useState<Uint32Array>(new Uint32Array(0));
@@ -30,6 +34,7 @@ export function useDrawState(
 	const [brushRadius, setBrushRadius] = useState(480);
 	const [brushOpacity, setBrushOpacity] = useState(0.1);
 	const [brushEraserPreview, setBrushEraserPreview] = useState(false);
+	const [dashedRoi, setDashedRoi] = useState(false);
 
 	const [autoLiftRegionLabelAtMaxZoom, setAutoLiftRegionLabelAtMaxZoom] = useState(true);
 
@@ -94,12 +99,13 @@ export function useDrawState(
 						id: `${Date.now()}-${prev.length}`,
 						coordinates: payload.coordinates,
 						label,
+						dashed: dashedRoi,
 					},
 				]);
 			}
 			setDrawTool("cursor");
 		},
-		[labelInput],
+		[dashedRoi, labelInput],
 	);
 
 	const handleClearRoi = useCallback(() => {
@@ -161,6 +167,7 @@ export function useDrawState(
 		setPatchRegions([]);
 		setLastPatch(null);
 		setLastPatchIndices(new Uint32Array(0));
+		setDashedRoi(false);
 	}, []);
 
 	return {
@@ -188,6 +195,8 @@ export function useDrawState(
 		setBrushOpacity,
 		brushEraserPreview,
 		setBrushEraserPreview,
+		dashedRoi,
+		setDashedRoi,
 		brushOptions,
 
 		autoLiftRegionLabelAtMaxZoom,

@@ -19,6 +19,8 @@ interface DrawToolbarProps {
 	onBrushOpacityChange: (value: number) => void;
 	brushEraserPreview: boolean;
 	onToggleBrushEraserPreview: () => void;
+	dashedRoi: boolean;
+	onToggleDashedRoi: () => void;
 
 	autoLiftRegionLabelAtMaxZoom: boolean;
 	onToggleAutoLift: () => void;
@@ -50,6 +52,8 @@ export function DrawToolbar({
 	onBrushOpacityChange,
 	brushEraserPreview,
 	onToggleBrushEraserPreview,
+	dashedRoi,
+	onToggleDashedRoi,
 	autoLiftRegionLabelAtMaxZoom,
 	onToggleAutoLift,
 	enableZoomSnaps,
@@ -174,6 +178,10 @@ export function DrawToolbar({
 			<button type="button" className={enableZoomSnaps ? "active" : ""} disabled={disabled} onClick={onToggleZoomSnaps}>
 				Zoom Snap {enableZoomSnaps && zoomSnaps ? `(${zoomSnaps[0]}→${zoomSnaps[zoomSnaps.length - 1]}x)` : "Off"}
 			</button>
+			<label className="tool-checkbox-wrap">
+				<input type="checkbox" checked={dashedRoi} disabled={disabled} onChange={() => onToggleDashedRoi()} />
+				dashed ROI
+			</label>
 			<input className="label-input" type="text" value={labelInput} onChange={e => setLabelInput(e.target.value)} placeholder="Region label (optional)" />
 			<button type="button" disabled={disabled || !canClearRegions} onClick={onClearRoi}>
 				Clear Regions

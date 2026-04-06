@@ -332,11 +332,25 @@ export default function App() {
   }, [source]);
 
   const regionStrokeStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ffd166", width: 2.5 }), []);
+  const dashedRegionStrokeStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ffd166", width: 2.5, lineDash: [10, 8] }), []);
   const regionStrokeHoverStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ff2f2f", width: 3 }), []);
+  const dashedRegionStrokeHoverStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ff2f2f", width: 3, lineDash: [10, 8] }), []);
   const regionStrokeActiveStyle = useMemo<Partial<RegionStrokeStyle>>(
     () => ({
       color: "#ff2f2f",
       width: 3,
+      shadowColor: "rgba(255, 47, 47, 0.95)",
+      shadowBlur: 12,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+    }),
+    []
+  );
+  const dashedRegionStrokeActiveStyle = useMemo<Partial<RegionStrokeStyle>>(
+    () => ({
+      color: "#ff2f2f",
+      width: 3,
+      lineDash: [10, 8],
       shadowColor: "rgba(255, 47, 47, 0.95)",
       shadowBlur: 12,
       shadowOffsetX: 0,
@@ -354,6 +368,18 @@ export default function App() {
     }
     if (context.regionIndex % 2 === 1) {
       return { color: "#ffe08a", width: 2.25 };
+    }
+    return undefined;
+  }, []);
+  const resolveDashedRegionStrokeStyle = useCallback((context: RegionStyleContext): Partial<RegionStrokeStyle> | undefined => {
+    if (context.state === "active") {
+      return { color: "#ff2f2f", width: 3.2, lineDash: [10, 8], shadowColor: "rgba(255, 47, 47, 0.95)", shadowBlur: 12, shadowOffsetX: 0, shadowOffsetY: 0 };
+    }
+    if (context.state === "hover") {
+      return { color: "#ff2f2f", width: 3, lineDash: [10, 8] };
+    }
+    if (context.regionIndex % 2 === 1) {
+      return { color: "#ffe08a", width: 2.25, lineDash: [10, 8] };
     }
     return undefined;
   }, []);
@@ -452,6 +478,9 @@ export default function App() {
     };
   }, [pointData.pointPayload, positivePaletteIndex]);
 
+  const solidRoiRegions = useMemo(() => draw.roiRegions.filter(region => !region.dashed), [draw.roiRegions]);
+  const dashedRoiRegions = useMemo(() => draw.roiRegions.filter(region => region.dashed), [draw.roiRegions]);
+
   const heatmapMode = heatmapScaleMode;
 
   return (
@@ -498,6 +527,8 @@ export default function App() {
             onBrushOpacityChange={draw.setBrushOpacity}
             brushEraserPreview={draw.brushEraserPreview}
             onToggleBrushEraserPreview={() => draw.setBrushEraserPreview(prev => !prev)}
+            dashedRoi={draw.dashedRoi}
+            onToggleDashedRoi={() => draw.setDashedRoi(prev => !prev)}
             autoLiftRegionLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
             onToggleAutoLift={() => draw.setAutoLiftRegionLabelAtMaxZoom(prev => !prev)}
             enableZoomSnaps={viewer.enableZoomSnaps}
@@ -599,11 +630,24 @@ export default function App() {
                 maxRenderedPoints={100_000}
               />
               <RegionLayer
-                regions={draw.roiRegions}
+                regions={solidRoiRegions}
                 strokeStyle={regionStrokeStyle}
                 hoverStrokeStyle={regionStrokeHoverStyle}
                 activeStrokeStyle={regionStrokeActiveStyle}
                 resolveStrokeStyle={resolveRegionStrokeStyle}
+                labelStyle={regionLabelStyle}
+                autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
+                activeRegionId={activeRegionId}
+                onActiveChange={handleActiveRegionChange}
+                onHover={handleRegionHover}
+                onClick={handleRegionClick}
+              />
+              <RegionLayer
+                regions={dashedRoiRegions}
+                strokeStyle={dashedRegionStrokeStyle}
+                hoverStrokeStyle={dashedRegionStrokeHoverStyle}
+                activeStrokeStyle={dashedRegionStrokeActiveStyle}
+                resolveStrokeStyle={resolveDashedRegionStrokeStyle}
                 labelStyle={regionLabelStyle}
                 autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
                 activeRegionId={activeRegionId}
