@@ -21,6 +21,8 @@ interface DrawToolbarProps {
 	onToggleBrushEraserPreview: () => void;
 	dashedRoi: boolean;
 	onToggleDashedRoi: () => void;
+	dashedRoiGap: number;
+	onDashedRoiGapChange: (e: ChangeEvent<HTMLInputElement>) => void;
 
 	autoLiftRegionLabelAtMaxZoom: boolean;
 	onToggleAutoLift: () => void;
@@ -54,6 +56,8 @@ export function DrawToolbar({
 	onToggleBrushEraserPreview,
 	dashedRoi,
 	onToggleDashedRoi,
+	dashedRoiGap,
+	onDashedRoiGapChange,
 	autoLiftRegionLabelAtMaxZoom,
 	onToggleAutoLift,
 	enableZoomSnaps,
@@ -182,6 +186,18 @@ export function DrawToolbar({
 				<input type="checkbox" checked={dashedRoi} disabled={disabled} onChange={() => onToggleDashedRoi()} />
 				dashed ROI
 			</label>
+			<input
+				className="stamp-input"
+				type="number"
+				min={1}
+				step={1}
+				value={dashedRoiGap}
+				disabled={disabled}
+				onChange={onDashedRoiGapChange}
+				aria-label="Dashed ROI gap"
+				title="Dashed ROI gap"
+			/>
+			<span className="stamp-unit">Dash gap</span>
 			<input className="label-input" type="text" value={labelInput} onChange={e => setLabelInput(e.target.value)} placeholder="Region label (optional)" />
 			<button type="button" disabled={disabled || !canClearRegions} onClick={onClearRoi}>
 				Clear Regions
