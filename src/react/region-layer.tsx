@@ -29,7 +29,9 @@ export interface RegionLayerProps {
   labelAnchor?: RegionLabelAnchorMode;
   autoLiftLabelAtMaxZoom?: boolean;
   clampLabelToViewport?: boolean;
+  hoveredRegionId?: string | number | null;
   activeRegionId?: string | number | null;
+  interactive?: boolean;
   onActiveChange?: (regionId: string | number | null) => void;
   onHover?: (event: RegionHoverEvent) => void;
   onClick?: (event: RegionClickEvent) => void;
@@ -37,8 +39,7 @@ export interface RegionLayerProps {
 
 const EMPTY_ROI_REGIONS: WsiRegion[] = [];
 const EMPTY_ROI_POLYGONS: DrawRegionCoordinates[] = [];
-const REGION_LAYER_DRAW_ID = "__region_layer__";
-const REGION_LABEL_DRAW_ID = "__region_label__";
+let nextRegionLayerInstanceId = 0;
 
 function resolveRegionInteractionShadow(strokeStyle: RegionStrokeStyle): RegionStrokeStyle {
   return {
@@ -65,7 +66,9 @@ export function RegionLayer({
   labelAnchor = "top-center",
   autoLiftLabelAtMaxZoom = false,
   clampLabelToViewport = true,
+  hoveredRegionId: controlledHoveredRegionId,
   activeRegionId: controlledActiveRegionId,
+  interactive = true,
   onActiveChange,
   onHover,
   onClick,
@@ -81,16 +84,33 @@ export function RegionLayer({
     return safePolygons.map((coordinates, index) => ({ id: index, coordinates }));
   }, [safeRegions, safePolygons]);
 
-  const [hoveredRegionId, setHoveredRegionId] = useState<string | number | null>(null);
+  const [uncontrolledHoveredRegionId, setUncontrolledHoveredRegionId] = useState<string | number | null>(() => controlledHoveredRegionId ?? null);
   const [uncontrolledActiveRegionId, setUncontrolledActiveRegionId] = useState<string | number | null>(() => controlledActiveRegionId ?? null);
+  const isHoverControlled = controlledHoveredRegionId !== undefined;
   const isControlled = controlledActiveRegionId !== undefined;
+  const hoveredRegionId = isHoverControlled ? (controlledHoveredRegionId ?? null) : uncontrolledHoveredRegionId;
   const activeRegionId = isControlled ? (controlledActiveRegionId ?? null) : uncontrolledActiveRegionId;
-  const hoveredRegionIdRef = useRef<string | number | null>(null);
+  const hoveredRegionIdRef = useRef<string | number | null>(controlledHoveredRegionId ?? null);
+  const drawCallbackIdRef = useRef<string | null>(null);
+  const labelDrawCallbackIdRef = useRef<string | null>(null);
+
+  if (drawCallbackIdRef.current === null || labelDrawCallbackIdRef.current === null) {
+    const instanceId = nextRegionLayerInstanceId++;
+    drawCallbackIdRef.current = `__region_layer__${instanceId}`;
+    labelDrawCallbackIdRef.current = `__region_label__${instanceId}`;
+  }
 
   useEffect(() => {
     if (!isControlled) return;
     setUncontrolledActiveRegionId(controlledActiveRegionId ?? null);
   }, [isControlled, controlledActiveRegionId]);
+
+  useEffect(() => {
+    if (!isHoverControlled) return;
+    const next = controlledHoveredRegionId ?? null;
+    hoveredRegionIdRef.current = next;
+    setUncontrolledHoveredRegionId(next);
+  }, [isHoverControlled, controlledHoveredRegionId]);
 
   const commitActive = useCallback(
     (next: string | number | null) => {
@@ -148,10 +168,10 @@ export function RegionLayer({
     const hasHover = currentHover === null ? true : effectiveRegions.some((r, i) => String(resolveRegionId(r, i)) === String(currentHover));
     if (!hasHover && currentHover !== null) {
       hoveredRegionIdRef.current = null;
-      setHoveredRegionId(null);
+      if (!isHoverControlled) setUncontrolledHoveredRegionId(null);
       onHover?.({ region: null, regionId: null, regionIndex: -1, coordinate: null });
     }
-  }, [effectiveRegions, activeRegionId, onHover, commitActive]);
+  }, [effectiveRegions, activeRegionId, isHoverControlled, onHover, commitActive]);
 
   // worldToScreenPoints helper
   const worldToScreenPoints = useCallback(
@@ -233,8 +253,10 @@ export function RegionLayer({
       }
     };
 
-    registerDrawCallback(REGION_LAYER_DRAW_ID, 10, drawRegions);
-    return () => unregisterDrawCallback(REGION_LAYER_DRAW_ID);
+    const drawId = drawCallbackIdRef.current;
+    if (!drawId) return;
+    registerDrawCallback(drawId, 10, drawRegions);
+    return () => unregisterDrawCallback(drawId);
   }, [registerDrawCallback, unregisterDrawCallback]);
 
   // --- register region label draw callback ---
@@ -296,8 +318,10 @@ export function RegionLayer({
       }
     };
 
-    registerDrawCallback(REGION_LABEL_DRAW_ID, 50, drawLabels);
-    return () => unregisterDrawCallback(REGION_LABEL_DRAW_ID);
+    const drawId = labelDrawCallbackIdRef.current;
+    if (!drawId) return;
+    registerDrawCallback(drawId, 50, drawLabels);
+    return () => unregisterDrawCallback(drawId);
   }, [registerDrawCallback, unregisterDrawCallback]);
 
   // redraw when deps change
@@ -329,6 +353,7 @@ export function RegionLayer({
   };
 
   useEffect(() => {
+    if (!interactive) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -363,7 +388,7 @@ export function RegionLayer({
       if (String(prevId) === String(nextId)) return;
 
       hoveredRegionIdRef.current = nextId;
-      setHoveredRegionId(nextId);
+      if (!isHoverControlled) setUncontrolledHoveredRegionId(nextId);
       hoverCb?.({
         region: hitResult?.region ?? null,
         regionId: nextId,
@@ -413,7 +438,7 @@ export function RegionLayer({
     const handlePointerLeave = () => {
       if (hoveredRegionIdRef.current === null) return;
       hoveredRegionIdRef.current = null;
-      setHoveredRegionId(null);
+      if (!isHoverControlled) setUncontrolledHoveredRegionId(null);
       pointerHitRef.current.onHover?.({ region: null, regionId: null, regionIndex: -1, coordinate: null });
       requestOverlayRedraw();
     };
@@ -426,7 +451,7 @@ export function RegionLayer({
       container.removeEventListener("click", handleClick);
       container.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [containerRef, rendererRef, canvasRef, screenToWorld, worldToScreen, isInteractionLocked, requestOverlayRedraw]);
+  }, [containerRef, rendererRef, canvasRef, interactive, isHoverControlled, screenToWorld, worldToScreen, isInteractionLocked, requestOverlayRedraw]);
 
   return null;
 }

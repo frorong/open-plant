@@ -332,8 +332,10 @@ export default function App() {
   }, [source]);
 
   const regionStrokeStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ffd166", width: 2.5 }), []);
+  const hiddenRegionStrokeStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "rgba(0, 0, 0, 0)", width: 1 }), []);
   const dashedRegionStrokeStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ffd166", width: 2.5, lineDash: [10, 8] }), []);
   const regionStrokeHoverStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ff2f2f", width: 3 }), []);
+  const hiddenRegionStrokeHoverStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "rgba(0, 0, 0, 0)", width: 1 }), []);
   const dashedRegionStrokeHoverStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#ff2f2f", width: 3, lineDash: [10, 8] }), []);
   const regionStrokeActiveStyle = useMemo<Partial<RegionStrokeStyle>>(
     () => ({
@@ -341,6 +343,17 @@ export default function App() {
       width: 3,
       shadowColor: "rgba(255, 47, 47, 0.95)",
       shadowBlur: 12,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+    }),
+    []
+  );
+  const hiddenRegionStrokeActiveStyle = useMemo<Partial<RegionStrokeStyle>>(
+    () => ({
+      color: "rgba(0, 0, 0, 0)",
+      width: 1,
+      shadowColor: "rgba(0, 0, 0, 0)",
+      shadowBlur: 0,
       shadowOffsetX: 0,
       shadowOffsetY: 0,
     }),
@@ -385,6 +398,14 @@ export default function App() {
   }, []);
 
   const regionLabelStyle = useMemo<Partial<RegionLabelStyle>>(() => ({ backgroundColor: "rgba(8, 14, 22, 0.9)", borderColor: "#ffd166", textColor: "#fff4cc", borderRadius: 4, fontSize: 12 }), []);
+  const hiddenRegionLabelStyle = useMemo<Partial<RegionLabelStyle>>(
+    () => ({
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      borderColor: "rgba(0, 0, 0, 0)",
+      textColor: "rgba(0, 0, 0, 0)",
+    }),
+    []
+  );
 
   const patchStrokeStyle = useMemo<Partial<RegionStrokeStyle>>(() => ({ color: "#8ad8ff", width: 2, lineDash: [10, 8] }), []);
 
@@ -630,6 +651,19 @@ export default function App() {
                 maxRenderedPoints={100_000}
               />
               <RegionLayer
+                regions={draw.roiRegions}
+                strokeStyle={hiddenRegionStrokeStyle}
+                hoverStrokeStyle={hiddenRegionStrokeHoverStyle}
+                activeStrokeStyle={hiddenRegionStrokeActiveStyle}
+                labelStyle={hiddenRegionLabelStyle}
+                autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
+                hoveredRegionId={hoveredRegionId}
+                activeRegionId={activeRegionId}
+                onActiveChange={handleActiveRegionChange}
+                onHover={handleRegionHover}
+                onClick={handleRegionClick}
+              />
+              <RegionLayer
                 regions={solidRoiRegions}
                 strokeStyle={regionStrokeStyle}
                 hoverStrokeStyle={regionStrokeHoverStyle}
@@ -637,10 +671,9 @@ export default function App() {
                 resolveStrokeStyle={resolveRegionStrokeStyle}
                 labelStyle={regionLabelStyle}
                 autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
+                hoveredRegionId={hoveredRegionId}
                 activeRegionId={activeRegionId}
-                onActiveChange={handleActiveRegionChange}
-                onHover={handleRegionHover}
-                onClick={handleRegionClick}
+                interactive={false}
               />
               <RegionLayer
                 regions={dashedRoiRegions}
@@ -650,10 +683,9 @@ export default function App() {
                 resolveStrokeStyle={resolveDashedRegionStrokeStyle}
                 labelStyle={regionLabelStyle}
                 autoLiftLabelAtMaxZoom={draw.autoLiftRegionLabelAtMaxZoom}
+                hoveredRegionId={hoveredRegionId}
                 activeRegionId={activeRegionId}
-                onActiveChange={handleActiveRegionChange}
-                onHover={handleRegionHover}
-                onClick={handleRegionClick}
+                interactive={false}
               />
               <DrawingLayer tool={draw.drawTool} stampOptions={draw.stampOptions} brushOptions={draw.brushOptions} onComplete={draw.handleDrawComplete} onPatchComplete={draw.handlePatchComplete} />
               <OverlayLayer shapes={overlayShapes} />
