@@ -73,6 +73,7 @@ export interface WsiTileRendererOptions {
   onStats?: (stats: WsiRenderStats) => void;
   authToken?: string;
   imageColorSettings?: WsiImageColorSettings | null;
+  initialRotationDeg?: number;
   minZoom?: number;
   maxZoom?: number;
   viewTransition?: WsiViewTransitionOptions;

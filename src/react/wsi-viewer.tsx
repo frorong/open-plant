@@ -18,6 +18,7 @@ export interface WsiViewerProps {
   onContextLost?: () => void;
   onContextRestored?: () => void;
   imageColorSettings?: WsiImageColorSettings | null;
+  initialRotate?: number;
   fitNonce?: number;
   rotationResetNonce?: number;
   authToken?: string;
@@ -44,6 +45,10 @@ interface DrawCallbackEntry {
 
 const EMPTY_DRAW_CALLBACKS: DrawCallbackEntry[] = [];
 
+function toFiniteRotation(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export function WsiViewer({
   source,
   viewState,
@@ -53,6 +58,7 @@ export function WsiViewer({
   onContextLost,
   onContextRestored,
   imageColorSettings = null,
+  initialRotate = 0,
   fitNonce = 0,
   rotationResetNonce = 0,
   authToken = "",
@@ -135,6 +141,29 @@ export function WsiViewer({
       ...debugOverlayStyle,
     }),
     [debugOverlayStyle]
+  );
+
+  const initialRotateValue = toFiniteRotation(initialRotate);
+
+  const toExternalViewState = useCallback(
+    (state: WsiViewState): WsiViewState => ({
+      ...state,
+      rotationDeg: state.rotationDeg - initialRotateValue,
+    }),
+    [initialRotateValue]
+  );
+
+  const toInternalViewState = useCallback(
+    (state: Partial<WsiViewState>): Partial<WsiViewState> => {
+      if (typeof state.rotationDeg !== "number" || !Number.isFinite(state.rotationDeg)) {
+        return state;
+      }
+      return {
+        ...state,
+        rotationDeg: state.rotationDeg + initialRotateValue,
+      };
+    },
+    [initialRotateValue]
   );
 
   const handleRendererStats = useCallback((stats: WsiRenderStats): void => {
@@ -252,20 +281,20 @@ export function WsiViewer({
   // --- viewState change propagation ---
 
   const emitViewStateChange = useCallback(
-    (next: WsiViewState): void => {
-      onViewStateChangeRef.current?.(next);
+    (nextInternal: WsiViewState): void => {
+      onViewStateChangeRef.current?.(toExternalViewState(nextInternal));
       const listeners = viewStateListenersRef.current;
       if (listeners.size > 0) {
         const snapshot = Array.from(listeners);
         for (let i = 0; i < snapshot.length; i += 1) {
-          snapshot[i](next);
+          snapshot[i](nextInternal);
         }
       }
       drawInvalidateRef.current?.();
       overviewInvalidateRef.current?.();
       requestOverlayRedraw();
     },
-    [requestOverlayRedraw]
+    [requestOverlayRedraw, toExternalViewState]
   );
 
   // --- renderer lifecycle ---
@@ -288,6 +317,7 @@ export function WsiViewer({
       },
       authToken,
       imageColorSettings,
+      initialRotationDeg: initialRotate,
       ctrlDragRotate,
       minZoom,
       maxZoom,
@@ -299,14 +329,14 @@ export function WsiViewer({
 
     rendererRef.current = renderer;
     setRendererSerial(s => s + 1);
-    if (viewState) renderer.setViewState(viewState);
+    if (viewState) renderer.setViewState(toInternalViewState(viewState));
     renderer.setInteractionLock(interactionLocksRef.current.size > 0);
 
     return () => {
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [source, handleRendererStats, ctrlDragRotate, emitViewStateChange]);
+  }, [source, handleRendererStats, ctrlDragRotate, emitViewStateChange, initialRotateValue, toInternalViewState]);
 
   // --- core renderer sync effects ---
 
@@ -318,8 +348,8 @@ export function WsiViewer({
     const renderer = rendererRef.current;
     if (!renderer || !viewState) return;
     if (renderer.isViewAnimating()) return;
-    renderer.setViewState(viewState);
-  }, [viewState]);
+    renderer.setViewState(toInternalViewState(viewState));
+  }, [viewState, toInternalViewState]);
 
   useEffect(() => {
     rendererRef.current?.fitToImage();

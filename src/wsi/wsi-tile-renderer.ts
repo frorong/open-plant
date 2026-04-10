@@ -106,6 +106,7 @@ export class WsiTileRenderer {
   private rotationDragSensitivityDegPerPixel = DEFAULT_ROTATION_DRAG_SENSITIVITY;
   private maxCacheTiles: number;
   private fitZoom = 1;
+  private initialRotationDeg = 0;
   private minZoom = 1e-6;
   private maxZoom = 1;
   private minZoomOverride: number | null = null;
@@ -166,6 +167,10 @@ export class WsiTileRenderer {
     this.onContextRestored = options.onContextRestored;
     this.authToken = options.authToken ?? "";
     this.maxCacheTiles = Math.max(32, Math.floor(options.maxCacheTiles ?? 320));
+    this.initialRotationDeg =
+      typeof options.initialRotationDeg === "number" && Number.isFinite(options.initialRotationDeg)
+        ? options.initialRotationDeg
+        : 0;
     this.ctrlDragRotate = options.ctrlDragRotate ?? true;
     this.rotationDragSensitivityDegPerPixel =
       typeof options.rotationDragSensitivityDegPerPixel === "number" && Number.isFinite(options.rotationDragSensitivityDegPerPixel)
@@ -551,8 +556,8 @@ export class WsiTileRenderer {
 
   resetRotation(transition?: WsiViewTransitionOptions): void {
     const state = this.camera.getViewState();
-    if (Math.abs(state.rotationDeg) < 1e-6) return;
-    this.setViewState({ rotationDeg: 0 }, transition);
+    if (Math.abs(state.rotationDeg - this.initialRotationDeg) < 1e-6) return;
+    this.setViewState({ rotationDeg: this.initialRotationDeg }, transition);
   }
 
   getPointSizeByZoom(layerId: string = DEFAULT_POINT_LAYER_ID): number {
@@ -568,7 +573,7 @@ export class WsiTileRenderer {
     const rect = this.canvas.getBoundingClientRect();
     const vw = Math.max(1, rect.width || 1);
     const vh = Math.max(1, rect.height || 1);
-    const fitTarget = computeFitToImageTarget(this.source, vw, vh, this.minZoom, this.maxZoom);
+    const fitTarget = computeFitToImageTarget(this.source, vw, vh, this.minZoom, this.maxZoom, this.initialRotationDeg);
     this.fitZoom = fitTarget.fitZoom;
     this.applyZoomBounds();
     this.setViewState(fitTarget.target, transition);
@@ -634,7 +639,7 @@ export class WsiTileRenderer {
       const rect = this.canvas.getBoundingClientRect();
       const vw = Math.max(1, rect.width || 1);
       const vh = Math.max(1, rect.height || 1);
-      const fitTarget = computeFitToImageTarget(this.source, vw, vh, this.minZoom, this.maxZoom);
+      const fitTarget = computeFitToImageTarget(this.source, vw, vh, this.minZoom, this.maxZoom, this.initialRotationDeg);
       this.fitZoom = fitTarget.fitZoom;
       this.applyZoomBounds();
       targetZoom = fitTarget.target.zoom;

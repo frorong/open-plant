@@ -52,6 +52,7 @@ export function computeFitToImageTarget(
   viewportHeight: number,
   minZoom: number,
   maxZoom: number,
+  rotationDeg = 0,
 ): { fitZoom: number; target: WsiViewState } {
   const zoom = Math.min(viewportWidth / source.width, viewportHeight / source.height);
   const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
@@ -65,7 +66,7 @@ export function computeFitToImageTarget(
       zoom: clampedZoom,
       offsetX: (source.width - visibleWorldW) * 0.5,
       offsetY: (source.height - visibleWorldH) * 0.5,
-      rotationDeg: 0,
+      rotationDeg,
     },
   };
 }
