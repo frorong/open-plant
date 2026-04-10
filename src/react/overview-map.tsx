@@ -1,5 +1,6 @@
 import { type CSSProperties, type MutableRefObject, type ReactNode, type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { toTileUrl } from "../wsi/image-info";
+import { observeDevicePixelRatioChanges } from "../wsi/device-pixel-ratio";
 import type { WsiImageSource, WsiViewState } from "../wsi/types";
 import { clamp } from "../wsi/utils";
 
@@ -605,6 +606,8 @@ export function OverviewMap({ source, projectorRef, authToken = "", options, inv
   useEffect(() => {
     requestDraw();
   }, [requestDraw]);
+
+  useEffect(() => observeDevicePixelRatioChanges(() => requestDraw()), [requestDraw]);
 
   useEffect(() => {
     if (!invalidateRef) return undefined;

@@ -12,6 +12,7 @@ export interface RenderPointLayer {
   pointOpacity: number;
   pointStrokeScale: number;
   pointInnerFillOpacity: number;
+  pointCssSizePx: number;
   pointSizePx: number;
 }
 
@@ -137,6 +138,7 @@ export function renderFrame(options: RenderFrameOptions): RenderFrameResult {
       gl.bindVertexArray(layer.pointProgram.vao);
       gl.uniformMatrix3fv(layer.pointProgram.uCamera, false, camera.getMatrix());
       gl.uniform1f(layer.pointProgram.uPointSize, layer.pointSizePx);
+      gl.uniform1f(layer.pointProgram.uPointCssSize, layer.pointCssSizePx);
       gl.uniform2f(layer.pointProgram.uPointLineDash, layer.pointLineDash[0], layer.pointLineDash[1]);
       gl.uniform1f(layer.pointProgram.uPointOpacity, layer.pointOpacity);
       gl.uniform1f(layer.pointProgram.uPointStrokeScale, layer.pointStrokeScale);

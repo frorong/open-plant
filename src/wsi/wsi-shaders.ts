@@ -121,6 +121,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     uniform sampler2D uPalette;
     uniform float uPaletteSize;
     uniform float uPointSize;
+    uniform float uPointCssSize;
     uniform float uPointOpacity;
     uniform float uPointStrokeScale;
     uniform float uPointInnerFillAlpha;
@@ -145,13 +146,13 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
         outColor = vec4(color.rgb * alpha, alpha);
       } else {
         float s = uPointStrokeScale;
-        float ringWidth = s * mix(0.18, 0.35, smoothstep(3.0, 16.0, uPointSize));
+        float ringWidth = s * mix(0.18, 0.35, smoothstep(3.0, 16.0, uPointCssSize));
         float innerRadius = 1.0 - ringWidth;
         float innerMask = smoothstep(innerRadius - aa, innerRadius + aa, r);
         float dashMask = 1.0;
         if (uPointLineDash.x > 0.0 && uPointLineDash.y > 0.0) {
           float angle01 = (atan(pc.y, pc.x) + PI) / (2.0 * PI);
-          float circumferencePx = max(1.0, 2.0 * PI * max(0.5, uPointSize * 0.5));
+          float circumferencePx = max(1.0, 2.0 * PI * max(0.5, uPointCssSize * 0.5));
           float dashCycle = uPointLineDash.x + uPointLineDash.y;
           float dashOffset = mod(angle01 * circumferencePx, dashCycle);
           dashMask = dashOffset <= uPointLineDash.x ? 1.0 : 0.0;
@@ -168,6 +169,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
   const program = createProgram(gl, pointVertex, pointFragment);
   const uCamera = requireUniformLocation(gl, program, "uCamera");
   const uPointSize = requireUniformLocation(gl, program, "uPointSize");
+  const uPointCssSize = requireUniformLocation(gl, program, "uPointCssSize");
   const uPointOpacity = requireUniformLocation(gl, program, "uPointOpacity");
   const uPointStrokeScale = requireUniformLocation(gl, program, "uPointStrokeScale");
   const uPointInnerFillAlpha = requireUniformLocation(gl, program, "uPointInnerFillAlpha");
@@ -239,6 +241,7 @@ export function initPointProgram(gl: WebGL2RenderingContext): PointProgram {
     paletteTexture,
     uCamera,
     uPointSize,
+    uPointCssSize,
     uPointOpacity,
     uPointLineDash,
     uPointStrokeScale,

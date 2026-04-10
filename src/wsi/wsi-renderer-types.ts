@@ -34,6 +34,7 @@ export interface PointProgram {
   paletteTexture: WebGLTexture;
   uCamera: WebGLUniformLocation;
   uPointSize: WebGLUniformLocation;
+  uPointCssSize: WebGLUniformLocation;
   uPalette: WebGLUniformLocation;
   uPaletteSize: WebGLUniformLocation;
   uPointOpacity: WebGLUniformLocation;

@@ -1,5 +1,6 @@
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef } from "react";
 import { buildBrushStrokePolygon } from "../wsi/brush-stroke";
+import { observeDevicePixelRatioChanges } from "../wsi/device-pixel-ratio";
 import { calcScaleResolution } from "../wsi/utils";
 import { drawBrushCursor, drawBrushStrokePreview, resolveBrushOptions } from "./draw-layer-brush";
 import {
@@ -243,7 +244,7 @@ export function DrawLayer({
       canvas.width = w;
       canvas.height = h;
     }
-  }, []);
+  }, [active, tool]);
 
   const worldToScreenPoints = useCallback(
     (points: import("./draw-layer-types").DrawCoordinate[]): import("./draw-layer-types").DrawCoordinate[] => {
@@ -894,6 +895,11 @@ export function DrawLayer({
       observer.disconnect();
     };
   }, [resizeCanvas, requestDraw]);
+
+  useEffect(() => observeDevicePixelRatioChanges(() => {
+    resizeCanvas();
+    requestDraw();
+  }), [resizeCanvas, requestDraw]);
 
   useEffect(() => {
     if (!active) {

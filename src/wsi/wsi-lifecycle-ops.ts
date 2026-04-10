@@ -52,6 +52,7 @@ export interface DestroyRendererOptions {
   frame: number | null;
   cancelViewAnimation: () => void;
   resizeObserver: ResizeObserver;
+  removeDprListener: () => void;
   removeCanvasEventListeners: () => void;
   cancelDrag: () => void;
   tileScheduler: TileScheduler;
@@ -83,6 +84,7 @@ export function destroyRenderer(options: DestroyRendererOptions): DestroyRendere
   options.cancelViewAnimation();
 
   options.resizeObserver.disconnect();
+  options.removeDprListener();
   options.removeCanvasEventListeners();
   options.cancelDrag();
   options.tileScheduler.destroy();

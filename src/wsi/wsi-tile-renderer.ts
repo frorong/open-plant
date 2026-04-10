@@ -3,6 +3,7 @@ import { TileScheduler } from "./tile-scheduler";
 import type { WsiImageColorSettings, WsiImageSource, WsiPointData, WsiRenderStats, WsiViewState } from "./types";
 import { clamp, isSameViewState, nowMs } from "./utils";
 import { addRendererCanvasEventListeners, type RendererCanvasHandlers, removeRendererCanvasEventListeners, resizeCanvasViewport } from "./wsi-canvas-lifecycle";
+import { observeDevicePixelRatioChanges } from "./device-pixel-ratio";
 import { cancelDrag as cancelInputDrag, createRendererInputHandlers } from "./wsi-input-handlers";
 import { destroyRenderer, handleContextLost } from "./wsi-lifecycle-ops";
 import {
@@ -83,6 +84,7 @@ export class WsiTileRenderer {
   private readonly onContextLost?: () => void;
   private readonly onContextRestored?: () => void;
   private readonly resizeObserver: ResizeObserver;
+  private readonly removeDprListener: () => void;
   private tileProgram: TileVertexProgram;
   private readonly tileScheduler: TileScheduler;
 
@@ -221,6 +223,7 @@ export class WsiTileRenderer {
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
+    this.removeDprListener = observeDevicePixelRatioChanges(() => this.resize());
 
     const inputHandlers = createRendererInputHandlers({
       canvas: this.canvas,
@@ -334,6 +337,7 @@ export class WsiTileRenderer {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const out: RenderPointLayer[] = [];
     for (const layer of this.pointLayers.values()) {
+      const pointCssSizePx = this.getPointSizeByZoom(layer.id);
       out.push({
         pointProgram: layer.program,
         pointCount: layer.runtime.pointCount,
@@ -343,7 +347,8 @@ export class WsiTileRenderer {
         pointOpacity: layer.pointOpacity,
         pointStrokeScale: layer.pointStrokeScale,
         pointInnerFillOpacity: layer.pointInnerFillOpacity,
-        pointSizePx: this.getPointSizeByZoom(layer.id) * dpr,
+        pointCssSizePx,
+        pointSizePx: pointCssSizePx * dpr,
       });
     }
     return out;
@@ -760,6 +765,7 @@ export class WsiTileRenderer {
       frame: this.frame,
       cancelViewAnimation: () => this.cancelViewAnimation(),
       resizeObserver: this.resizeObserver,
+      removeDprListener: this.removeDprListener,
       removeCanvasEventListeners: () => removeRendererCanvasEventListeners(this.canvas, this.getCanvasHandlers()),
       cancelDrag: () => this.cancelDrag(),
       tileScheduler: this.tileScheduler,
