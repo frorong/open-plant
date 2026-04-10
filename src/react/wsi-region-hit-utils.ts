@@ -2,7 +2,7 @@ import { type PreparedRoiPolygon, prepareRoiPolygons, toRoiGeometry } from "../w
 import type { WsiRegion } from "../wsi/types";
 import { clamp } from "../wsi/utils";
 import type { WsiTileRenderer } from "../wsi/wsi-tile-renderer";
-import { getTopAnchorFromPolygons, measureLabelTextWidth, mergeRegionLabelStyle } from "./draw-layer-label";
+import { getTopAnchorFromProjectedPolygons, measureLabelTextWidth, mergeRegionLabelStyle } from "./draw-layer-label";
 import type { DrawCoordinate, RegionLabelAnchorMode, RegionLabelStyle, RegionLabelStyleResolver } from "./draw-layer-types";
 import { toDrawCoordinate } from "./draw-layer-utils";
 
@@ -14,7 +14,6 @@ export interface PreparedRegionHit {
   regionId: string | number;
   polygons: PreparedRoiPolygon[];
   label: string;
-  labelAnchor: DrawCoordinate | null;
 }
 
 export function resolveRegionId(region: WsiRegion, index: number): string | number {
@@ -65,14 +64,27 @@ export function isScreenPointInsideLabel(
   region: PreparedRegionHit,
   screenCoord: DrawCoordinate,
   renderer: WsiTileRenderer,
+  regionLabelAnchor: RegionLabelAnchorMode,
   labelStyle: RegionLabelStyle,
   canvasWidth: number,
   canvasHeight: number,
   clampToViewport: boolean
 ): boolean {
-  if (!region.label || !region.labelAnchor) return false;
+  if (!region.label) return false;
 
-  const anchorScreen = toDrawCoordinate(renderer.worldToScreen(region.labelAnchor[0], region.labelAnchor[1]));
+  const anchorScreen = getTopAnchorFromProjectedPolygons(
+    region.polygons,
+    points => {
+      const projected: DrawCoordinate[] = [];
+      for (let i = 0; i < points.length; i += 1) {
+        const coord = toDrawCoordinate(renderer.worldToScreen(points[i][0], points[i][1]));
+        if (!coord) return [];
+        projected.push(coord);
+      }
+      return projected;
+    },
+    regionLabelAnchor
+  );
   if (!anchorScreen) return false;
 
   const textWidth = measureLabelTextWidth(region.label, labelStyle);
@@ -91,7 +103,7 @@ export function isScreenPointInsideLabel(
   return screenCoord[0] >= left && screenCoord[0] <= right && screenCoord[1] >= top && screenCoord[1] <= bottom;
 }
 
-export function prepareRegionHits(regions: WsiRegion[], regionLabelAnchor: RegionLabelAnchorMode = "top-center"): PreparedRegionHit[] {
+export function prepareRegionHits(regions: WsiRegion[]): PreparedRegionHit[] {
   const out: PreparedRegionHit[] = [];
   for (let i = 0; i < regions.length; i += 1) {
     const region = regions[i];
@@ -104,7 +116,6 @@ export function prepareRegionHits(regions: WsiRegion[], regionLabelAnchor: Regio
       regionId: resolveRegionId(region, i),
       polygons,
       label,
-      labelAnchor: label ? getTopAnchorFromPolygons(polygons, regionLabelAnchor) : null,
     });
   }
   return out;
@@ -115,6 +126,7 @@ export function pickPreparedRegionAt(
   screenCoord: DrawCoordinate,
   regions: PreparedRegionHit[],
   renderer: WsiTileRenderer,
+  regionLabelAnchor: RegionLabelAnchorMode,
   labelStyle: RegionLabelStyle,
   labelStyleResolver: RegionLabelStyleResolver | undefined,
   labelAutoLiftOffsetPx: number,
@@ -156,7 +168,7 @@ export function pickPreparedRegionAt(
         offsetY: dynamicLabelStyle.offsetY + labelAutoLiftOffset,
       };
     }
-    if (!isScreenPointInsideLabel(region, screenCoord, renderer, dynamicLabelStyle, canvasWidth, canvasHeight, clampRegionLabelToViewport)) continue;
+    if (!isScreenPointInsideLabel(region, screenCoord, renderer, regionLabelAnchor, dynamicLabelStyle, canvasWidth, canvasHeight, clampRegionLabelToViewport)) continue;
     return {
       region: region.region,
       regionIndex: region.regionIndex,

@@ -84,6 +84,24 @@ export function getTopAnchorFromPolygons<T extends { outer: DrawCoordinate[] }>(
   return best;
 }
 
+export function getTopAnchorFromProjectedPolygons<T extends { outer: DrawCoordinate[] }>(
+  polygons: T[],
+  project: (points: DrawCoordinate[]) => DrawCoordinate[],
+  anchorMode: RegionLabelAnchorMode = "top-center"
+): DrawCoordinate | null {
+  let best: DrawCoordinate | null = null;
+  for (const polygon of polygons) {
+    const projectedOuter = project(polygon.outer);
+    if (projectedOuter.length === 0) continue;
+    const anchor = getTopAnchor(projectedOuter, anchorMode);
+    if (!anchor) continue;
+    if (!best || anchor[1] < best[1] || (anchor[1] === best[1] && anchor[0] < best[0])) {
+      best = anchor;
+    }
+  }
+  return best;
+}
+
 export function resolveRegionLabelStyle(style: Partial<RegionLabelStyle> | undefined): RegionLabelStyle {
   const px = typeof style?.paddingX === "number" && Number.isFinite(style.paddingX) ? Math.max(0, style.paddingX) : DEFAULT_REGION_LABEL_STYLE.paddingX;
   const py = typeof style?.paddingY === "number" && Number.isFinite(style.paddingY) ? Math.max(0, style.paddingY) : DEFAULT_REGION_LABEL_STYLE.paddingY;

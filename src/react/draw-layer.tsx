@@ -6,7 +6,7 @@ import { drawBrushCursor, drawBrushStrokePreview, resolveBrushOptions } from "./
 import {
   drawAreaTooltipBox,
   drawRegionLabel,
-  getTopAnchorFromPolygons,
+  getTopAnchorFromProjectedPolygons,
   mergeRegionLabelStyle,
   resolveDrawAreaTooltipOptions,
   resolveRegionLabelAutoLiftOffsetPx,
@@ -476,9 +476,7 @@ export function DrawLayer({
             );
       for (const entry of preparedPersistedRegions) {
         if (!entry.region.label) continue;
-        const anchorWorld = getTopAnchorFromPolygons(entry.polygons, regionLabelAnchor);
-        if (!anchorWorld) continue;
-        const anchorScreen = toCoord(projectorRef.current?.worldToScreen(anchorWorld[0], anchorWorld[1]) ?? []);
+        const anchorScreen = getTopAnchorFromProjectedPolygons(entry.polygons, worldToScreenPoints, regionLabelAnchor);
         if (!anchorScreen) continue;
         let dynamicLabelStyle = mergeRegionLabelStyle(
           resolvedLabelStyle,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WsiRegion } from "../wsi/types";
-import { drawRegionLabel, getTopAnchorFromPolygons, mergeRegionLabelStyle, resolveRegionLabelAutoLiftOffsetPx, resolveRegionLabelStyle } from "./draw-layer-label";
+import { drawRegionLabel, getTopAnchorFromProjectedPolygons, mergeRegionLabelStyle, resolveRegionLabelAutoLiftOffsetPx, resolveRegionLabelStyle } from "./draw-layer-label";
 import type {
   DrawCoordinate,
   DrawRegionCoordinates,
@@ -147,7 +147,7 @@ export function RegionLayer({
     return out;
   }, [effectiveRegions]);
 
-  const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRegions, labelAnchor), [effectiveRegions, labelAnchor]);
+  const preparedRegionHits = useMemo(() => prepareRegionHits(effectiveRegions), [effectiveRegions]);
 
   // sync label auto-lift target when zoom changes (rendererSerial: new renderer instance)
   useEffect(() => {
@@ -305,9 +305,21 @@ export function RegionLayer({
 
       for (const entry of prep) {
         if (!entry.region.label) continue;
-        const anchorWorld = getTopAnchorFromPolygons(entry.polygons, anchor);
-        if (!anchorWorld) continue;
-        const anchorScreen = toCoord(rRef.current?.worldToScreen(anchorWorld[0], anchorWorld[1]) ?? []);
+        const anchorScreen = getTopAnchorFromProjectedPolygons(
+          entry.polygons,
+          points => {
+            const projector = rRef.current;
+            if (!projector) return [];
+            const out: DrawCoordinate[] = [];
+            for (let i = 0; i < points.length; i += 1) {
+              const coord = toCoord(projector.worldToScreen(points[i][0], points[i][1]));
+              if (!coord) return [];
+              out.push(coord);
+            }
+            return out;
+          },
+          anchor
+        );
         if (!anchorScreen) continue;
 
         let style = mergeRegionLabelStyle(labelS, resolver?.({ region: entry.region, regionId: entry.regionKey, regionIndex: entry.regionIndex, zoom }));
@@ -333,6 +345,7 @@ export function RegionLayer({
 
   const pointerHitRef = useRef({
     preparedRegionHits,
+    labelAnchor,
     resolvedLabelStyle,
     labelStyleResolver,
     regionLabelAutoLiftOffsetPx,
@@ -343,6 +356,7 @@ export function RegionLayer({
   });
   pointerHitRef.current = {
     preparedRegionHits,
+    labelAnchor,
     resolvedLabelStyle,
     labelStyleResolver,
     regionLabelAutoLiftOffsetPx,
@@ -362,7 +376,7 @@ export function RegionLayer({
       const renderer = rendererRef.current;
       if (!renderer) return;
 
-      const { preparedRegionHits: hits, resolvedLabelStyle: labelS, labelStyleResolver: resolver,
+      const { preparedRegionHits: hits, labelAnchor: currentLabelAnchor, resolvedLabelStyle: labelS, labelStyleResolver: resolver,
         regionLabelAutoLiftOffsetPx: autoLiftPx, clampLabelToViewport: clampVp, onHover: hoverCb } = pointerHitRef.current;
 
       const worldCoord = screenToWorld(e.clientX, e.clientY);
@@ -376,7 +390,7 @@ export function RegionLayer({
         if (screenCoord) {
           const rect = canvasRef.current?.getBoundingClientRect();
           hitResult = pickPreparedRegionAt(
-            worldCoord, screenCoord, hits, renderer, labelS, resolver,
+            worldCoord, screenCoord, hits, renderer, currentLabelAnchor, labelS, resolver,
             typeof autoLiftPx === "number" ? autoLiftPx : 0,
             rect?.width ?? 0, rect?.height ?? 0, clampVp,
           );
@@ -403,7 +417,7 @@ export function RegionLayer({
       const renderer = rendererRef.current;
       if (!renderer) return;
 
-      const { preparedRegionHits: hits, resolvedLabelStyle: labelS, labelStyleResolver: resolver,
+      const { preparedRegionHits: hits, labelAnchor: currentLabelAnchor, resolvedLabelStyle: labelS, labelStyleResolver: resolver,
         regionLabelAutoLiftOffsetPx: autoLiftPx, clampLabelToViewport: clampVp,
         onClick: clickCb, commitActive: commit } = pointerHitRef.current;
 
@@ -417,7 +431,7 @@ export function RegionLayer({
 
       const rect = canvasRef.current?.getBoundingClientRect();
       const hitResult = pickPreparedRegionAt(
-        worldCoord, screenCoord, hits, renderer, labelS, resolver,
+        worldCoord, screenCoord, hits, renderer, currentLabelAnchor, labelS, resolver,
         typeof autoLiftPx === "number" ? autoLiftPx : 0,
         rect?.width ?? 0, rect?.height ?? 0, clampVp,
       );
